@@ -1,0 +1,32 @@
+name: test-project
+services:
+  api:
+    image: python:3.12
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    networks:
+      - backend
+  postgres:
+    image: postgres:16
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - backend
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - frontend
+      - backend
+
+volumes:
+  pg-data:
+
+networks:
+  frontend:
+  backend:
