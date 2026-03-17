@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -212,7 +213,20 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		snap.Nodes = append(snap.Nodes, buildVolumeNode(v.Name, v.Driver))
 	}
 
+	sort.Slice(snap.Nodes, func(i, j int) bool { return snap.Nodes[i].ID < snap.Nodes[j].ID })
+	sort.Slice(snap.Edges, func(i, j int) bool { return snap.Edges[i].ID < snap.Edges[j].ID })
+
 	return snap, nil
+}
+
+func topologyEvent(action events.Action) bool {
+	switch string(action) {
+	case "start", "stop", "die", "kill", "create", "destroy", "rename",
+		"pause", "unpause", "health_status",
+		"connect", "disconnect":
+		return true
+	}
+	return false
 }
 
 func (d *DockerCollector) watchEvents(ctx context.Context) {
@@ -223,9 +237,25 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 
 	msgCh, errCh := d.client.Events(ctx, events.ListOptions{Filters: eventFilter})
 
+	var debounceTimer *time.Timer
+	debounceCh := make(chan struct{}, 1)
+
 	for {
 		select {
-		case <-msgCh:
+		case msg := <-msgCh:
+			if !topologyEvent(msg.Action) {
+				continue
+			}
+			if debounceTimer != nil {
+				debounceTimer.Stop()
+			}
+			debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+				select {
+				case debounceCh <- struct{}{}:
+				default:
+				}
+			})
+		case <-debounceCh:
 			if err := d.poll(ctx); err != nil {
 				log.Printf("event-triggered poll error: %v", err)
 			}
