@@ -1,3 +1,5 @@
+name: docker-flow
+
 services:
   docker-flow:
     build: .
@@ -6,5 +8,5 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./docker-compose.yml:/app/compose/docker-compose.yml:ro
-    labels:
+                    labels:
       dev.dockerflow.self: "true"
