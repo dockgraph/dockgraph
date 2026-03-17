@@ -1,0 +1,14 @@
+# Go
+backend/docker-flow
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store

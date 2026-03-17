@@ -1,0 +1,10 @@
+services:
+  docker-flow:
+    build: .
+    ports:
+      - "7800:7800"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker-compose.yml:/app/compose/docker-compose.yml:ro
+    labels:
+      dev.dockerflow.self: "true"
