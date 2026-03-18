@@ -115,12 +115,13 @@ export async function computeLayout(
                 id: child.id,
                 width: NODE_WIDTH,
                 height: nodeMap.get(child.id)?.type === 'volumeNode' ? VOLUME_HEIGHT : NODE_HEIGHT,
+                layoutOptions: { 'elk.alignment': 'TOP' },
               }))
             : [{ id: `${id}__placeholder`, width: 1, height: 1 }],
         });
       } else {
         const h = rfNode.type === 'volumeNode' ? VOLUME_HEIGHT : NODE_HEIGHT;
-        elkChildren.push({ id, width: NODE_WIDTH, height: h });
+        elkChildren.push({ id, width: NODE_WIDTH, height: h, layoutOptions: { 'elk.alignment': 'TOP' } });
       }
     }
 

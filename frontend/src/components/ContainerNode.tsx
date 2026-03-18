@@ -21,6 +21,9 @@ export function ContainerNode({ data }: NodeProps) {
         borderRadius: 4,
         padding: '6px 10px',
         width: 196,
+        height: 65,
+        boxSizing: 'border-box',
+        overflow: 'hidden',
         opacity: isGhost ? 0.5 : 1,
       }}
     >

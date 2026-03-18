@@ -21,6 +21,8 @@ export function VolumeNode({ data }: NodeProps) {
         alignItems: 'center',
         gap: 6,
         width: 196,
+        height: 40,
+        boxSizing: 'border-box',
       }}
     >
       <NodeHandles />
