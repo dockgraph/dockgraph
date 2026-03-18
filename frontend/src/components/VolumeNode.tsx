@@ -1,4 +1,5 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import type { NodeProps } from '@xyflow/react';
+import { NodeHandles } from './NodeHandles';
 import type { DFNode } from '../types';
 
 type VolumeNodeData = {
@@ -12,19 +13,31 @@ export function VolumeNode({ data }: NodeProps) {
     <div
       style={{
         background: '#1e293b',
-        border: '1.5px solid #f97316',
-        borderRadius: 8,
-        padding: '6px 10px',
+        border: '1px solid #334155',
+        borderLeft: '3px solid #f97316',
+        borderRadius: 4,
+        padding: '5px 10px',
         display: 'flex',
         alignItems: 'center',
         gap: 6,
+        width: 196,
       }}
     >
-      <Handle type="source" position={Position.Top} style={{ visibility: 'hidden' }} />
+      <NodeHandles />
 
       <span style={{ fontSize: 14 }}>💾</span>
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0' }}>
+      <div style={{ overflow: 'hidden' }}>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: '#e2e8f0',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={dfNode.name}
+        >
           {dfNode.name}
         </div>
         {dfNode.driver && (
@@ -32,7 +45,6 @@ export function VolumeNode({ data }: NodeProps) {
         )}
       </div>
 
-      <Handle type="target" position={Position.Bottom} style={{ visibility: 'hidden' }} />
     </div>
   );
 }

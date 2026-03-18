@@ -21,11 +21,15 @@ export function useDockerFlow(): DockerFlowState {
   const maxRetryDelay = 30_000;
 
   const applySnapshot = useCallback((snap: GraphSnapshot) => {
-    setState((prev) => ({
-      ...prev,
-      nodes: snap.nodes,
-      edges: snap.edges,
-    }));
+    setState((prev) => {
+      if (
+        JSON.stringify(prev.nodes) === JSON.stringify(snap.nodes) &&
+        JSON.stringify(prev.edges) === JSON.stringify(snap.edges)
+      ) {
+        return prev;
+      }
+      return { ...prev, nodes: snap.nodes, edges: snap.edges };
+    });
   }, []);
 
   const applyDelta = useCallback((delta: DeltaUpdate) => {

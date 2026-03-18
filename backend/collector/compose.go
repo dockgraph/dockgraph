@@ -150,9 +150,11 @@ func parseComposeFile(path, sourceName string) (GraphSnapshot, error) {
 		return snap, err
 	}
 
-	// Build network nodes
 	networkNames := make(map[string]bool)
 	for name := range project.Networks {
+		if name == "default" {
+			continue
+		}
 		networkNames[name] = true
 		snap.Nodes = append(snap.Nodes, Node{
 			ID:     "network:" + name,
@@ -172,6 +174,10 @@ func parseComposeFile(path, sourceName string) (GraphSnapshot, error) {
 	}
 
 	for _, svc := range project.Services {
+		if svc.Labels[selfLabel] == "true" {
+			continue
+		}
+
 		svcName := svc.Name
 		containerID := "container:" + svcName
 

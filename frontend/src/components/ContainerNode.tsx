@@ -1,4 +1,5 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import type { NodeProps } from '@xyflow/react';
+import { NodeHandles } from './NodeHandles';
 import { STATUS_COLORS } from '../utils/colors';
 import type { DFNode } from '../types';
 
@@ -15,23 +16,36 @@ export function ContainerNode({ data }: NodeProps) {
     <div
       style={{
         background: '#1e293b',
-        border: `1.5px ${isGhost ? 'dashed' : 'solid'} ${statusColor}`,
-        borderRadius: 8,
-        padding: '8px 12px',
-        minWidth: 120,
+        border: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? '#475569' : '#334155'}`,
+        borderLeft: `3px solid ${statusColor}`,
+        borderRadius: 4,
+        padding: '6px 10px',
+        width: 196,
         opacity: isGhost ? 0.5 : 1,
       }}
     >
-      <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
+      <NodeHandles />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: '#e2e8f0',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: 170,
+            display: 'inline-block',
+          }}
+          title={dfNode.name}
+        >
           {dfNode.name}
         </span>
         <span
           style={{
-            width: 8,
-            height: 8,
+            width: 6,
+            height: 6,
             borderRadius: '50%',
             background: statusColor,
             display: 'inline-block',
@@ -41,7 +55,17 @@ export function ContainerNode({ data }: NodeProps) {
       </div>
 
       {dfNode.image && (
-        <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+        <div
+          style={{
+            fontSize: 10,
+            color: '#64748b',
+            marginTop: 2,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={dfNode.image}
+        >
           {dfNode.image}
         </div>
       )}
@@ -65,7 +89,6 @@ export function ContainerNode({ data }: NodeProps) {
         </div>
       )}
 
-      <Handle type="source" position={Position.Bottom} style={{ visibility: 'hidden' }} />
     </div>
   );
 }

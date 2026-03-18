@@ -1,6 +1,7 @@
 package state
 
 import (
+	"sort"
 	"sync"
 
 	"github.com/dockgraph/docker-flow/collector"
@@ -162,6 +163,9 @@ func mergeSnapshots(composeSnaps, dockerSnaps map[string]*collector.GraphSnapsho
 			result.Edges = append(result.Edges, e)
 		}
 	}
+
+	sort.Slice(result.Nodes, func(i, j int) bool { return result.Nodes[i].ID < result.Nodes[j].ID })
+	sort.Slice(result.Edges, func(i, j int) bool { return result.Edges[i].ID < result.Edges[j].ID })
 
 	return result
 }

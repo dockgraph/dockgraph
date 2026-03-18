@@ -165,19 +165,25 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		status := containerStatus(c.State, c.Status)
 		ports := extractPorts(c.Ports)
 
-		var primaryNetID string
-		var secondaryNetIDs []string
+		// Sort for stable primary network assignment across polls.
+		var trackedNetIDs []string
 		if c.NetworkSettings != nil {
 			for _, netSettings := range c.NetworkSettings.Networks {
 				netID := netSettings.NetworkID
-				if _, tracked := networkIDToName[netID]; !tracked {
-					continue
+				if _, tracked := networkIDToName[netID]; tracked {
+					trackedNetIDs = append(trackedNetIDs, netID)
 				}
-				if primaryNetID == "" {
-					primaryNetID = netID
-				} else {
-					secondaryNetIDs = append(secondaryNetIDs, netID)
-				}
+			}
+		}
+		sort.Strings(trackedNetIDs)
+
+		var primaryNetID string
+		var secondaryNetIDs []string
+		for _, netID := range trackedNetIDs {
+			if primaryNetID == "" {
+				primaryNetID = netID
+			} else {
+				secondaryNetIDs = append(secondaryNetIDs, netID)
 			}
 		}
 

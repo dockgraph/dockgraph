@@ -1,4 +1,5 @@
 import type { NodeProps } from '@xyflow/react';
+import { NodeHandles } from './NodeHandles';
 import { networkColor } from '../utils/colors';
 import type { DFNode } from '../types';
 
@@ -15,23 +16,27 @@ export function NetworkGroup({ data }: NodeProps) {
       style={{
         width: '100%',
         height: '100%',
-        border: `2px solid ${color}`,
-        borderRadius: 10,
-        background: `${color}08`,
+        border: `1px solid ${color}40`,
+        borderRadius: 6,
+        background: `${color}06`,
         position: 'relative',
       }}
     >
+      <NodeHandles />
+
       <div
         style={{
-          padding: '4px 10px',
-          fontSize: 11,
+          padding: '3px 8px',
+          fontSize: 10,
           fontWeight: 600,
-          color,
-          borderBottom: `1px solid ${color}30`,
+          color: `${color}cc`,
+          letterSpacing: '0.3px',
+          textTransform: 'uppercase' as const,
         }}
       >
         {dfNode.name}
       </div>
+
     </div>
   );
 }
