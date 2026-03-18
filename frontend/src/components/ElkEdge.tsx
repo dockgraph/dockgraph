@@ -1,9 +1,11 @@
 import type { EdgeProps } from '@xyflow/react';
 
-// Renders ELK-computed orthogonal edge paths with connection dots at endpoints.
 export function ElkEdge({ data, style }: EdgeProps) {
-  const path = (data as Record<string, string>)?.path;
+  const edgeData = data as Record<string, string> | undefined;
+  const path = edgeData?.path;
   if (!path) return null;
+
+  const animated = edgeData?.edgeType === 'depends_on';
 
   const stroke = (style?.stroke as string) ?? '#475569';
   const strokeWidth = (style?.strokeWidth as number) ?? 1;
@@ -31,6 +33,16 @@ export function ElkEdge({ data, style }: EdgeProps) {
       {endX != null && (
         <circle cx={endX} cy={endY} r={2.5} fill={stroke} />
       )}
+      {animated && [0, 0.33, 0.66].map((offset) => (
+        <circle key={offset} r={1.8} fill={stroke} opacity={0.6}>
+          <animateMotion
+            dur="3s"
+            repeatCount="indefinite"
+            begin={`${offset * 3}s`}
+            path={path}
+          />
+        </circle>
+      ))}
     </g>
   );
 }
