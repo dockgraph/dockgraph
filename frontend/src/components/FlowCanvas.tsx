@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -155,6 +155,7 @@ function toReactFlowEdges(dfEdges: DFEdge[], dfNodes: DFNode[]): RFEdge[] {
       source: e.source,
       target: e.target,
       type: 'elk',
+      data: { edgeType: e.type },
       style: { stroke, strokeWidth: 1 },
     };
   });
@@ -163,6 +164,7 @@ function toReactFlowEdges(dfEdges: DFEdge[], dfNodes: DFNode[]): RFEdge[] {
 export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   useEffect(() => {
     if (dfNodes.length === 0) return;
@@ -179,6 +181,47 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
 
     return () => { cancelled = true; };
   }, [dfNodes, dfEdges, setNodes, setEdges]);
+
+  const connectedEdgeIds = new Set<string>();
+  const connectedNodeIds = new Set<string>();
+  if (selectedNodeId) {
+    connectedNodeIds.add(selectedNodeId);
+    for (const e of edges) {
+      if (e.source === selectedNodeId || e.target === selectedNodeId) {
+        connectedEdgeIds.add(e.id);
+        connectedNodeIds.add(e.source);
+        connectedNodeIds.add(e.target);
+      }
+    }
+  }
+
+  const styledNodes = selectedNodeId
+    ? nodes.map((n) => {
+        // Don't dim network groups — they're containers, not selectable targets
+        if (n.type === 'networkGroup') return n;
+        const highlighted = connectedNodeIds.has(n.id);
+        return { ...n, style: { ...n.style, opacity: highlighted ? 1 : 0.2 } };
+      })
+    : nodes;
+
+  const styledEdges = selectedNodeId
+    ? edges.map((e) => {
+        const highlighted = connectedEdgeIds.has(e.id);
+        return {
+          ...e,
+          style: { ...e.style, opacity: highlighted ? 1 : 0.15 },
+        };
+      })
+    : edges;
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: RFNode) => {
+    if (node.type === 'networkGroup') return;
+    setSelectedNodeId((prev) => (prev === node.id ? null : node.id));
+  }, []);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedNodeId(null);
+  }, []);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -211,18 +254,23 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
       </div>
 
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={styledNodes}
+        edges={styledEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        nodesDraggable={false}
+        nodesConnectable={false}
         fitView
         proOptions={{ hideAttribution: true }}
         style={{ background: '#0f172a' }}
       >
         <Background variant={BackgroundVariant.Dots} color="#1e293b" gap={20} />
         <Controls
+          showInteractive={false}
           style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6 }}
         />
         <MiniMap
