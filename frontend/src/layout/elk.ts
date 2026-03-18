@@ -5,6 +5,7 @@ const elk = new ELK();
 
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 65;
+const VOLUME_HEIGHT = 40;
 const COMPONENT_GAP = 60;
 
 const ELK_OPTIONS = {
@@ -113,28 +114,54 @@ export async function computeLayout(
             ? groupChildren.map((child) => ({
                 id: child.id,
                 width: NODE_WIDTH,
-                height: NODE_HEIGHT,
+                height: nodeMap.get(child.id)?.type === 'volumeNode' ? VOLUME_HEIGHT : NODE_HEIGHT,
               }))
             : [{ id: `${id}__placeholder`, width: 1, height: 1 }],
         });
       } else {
-        elkChildren.push({ id, width: NODE_WIDTH, height: NODE_HEIGHT });
+        const h = rfNode.type === 'volumeNode' ? VOLUME_HEIGHT : NODE_HEIGHT;
+        elkChildren.push({ id, width: NODE_WIDTH, height: h });
       }
     }
 
-    const compEdges: ElkExtendedEdge[] = edges
-      .filter((e) => {
-        const s = childToParent.get(e.source) ?? e.source;
-        const t = childToParent.get(e.target) ?? e.target;
-        return compIdSet.has(s) && compIdSet.has(t);
-      })
-      .map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] }));
+    // ELK uses group-local coordinates for within-group edge sections
+    // but root coordinates for cross-hierarchy ones. Placing them at the
+    // correct hierarchy level ensures extractEdgePaths applies the right offset.
+    const groupEdgeMap = new Map<string, ElkExtendedEdge[]>();
+    const rootEdges: ElkExtendedEdge[] = [];
+
+    for (const e of edges) {
+      const sTop = childToParent.get(e.source) ?? e.source;
+      const tTop = childToParent.get(e.target) ?? e.target;
+      if (!compIdSet.has(sTop) || !compIdSet.has(tTop)) continue;
+
+      const elkEdge: ElkExtendedEdge = { id: e.id, sources: [e.source], targets: [e.target] };
+
+      // Both endpoints in the same group → attach to that group
+      const sGroup = childToParent.get(e.source);
+      const tGroup = childToParent.get(e.target);
+      if (sGroup && tGroup && sGroup === tGroup) {
+        const list = groupEdgeMap.get(sGroup) ?? [];
+        list.push(elkEdge);
+        groupEdgeMap.set(sGroup, list);
+      } else {
+        rootEdges.push(elkEdge);
+      }
+    }
+
+    // Attach within-group edges to their group nodes
+    for (const elkChild of elkChildren) {
+      const groupEdges = groupEdgeMap.get(elkChild.id);
+      if (groupEdges) {
+        (elkChild as ElkNode & { edges: ElkExtendedEdge[] }).edges = groupEdges;
+      }
+    }
 
     const elkGraph: ElkNode = {
       id: `comp-${compIds[0]}`,
       layoutOptions: ELK_OPTIONS,
       children: elkChildren,
-      edges: compEdges,
+      edges: rootEdges,
     };
 
     const layout = await elk.layout(elkGraph);
