@@ -152,6 +152,16 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		snap.Nodes = append(snap.Nodes, buildNetworkNode(n.ID, n.Name, n.Driver))
 	}
 
+	type projectService struct{ project, service string }
+	psToContainerID := make(map[projectService]string)
+	for _, c := range containers {
+		project := c.Labels["com.docker.compose.project"]
+		service := c.Labels["com.docker.compose.service"]
+		if project != "" && service != "" {
+			psToContainerID[projectService{project, service}] = c.ID[:12]
+		}
+	}
+
 	for _, c := range containers {
 		image := c.Image
 		if isSelfContainer(image) {
@@ -210,6 +220,28 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 					Source:    "volume:" + m.Name,
 					Target:    "container:" + c.ID[:12],
 					MountPath: m.Destination,
+				})
+			}
+		}
+
+		project := c.Labels["com.docker.compose.project"]
+		depsLabel := c.Labels["com.docker.compose.depends_on"]
+		if project != "" && depsLabel != "" {
+			for _, entry := range strings.Split(depsLabel, ",") {
+				parts := strings.SplitN(entry, ":", 3)
+				if len(parts) == 0 || parts[0] == "" {
+					continue
+				}
+				depService := parts[0]
+				depContainerID, ok := psToContainerID[projectService{project, depService}]
+				if !ok {
+					continue
+				}
+				snap.Edges = append(snap.Edges, Edge{
+					ID:     "e:dep:" + c.ID[:12] + ":" + depContainerID,
+					Type:   "depends_on",
+					Source: "container:" + c.ID[:12],
+					Target: "container:" + depContainerID,
 				})
 			}
 		}
