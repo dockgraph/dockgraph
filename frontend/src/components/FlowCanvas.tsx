@@ -166,7 +166,9 @@ function toReactFlowEdges(dfEdges: DFEdge[], dfNodes: DFNode[], defaultStroke: s
 export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<
+    { type: 'node'; id: string } | { type: 'edge'; id: string } | null
+  >(null);
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -187,27 +189,68 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
 
   const connectedEdgeIds = new Set<string>();
   const connectedNodeIds = new Set<string>();
-  if (selectedNodeId) {
-    connectedNodeIds.add(selectedNodeId);
-    for (const e of edges) {
-      if (e.source === selectedNodeId || e.target === selectedNodeId) {
-        connectedEdgeIds.add(e.id);
-        connectedNodeIds.add(e.source);
-        connectedNodeIds.add(e.target);
+  const highlightedGroupIds = new Set<string>();
+  const selectedNode = selection?.type === 'node'
+    ? nodes.find((n) => n.id === selection.id)
+    : null;
+  const isGroupSelection = selectedNode?.type === 'networkGroup';
+
+  if (selection?.type === 'node') {
+    if (isGroupSelection) {      highlightedGroupIds.add(selection.id);
+      const childIds = new Set(
+        nodes.filter((n) => n.parentId === selection.id).map((n) => n.id),
+      );
+      for (const id of childIds) connectedNodeIds.add(id);
+      for (const e of edges) {
+        if (childIds.has(e.source) || childIds.has(e.target) ||
+            e.source === selection.id || e.target === selection.id) {
+          connectedEdgeIds.add(e.id);
+          connectedNodeIds.add(e.source);
+          connectedNodeIds.add(e.target);
+          const remoteId = childIds.has(e.source) ? e.target : e.source;
+          const remoteNode = nodes.find((n) => n.id === remoteId);
+          if (remoteNode?.parentId) highlightedGroupIds.add(remoteNode.parentId);
+        }
+      }
+    } else {
+      connectedNodeIds.add(selection.id);
+      for (const e of edges) {
+        if (e.source === selection.id || e.target === selection.id) {
+          connectedEdgeIds.add(e.id);
+          connectedNodeIds.add(e.source);
+          connectedNodeIds.add(e.target);
+        }
+      }
+    }
+  } else if (selection?.type === 'edge') {
+    const edge = edges.find((e) => e.id === selection.id);
+    if (edge) {
+      connectedEdgeIds.add(edge.id);
+      connectedNodeIds.add(edge.source);
+      connectedNodeIds.add(edge.target);
+    }
+  }
+
+  if (selection && !isGroupSelection) {
+    for (const n of nodes) {
+      if (connectedNodeIds.has(n.id) && n.parentId) {
+        highlightedGroupIds.add(n.parentId);
       }
     }
   }
 
-  const styledNodes = selectedNodeId
+  const styledNodes = selection
     ? nodes.map((n) => {
-        // Don't dim network groups — they're containers, not selectable targets
-        if (n.type === 'networkGroup') return n;
+        if (n.type === 'networkGroup') {
+          const highlighted = highlightedGroupIds.has(n.id);
+          return { ...n, style: { ...n.style, opacity: highlighted ? 1 : 0.2 } };
+        }
         const highlighted = connectedNodeIds.has(n.id);
         return { ...n, style: { ...n.style, opacity: highlighted ? 1 : 0.2 } };
       })
     : nodes;
 
-  const styledEdges = selectedNodeId
+  const styledEdges = selection
     ? edges.map((e) => {
         const highlighted = connectedEdgeIds.has(e.id);
         return {
@@ -218,12 +261,19 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
     : edges;
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: RFNode) => {
-    if (node.type === 'networkGroup') return;
-    setSelectedNodeId((prev) => (prev === node.id ? null : node.id));
+    setSelection((prev) =>
+      prev?.type === 'node' && prev.id === node.id ? null : { type: 'node', id: node.id },
+    );
+  }, []);
+
+  const onEdgeClick = useCallback((_: React.MouseEvent, edge: RFEdge) => {
+    setSelection((prev) =>
+      prev?.type === 'edge' && prev.id === edge.id ? null : { type: 'edge', id: edge.id },
+    );
   }, []);
 
   const onPaneClick = useCallback(() => {
-    setSelectedNodeId(null);
+    setSelection(null);
   }, []);
 
   return (
@@ -264,6 +314,7 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

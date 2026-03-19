@@ -46,7 +46,13 @@ export function ElkEdge({ data, style }: EdgeProps) {
   }, [animated, path]);
 
   return (
-    <g opacity={opacity}>
+    <g opacity={opacity} style={{ cursor: 'pointer' }}>
+      <path
+        d={path}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={12}
+      />
       <path
         d={path}
         fill="none"
