@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/dockgraph/docker-flow/api"
 	"github.com/dockgraph/docker-flow/collector"
@@ -79,7 +80,9 @@ func main() {
 
 	go func() {
 		<-ctx.Done()
-		server.Close()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		server.Shutdown(shutdownCtx)
 	}()
 
 	log.Printf("docker-flow listening on %s", addr)

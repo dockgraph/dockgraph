@@ -4,13 +4,28 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/dockgraph/docker-flow/collector"
 	"github.com/gorilla/websocket"
 )
 
+const (
+	pongTimeout = 60 * time.Second
+	pingPeriod  = 30 * time.Second
+)
+
+func checkOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	host := r.Host
+	return origin == "http://"+host || origin == "https://"+host
+}
+
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: checkOrigin,
 }
 
 type wsClient struct {
@@ -52,10 +67,24 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		defer conn.Close()
-		for msg := range client.sendCh {
-			if err := conn.WriteJSON(msg); err != nil {
-				return
+		ticker := time.NewTicker(pingPeriod)
+		defer func() {
+			ticker.Stop()
+			conn.Close()
+		}()
+		for {
+			select {
+			case msg, ok := <-client.sendCh:
+				if !ok {
+					return
+				}
+				if err := conn.WriteJSON(msg); err != nil {
+					return
+				}
+			case <-ticker.C:
+				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
+					return
+				}
 			}
 		}
 	}()
@@ -67,6 +96,12 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 			h.mu.Unlock()
 			close(client.sendCh)
 		}()
+
+		conn.SetReadDeadline(time.Now().Add(pongTimeout))
+		conn.SetPongHandler(func(string) error {
+			conn.SetReadDeadline(time.Now().Add(pongTimeout))
+			return nil
+		})
 
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
