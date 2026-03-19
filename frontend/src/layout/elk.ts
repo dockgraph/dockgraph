@@ -3,10 +3,9 @@ import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 
 const elk = new ELK();
 
-const NODE_WIDTH = 220;
+const NODE_WIDTH = 200;
 const NODE_HEIGHT = 65;
 const VOLUME_HEIGHT = 40;
-const COMPONENT_GAP = 60;
 
 const ELK_OPTIONS = {
   'elk.algorithm': 'layered',
@@ -17,7 +16,7 @@ const ELK_OPTIONS = {
   'elk.spacing.edgeNode': '20',
   'elk.spacing.edgeEdge': '12',
   'elk.layered.spacing.nodeNodeBetweenLayers': '35',
-  'elk.spacing.componentComponent': '40',
+  'elk.spacing.componentComponent': '60',
   'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
   'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
   'elk.layered.compaction.postCompaction.strategy': 'EDGE_LENGTH',
@@ -94,20 +93,19 @@ export async function computeLayout(
   const components = findComponents(topIds, edges, childToParent);
 
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const allEdgePaths = new Map<string, string>();
-  let currentY = 0;
+  const allEdgePaths = new Map<string, string>();  const allElkChildren: ElkNode[] = [];
+  const allRootEdges: ElkExtendedEdge[] = [];
 
   for (const compIds of components) {
     const compIdSet = new Set(compIds);
 
-    const elkChildren: ElkNode[] = [];
     for (const id of compIds) {
       const rfNode = nodeMap.get(id);
       if (!rfNode) continue;
 
       if (rfNode.type === 'networkGroup') {
         const groupChildren = children.filter((n) => n.parentId === id);
-        elkChildren.push({
+        allElkChildren.push({
           id,
           layoutOptions: GROUP_OPTIONS,
           children: groupChildren.length > 0
@@ -117,19 +115,15 @@ export async function computeLayout(
                 height: nodeMap.get(child.id)?.type === 'volumeNode' ? VOLUME_HEIGHT : NODE_HEIGHT,
                 layoutOptions: { 'elk.alignment': 'TOP' },
               }))
-            : [{ id: `${id}__placeholder`, width: 1, height: 1 }],
+            : [{ id: `${id}__placeholder`, width: 120, height: 1 }],
         });
       } else {
         const h = rfNode.type === 'volumeNode' ? VOLUME_HEIGHT : NODE_HEIGHT;
-        elkChildren.push({ id, width: NODE_WIDTH, height: h, layoutOptions: { 'elk.alignment': 'TOP' } });
+        allElkChildren.push({ id, width: NODE_WIDTH, height: h, layoutOptions: { 'elk.alignment': 'TOP' } });
       }
     }
 
-    // ELK uses group-local coordinates for within-group edge sections
-    // but root coordinates for cross-hierarchy ones. Placing them at the
-    // correct hierarchy level ensures extractEdgePaths applies the right offset.
     const groupEdgeMap = new Map<string, ElkExtendedEdge[]>();
-    const rootEdges: ElkExtendedEdge[] = [];
 
     for (const e of edges) {
       const sTop = childToParent.get(e.source) ?? e.source;
@@ -138,7 +132,6 @@ export async function computeLayout(
 
       const elkEdge: ElkExtendedEdge = { id: e.id, sources: [e.source], targets: [e.target] };
 
-      // Both endpoints in the same group → attach to that group
       const sGroup = childToParent.get(e.source);
       const tGroup = childToParent.get(e.target);
       if (sGroup && tGroup && sGroup === tGroup) {
@@ -146,55 +139,120 @@ export async function computeLayout(
         list.push(elkEdge);
         groupEdgeMap.set(sGroup, list);
       } else {
-        rootEdges.push(elkEdge);
+        allRootEdges.push(elkEdge);
       }
     }
 
-    // Attach within-group edges to their group nodes
-    for (const elkChild of elkChildren) {
+    for (const elkChild of allElkChildren) {
       const groupEdges = groupEdgeMap.get(elkChild.id);
       if (groupEdges) {
         (elkChild as ElkNode & { edges: ElkExtendedEdge[] }).edges = groupEdges;
       }
     }
+  }  const wrappedChildren: ElkNode[] = [];
+  const wrappedEdges: ElkExtendedEdge[] = [];
 
-    const elkGraph: ElkNode = {
-      id: `comp-${compIds[0]}`,
-      layoutOptions: ELK_OPTIONS,
-      children: elkChildren,
-      edges: rootEdges,
-    };
+  for (const compIds of components) {
+    const compIdSet = new Set(compIds);
+    const compChildren = allElkChildren.filter((c) => compIdSet.has(c.id));
+    const compEdges = allRootEdges.filter((e) => {
+      const s = childToParent.get(e.sources[0]) ?? e.sources[0];
+      const t = childToParent.get(e.targets[0]) ?? e.targets[0];
+      return compIdSet.has(s) && compIdSet.has(t);
+    });
 
-    const layout = await elk.layout(elkGraph);
+    if (compChildren.length === 1 && compEdges.length === 0) {
+      // Single node, no need to wrap
+      wrappedChildren.push(compChildren[0]);
+    } else {
+      wrappedChildren.push({
+        id: `__comp_${compIds[0]}`,
+        layoutOptions: {
+          ...ELK_OPTIONS,
+          'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+          'elk.padding': '[top=0,left=0,bottom=0,right=0]',
+        },
+        children: compChildren,
+        edges: compEdges,
+      });
+    }
+  }
 
-    for (const elkNode of layout.children ?? []) {
-      const rfNode = nodeMap.get(elkNode.id);
-      if (!rfNode) continue;
+  const elkGraph: ElkNode = {
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'layered',
+      'elk.direction': 'DOWN',
+      'elk.edgeRouting': 'ORTHOGONAL',
+      'elk.separateConnectedComponents': 'true',
+      'elk.spacing.nodeNode': '40',
+      'elk.aspectRatio': '1.4',
+      'elk.padding': '[top=0,left=0,bottom=0,right=0]',
+    },
+    children: wrappedChildren,
+    edges: wrappedEdges,
+  };
 
-      rfNode.position = {
-        x: elkNode.x ?? 0,
-        y: (elkNode.y ?? 0) + currentY,
-      };
+  const layout = await elk.layout(elkGraph);
 
-      if (rfNode.type === 'networkGroup') {
-        rfNode.style = {
-          ...rfNode.style,
-          width: elkNode.width,
-          height: elkNode.height,
+  for (const topNode of layout.children ?? []) {
+    const isWrapper = topNode.id.startsWith('__comp_');
+
+    if (isWrapper) {
+      const ox = topNode.x ?? 0;
+      const oy = topNode.y ?? 0;
+
+      for (const elkNode of topNode.children ?? []) {
+        const rfNode = nodeMap.get(elkNode.id);
+        if (!rfNode) continue;
+
+        rfNode.position = {
+          x: (elkNode.x ?? 0) + ox,
+          y: (elkNode.y ?? 0) + oy,
         };
-      }
 
-      for (const elkChild of elkNode.children ?? []) {
-        const rfChild = nodeMap.get(elkChild.id);
-        if (rfChild) {
-          rfChild.position = { x: elkChild.x ?? 0, y: elkChild.y ?? 0 };
+        if (rfNode.type === 'networkGroup') {
+          rfNode.style = {
+            ...rfNode.style,
+            width: elkNode.width,
+            height: elkNode.height,
+          };
+        }
+
+        for (const elkChild of elkNode.children ?? []) {
+          const rfChild = nodeMap.get(elkChild.id);
+          if (rfChild) {
+            rfChild.position = { x: elkChild.x ?? 0, y: elkChild.y ?? 0 };
+          }
+        }
+      }
+    } else {
+      const rfNode = nodeMap.get(topNode.id);
+      if (rfNode) {
+        rfNode.position = {
+          x: topNode.x ?? 0,
+          y: topNode.y ?? 0,
+        };
+
+        if (rfNode.type === 'networkGroup') {
+          rfNode.style = {
+            ...rfNode.style,
+            width: topNode.width,
+            height: topNode.height,
+          };
+        }
+
+        for (const elkChild of topNode.children ?? []) {
+          const rfChild = nodeMap.get(elkChild.id);
+          if (rfChild) {
+            rfChild.position = { x: elkChild.x ?? 0, y: elkChild.y ?? 0 };
+          }
         }
       }
     }
-
-    extractEdgePaths(layout, 0, currentY, allEdgePaths);
-    currentY += (layout.height ?? 0) + COMPONENT_GAP;
   }
+
+  extractEdgePaths(layout, 0, 0, allEdgePaths);
 
   const updatedEdges = edges.map((e) => {
     const path = allEdgePaths.get(e.id);
