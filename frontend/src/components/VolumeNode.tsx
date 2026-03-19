@@ -1,5 +1,6 @@
 import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
+import { useTheme } from '../theme';
 import type { DFNode } from '../types';
 
 type VolumeNodeData = {
@@ -8,12 +9,15 @@ type VolumeNodeData = {
 
 export function VolumeNode({ data }: NodeProps) {
   const { dfNode } = data as VolumeNodeData;
+  const { theme } = useTheme();
 
   return (
     <div
       style={{
-        background: '#1e293b',
-        border: '1px solid #334155',
+        background: theme.nodeBg,
+        borderTop: `1px solid ${theme.nodeBorder}`,
+        borderRight: `1px solid ${theme.nodeBorder}`,
+        borderBottom: `1px solid ${theme.nodeBorder}`,
         borderLeft: '3px solid #f97316',
         borderRadius: 4,
         padding: '5px 10px',
@@ -33,7 +37,7 @@ export function VolumeNode({ data }: NodeProps) {
           style={{
             fontSize: 11,
             fontWeight: 600,
-            color: '#e2e8f0',
+            color: theme.nodeText,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -43,7 +47,7 @@ export function VolumeNode({ data }: NodeProps) {
           {dfNode.name}
         </div>
         {dfNode.driver && (
-          <div style={{ fontSize: 9, color: '#64748b' }}>{dfNode.driver}</div>
+          <div style={{ fontSize: 9, color: theme.nodeSubtext }}>{dfNode.driver}</div>
         )}
       </div>
 

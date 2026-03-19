@@ -15,8 +15,10 @@ import { ContainerNode } from './ContainerNode';
 import { NetworkGroup } from './NetworkGroup';
 import { VolumeNode } from './VolumeNode';
 import { ElkEdge } from './ElkEdge';
+import { ThemeToggle } from './ThemeToggle';
 import { computeLayout } from '../layout/elk';
 import { networkColor } from '../utils/colors';
+import { useTheme } from '../theme';
 import type { DFNode, DFEdge } from '../types';
 
 const nodeTypes = {
@@ -136,18 +138,18 @@ function toReactFlowNodes(dfNodes: DFNode[], dfEdges: DFEdge[]): RFNode[] {
   return rfNodes;
 }
 
-function toReactFlowEdges(dfEdges: DFEdge[], dfNodes: DFNode[]): RFEdge[] {
+function toReactFlowEdges(dfEdges: DFEdge[], dfNodes: DFNode[], defaultStroke: string): RFEdge[] {
   const nodeMap = new Map(dfNodes.map((n) => [n.id, n]));
 
   return dfEdges.map((e) => {
     const isVolume = e.type === 'volume_mount';
     const isSecondary = e.type === 'secondary_network';
 
-    let stroke = '#475569';
+    let stroke = defaultStroke;
     if (isVolume) stroke = '#f97316';
     if (isSecondary) {
       const targetNet = nodeMap.get(e.target);
-      stroke = targetNet ? networkColor(targetNet.name) : '#475569';
+      stroke = targetNet ? networkColor(targetNet.name) : defaultStroke;
     }
 
     return {
@@ -165,13 +167,14 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const { theme } = useTheme();
 
   useEffect(() => {
     if (dfNodes.length === 0) return;
     let cancelled = false;
 
     const rfNodes = toReactFlowNodes(dfNodes, dfEdges);
-    const rfEdges = toReactFlowEdges(dfEdges, dfNodes);
+    const rfEdges = toReactFlowEdges(dfEdges, dfNodes, theme.edgeStroke);
 
     computeLayout(rfNodes, rfEdges).then((layout) => {
       if (cancelled) return;
@@ -180,7 +183,7 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
     });
 
     return () => { cancelled = true; };
-  }, [dfNodes, dfEdges, setNodes, setEdges]);
+  }, [dfNodes, dfEdges, setNodes, setEdges, theme.edgeStroke]);
 
   const connectedEdgeIds = new Set<string>();
   const connectedNodeIds = new Set<string>();
@@ -234,12 +237,12 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          background: '#1e293b',
-          border: '1px solid #334155',
+          background: theme.panelBg,
+          border: `1px solid ${theme.panelBorder}`,
           borderRadius: 6,
           padding: '4px 10px',
           fontSize: 11,
-          color: '#94a3b8',
+          color: theme.panelText,
         }}
       >
         <span
@@ -252,6 +255,8 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
         />
         {connected ? 'Live' : 'Disconnected'}
       </div>
+
+      <ThemeToggle />
 
       <ReactFlow
         nodes={styledNodes}
@@ -266,24 +271,24 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
         nodesConnectable={false}
         fitView
         proOptions={{ hideAttribution: true }}
-        style={{ background: '#0f172a' }}
+        style={{ background: theme.canvasBg }}
       >
-        <Background variant={BackgroundVariant.Dots} color="#1e293b" gap={20} />
+        <Background variant={BackgroundVariant.Dots} color={theme.dotColor} gap={20} />
         <Controls
           showInteractive={false}
-          style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6 }}
+          style={{ background: theme.panelBg, border: `1px solid ${theme.panelBorder}`, borderRadius: 6 }}
         />
         <MiniMap
-          style={{ background: '#1e293b', border: '1px solid #334155' }}
-          maskColor="rgba(15, 23, 42, 0.7)"
+          style={{ background: theme.minimapBg, border: `1px solid ${theme.panelBorder}` }}
+          maskColor={theme.minimapMask}
           nodeColor={(node) => {
             if (node.type === 'networkGroup') {
-              return networkColor((node.data as { dfNode: DFNode }).dfNode.name);
+              return networkColor((node.data as { dfNode: DFNode }).dfNode.name) + '40';
             }
             if (node.type === 'volumeNode') {
-              return '#f97316';
+              return '#f9731640';
             }
-            return '#94a3b8';
+            return theme.nodeBorder;
           }}
         />
       </ReactFlow>

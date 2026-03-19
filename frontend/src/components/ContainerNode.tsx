@@ -1,6 +1,7 @@
 import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { STATUS_COLORS } from '../utils/colors';
+import { useTheme } from '../theme';
 import type { DFNode } from '../types';
 
 type ContainerNodeData = {
@@ -9,14 +10,17 @@ type ContainerNodeData = {
 
 export function ContainerNode({ data }: NodeProps) {
   const { dfNode } = data as ContainerNodeData;
+  const { theme } = useTheme();
   const statusColor = STATUS_COLORS[dfNode.status ?? 'stopped'] ?? STATUS_COLORS.stopped;
   const isGhost = dfNode.status === 'not_running';
 
   return (
     <div
       style={{
-        background: '#1e293b',
-        border: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? '#475569' : '#334155'}`,
+        background: theme.nodeBg,
+        borderTop: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
+        borderRight: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
+        borderBottom: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
         borderLeft: `3px solid ${statusColor}`,
         borderRadius: 4,
         padding: '6px 10px',
@@ -34,7 +38,7 @@ export function ContainerNode({ data }: NodeProps) {
           style={{
             fontSize: 12,
             fontWeight: 600,
-            color: '#e2e8f0',
+            color: theme.nodeText,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -61,7 +65,7 @@ export function ContainerNode({ data }: NodeProps) {
         <div
           style={{
             fontSize: 10,
-            color: '#64748b',
+            color: theme.nodeSubtext,
             marginTop: 2,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -80,8 +84,8 @@ export function ContainerNode({ data }: NodeProps) {
               key={`${p.host}-${p.container}`}
               style={{
                 fontSize: 9,
-                color: '#94a3b8',
-                background: '#0f172a',
+                color: theme.portText,
+                background: theme.portBg,
                 padding: '1px 4px',
                 borderRadius: 3,
               }}

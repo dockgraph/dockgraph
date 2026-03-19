@@ -6,10 +6,10 @@ import { ThemeProvider, useTheme } from './theme';
 
 function globalStyles(mode: 'dark' | 'light') {
   const isDark = mode === 'dark';
-  const bg = isDark ? '#1e293b' : '#ffffff';
-  const border = isDark ? '#334155' : '#cbd5e1';
-  const text = isDark ? '#94a3b8' : '#475569';
-  const hoverBg = isDark ? '#334155' : '#f1f5f9';
+  const bg = isDark ? '#1e293b' : '#f7f5f1';
+  const border = isDark ? '#334155' : '#d6d0c8';
+  const text = isDark ? '#94a3b8' : '#5c5448';
+  const hoverBg = isDark ? '#334155' : '#f3f0eb';
 
   return `
 .react-flow__edges { z-index: 1000 !important; }
