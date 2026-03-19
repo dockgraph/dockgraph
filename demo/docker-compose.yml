@@ -1,0 +1,457 @@
+# Demo: Large-scale production SaaS platform
+# ~40 services across 6 isolated networks with realistic dependency chains.
+# All application services use busybox (sleep) — minimal resource usage.
+
+name: acme-platform
+
+networks:
+  public:
+    driver: bridge
+  api:
+    driver: bridge
+  workers:
+    driver: bridge
+  data:
+    driver: bridge
+  messaging:
+    driver: bridge
+  monitoring:
+    driver: bridge
+
+volumes:
+  postgres-primary-data:
+  postgres-replica-data:
+  mongo-data:
+  redis-data:
+  redis-sessions-data:
+  elasticsearch-data:
+  rabbitmq-data:
+  kafka-data:
+  zookeeper-data:
+  minio-data:
+  vault-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  tempo-data:
+
+services:
+
+  # ── Public edge ───────────────────────────────────────────────
+
+  nginx-lb:
+    image: nginx:alpine
+    ports:
+      - "8443:443"
+      - "8080:80"
+    networks:
+      - public
+    depends_on:
+      web-app:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+      admin-panel:
+        condition: service_started
+
+  web-app:
+    image: nginx:alpine
+    networks:
+      - public
+    depends_on:
+      api-gateway:
+        condition: service_started
+
+  admin-panel:
+    image: nginx:alpine
+    networks:
+      - public
+    depends_on:
+      api-gateway:
+        condition: service_started
+
+  api-gateway:
+    image: nginx:alpine
+    networks:
+      - public
+      - api
+    depends_on:
+      auth-service:
+        condition: service_started
+      user-service:
+        condition: service_started
+      product-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      search-service:
+        condition: service_started
+      media-service:
+        condition: service_started
+
+  # ── Core API services ─────────────────────────────────────────
+
+  auth-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      postgres-primary:
+        condition: service_started
+      redis-sessions:
+        condition: service_started
+      vault:
+        condition: service_started
+
+  user-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      postgres-primary:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  product-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      postgres-primary:
+        condition: service_started
+      redis:
+        condition: service_started
+      elasticsearch:
+        condition: service_started
+
+  order-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - messaging
+    depends_on:
+      postgres-primary:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  payment-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      postgres-primary:
+        condition: service_started
+      vault:
+        condition: service_started
+      order-service:
+        condition: service_started
+
+  inventory-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - messaging
+    depends_on:
+      postgres-primary:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  notification-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - messaging
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  search-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      elasticsearch:
+        condition: service_started
+
+  media-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      minio:
+        condition: service_started
+      mongo:
+        condition: service_started
+
+  pricing-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      postgres-primary:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  recommendation-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_started
+      elasticsearch:
+        condition: service_started
+
+  # ── Background workers ────────────────────────────────────────
+
+  order-worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - workers
+      - messaging
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      postgres-primary:
+        condition: service_started
+
+  email-worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - workers
+      - messaging
+    depends_on:
+      rabbitmq:
+        condition: service_started
+
+  invoice-worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - workers
+      - messaging
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  analytics-worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - workers
+    depends_on:
+      kafka:
+        condition: service_started
+      mongo:
+        condition: service_started
+
+  search-indexer:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - workers
+    depends_on:
+      elasticsearch:
+        condition: service_started
+      postgres-primary:
+        condition: service_started
+
+  report-scheduler:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - workers
+    depends_on:
+      postgres-primary:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  # ── Data tier ─────────────────────────────────────────────────
+
+  postgres-primary:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: demo
+    networks:
+      - data
+    volumes:
+      - postgres-primary-data:/var/lib/postgresql/data
+
+  postgres-replica:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: demo
+    networks:
+      - data
+    depends_on:
+      postgres-primary:
+        condition: service_started
+    volumes:
+      - postgres-replica-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - data
+    volumes:
+      - redis-data:/data
+
+  redis-sessions:
+    image: redis:7-alpine
+    networks:
+      - data
+    volumes:
+      - redis-sessions-data:/data
+
+  mongo:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - data
+    volumes:
+      - mongo-data:/data/db
+
+  elasticsearch:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - data
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+  minio:
+    image: busybox
+    command: sh -c "sleep infinity"
+    ports:
+      - "9002:9001"
+    networks:
+      - data
+    volumes:
+      - minio-data:/data
+
+  vault:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - data
+    volumes:
+      - vault-data:/vault/data
+
+  # ── Messaging tier ────────────────────────────────────────────
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "15672:15672"
+    networks:
+      - messaging
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  kafka:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - messaging
+    depends_on:
+      zookeeper:
+        condition: service_started
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  zookeeper:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - messaging
+    volumes:
+      - zookeeper-data:/data
+
+  # ── Observability tier ────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:latest
+    networks:
+      - monitoring
+      - api
+    volumes:
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    networks:
+      - monitoring
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+  loki:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - monitoring
+    volumes:
+      - loki-data:/loki
+
+  tempo:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - monitoring
+    volumes:
+      - tempo-data:/var/lib/tempo
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    networks:
+      - monitoring
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    networks:
+      - monitoring
+
+  cadvisor:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - monitoring
