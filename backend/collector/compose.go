@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"github.com/compose-spec/compose-go/v2/loader"
@@ -181,12 +182,17 @@ func parseComposeFile(path, sourceName string) (GraphSnapshot, error) {
 		svcName := svc.Name
 		containerID := "container:" + svcName
 
+		var trackedNets []string
+		for netName := range svc.Networks {
+			if networkNames[netName] {
+				trackedNets = append(trackedNets, netName)
+			}
+		}
+		sort.Strings(trackedNets)
+
 		var primaryNet string
 		var secondaryNets []string
-		for netName := range svc.Networks {
-			if !networkNames[netName] {
-				continue
-			}
+		for _, netName := range trackedNets {
 			if primaryNet == "" {
 				primaryNet = netName
 			} else {

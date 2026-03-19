@@ -298,12 +298,12 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 				log.Printf("event-triggered poll error: %v", err)
 			}
 		case err := <-errCh:
-			if err != nil && ctx.Err() == nil {
-				log.Printf("docker events error: %v, reconnecting...", err)
-				time.Sleep(2 * time.Second)
-				msgCh, errCh = d.client.Events(ctx, events.ListOptions{Filters: eventFilter})
+			if err == nil || ctx.Err() != nil {
+				return
 			}
-			return
+			log.Printf("docker events error: %v, reconnecting...", err)
+			time.Sleep(2 * time.Second)
+			msgCh, errCh = d.client.Events(ctx, events.ListOptions{Filters: eventFilter})
 		case <-d.stopCh:
 			return
 		case <-ctx.Done():
