@@ -265,6 +265,67 @@ export async function computeLayout(
   return { nodes: [...groups, ...children, ...freeNodes], edges: updatedEdges };
 }
 
+interface Point { x: number; y: number }
+
+const UTURN_THRESHOLD = 30; // px — stubs shorter than this are artifacts
+
+function smoothUturns(points: Point[]): Point[] {
+  const result = points.map((p) => ({ ...p }));
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < result.length - 3; i++) {
+      const a = result[i];
+      const b = result[i + 1];
+      const c = result[i + 2];
+      const d = result[i + 3];
+
+      // Horizontal U-turn: A→B horizontal, B→C vertical, C→D horizontal opposite
+      if (
+        Math.abs(a.y - b.y) < 0.5 &&
+        Math.abs(b.x - c.x) < 0.5 &&
+        Math.abs(c.y - d.y) < 0.5
+      ) {
+        const abDir = Math.sign(b.x - a.x);
+        const cdDir = Math.sign(d.x - c.x);
+        const stubLen = Math.abs(b.y - c.y);
+        if (abDir !== 0 && cdDir !== 0 && abDir !== cdDir && stubLen < UTURN_THRESHOLD) {
+          if (Math.abs(a.x - d.x) < 0.5) {
+            result.splice(i + 1, 2);
+          } else {
+            result.splice(i + 1, 2, { x: a.x, y: c.y });
+          }
+          changed = true;
+          break;
+        }
+      }
+
+      // Vertical U-turn: A→B vertical, B→C horizontal, C→D vertical opposite
+      if (
+        Math.abs(a.x - b.x) < 0.5 &&
+        Math.abs(b.y - c.y) < 0.5 &&
+        Math.abs(c.x - d.x) < 0.5
+      ) {
+        const abDir = Math.sign(b.y - a.y);
+        const cdDir = Math.sign(d.y - c.y);
+        const stubLen = Math.abs(b.x - c.x);
+        if (abDir !== 0 && cdDir !== 0 && abDir !== cdDir && stubLen < UTURN_THRESHOLD) {
+          if (Math.abs(a.y - d.y) < 0.5) {
+            result.splice(i + 1, 2);
+          } else {
+            result.splice(i + 1, 2, { x: c.x, y: a.y });
+          }
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
 function extractEdgePaths(
   node: ElkNode,
   offsetX: number,
@@ -275,11 +336,22 @@ function extractEdgePaths(
     const section = edge.sections?.[0];
     if (!section) continue;
 
-    let d = `M ${section.startPoint.x + offsetX} ${section.startPoint.y + offsetY}`;
+    const points: Point[] = [
+      { x: section.startPoint.x + offsetX, y: section.startPoint.y + offsetY },
+    ];
     for (const bp of section.bendPoints ?? []) {
-      d += ` L ${bp.x + offsetX} ${bp.y + offsetY}`;
+      points.push({ x: bp.x + offsetX, y: bp.y + offsetY });
     }
-    d += ` L ${section.endPoint.x + offsetX} ${section.endPoint.y + offsetY}`;
+    points.push({
+      x: section.endPoint.x + offsetX,
+      y: section.endPoint.y + offsetY,
+    });
+
+    const smoothed = smoothUturns(points);
+    let d = `M ${smoothed[0].x} ${smoothed[0].y}`;
+    for (let i = 1; i < smoothed.length; i++) {
+      d += ` L ${smoothed[i].x} ${smoothed[i].y}`;
+    }
     out.set(edge.id, d);
   }
 
