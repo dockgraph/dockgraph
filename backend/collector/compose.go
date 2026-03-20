@@ -89,10 +89,15 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 	}
 	defer watcher.Close()
 
-	if err := watcher.Add(c.dir); err != nil {
-		log.Printf("cannot watch %s: %v", c.dir, err)
-		return
-	}
+	filepath.WalkDir(c.dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+		if watchErr := watcher.Add(path); watchErr != nil {
+			log.Printf("cannot watch %s: %v", path, watchErr)
+		}
+		return nil
+	})
 
 	for {
 		select {
@@ -115,21 +120,24 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 
 func findComposeFiles(dir string) ([]string, error) {
 	var files []string
-	entries, err := os.ReadDir(dir)
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip unreadable entries
+		}
+		if d.IsDir() {
+			return nil
+		}
+		ext := filepath.Ext(d.Name())
+		if ext == ".yaml" || ext == ".yml" {
+			files = append(files, path)
+		}
+		return nil
+	})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		ext := filepath.Ext(e.Name())
-		if ext == ".yaml" || ext == ".yml" {
-			files = append(files, filepath.Join(dir, e.Name()))
-		}
 	}
 	return files, nil
 }
@@ -148,8 +156,18 @@ func parseComposeFile(path, sourceName string) (GraphSnapshot, error) {
 		},
 	})
 	if err != nil {
-		return snap, err
+		return snap, fmt.Errorf("%w (does the file have a top-level 'name' field?)", err)
 	}
+
+	projectName := project.Name
+
+	// Docker Compose naming conventions:
+	//   networks: {project}_{name}   (underscore)
+	//   volumes:  {project}_{name}   (underscore)
+	//   containers: {project}-{service}-1  (hyphens)
+	networkFullName := func(name string) string { return projectName + "_" + name }
+	volumeFullName := func(name string) string { return projectName + "_" + name }
+	containerFullName := func(name string) string { return projectName + "-" + name + "-1" }
 
 	networkNames := make(map[string]bool)
 	for name := range project.Networks {
@@ -157,29 +175,31 @@ func parseComposeFile(path, sourceName string) (GraphSnapshot, error) {
 			continue
 		}
 		networkNames[name] = true
+		fullName := networkFullName(name)
 		snap.Nodes = append(snap.Nodes, Node{
-			ID:     "network:" + name,
+			ID:     "network:" + fullName,
 			Type:   "network",
-			Name:   name,
+			Name:   fullName,
 			Source: sourceName,
 		})
 	}
 
 	for name := range project.Volumes {
+		fullName := volumeFullName(name)
 		snap.Nodes = append(snap.Nodes, Node{
-			ID:     "volume:" + name,
+			ID:     "volume:" + fullName,
 			Type:   "volume",
-			Name:   name,
+			Name:   fullName,
 			Source: sourceName,
 		})
 	}
 
-	for _, svc := range project.Services {
+	for _, svc := range project.AllServices() {
 		if svc.Labels[selfLabel] == "true" {
 			continue
 		}
 
-		svcName := svc.Name
+		svcName := containerFullName(svc.Name)
 		containerID := "container:" + svcName
 
 		var trackedNets []string
@@ -222,34 +242,37 @@ func parseComposeFile(path, sourceName string) (GraphSnapshot, error) {
 			Source: sourceName,
 		}
 		if primaryNet != "" {
-			node.NetworkID = "network:" + primaryNet
+			node.NetworkID = "network:" + networkFullName(primaryNet)
 		}
 		snap.Nodes = append(snap.Nodes, node)
 
 		for _, netName := range secondaryNets {
+			fullNetName := networkFullName(netName)
 			snap.Edges = append(snap.Edges, Edge{
-				ID:     "e:net:" + svcName + ":" + netName,
+				ID:     "e:net:" + svcName + ":" + fullNetName,
 				Type:   "secondary_network",
 				Source: containerID,
-				Target: "network:" + netName,
+				Target: "network:" + fullNetName,
 			})
 		}
 
 		for depName := range svc.DependsOn {
+			depFullName := containerFullName(depName)
 			snap.Edges = append(snap.Edges, Edge{
-				ID:     "e:dep:" + svcName + ":" + depName,
+				ID:     "e:dep:" + svcName + ":" + depFullName,
 				Type:   "depends_on",
 				Source: containerID,
-				Target: "container:" + depName,
+				Target: "container:" + depFullName,
 			})
 		}
 
 		for _, v := range svc.Volumes {
 			if v.Type == "volume" {
+				fullVolName := volumeFullName(v.Source)
 				snap.Edges = append(snap.Edges, Edge{
-					ID:        "e:vol:" + v.Source + ":" + svcName,
+					ID:        "e:vol:" + fullVolName + ":" + svcName,
 					Type:      "volume_mount",
-					Source:    "volume:" + v.Source,
+					Source:    "volume:" + fullVolName,
 					Target:    containerID,
 					MountPath: v.Target,
 				})

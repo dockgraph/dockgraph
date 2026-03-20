@@ -22,22 +22,21 @@ func isSelfContainer(image string) bool {
 	return strings.Contains(image, "docker-flow")
 }
 
-func buildContainerNode(id, name, image, status string, labels map[string]string, ports []PortMapping, primaryNetworkID string) Node {
+func buildContainerNode(name, image, status string, labels map[string]string, ports []PortMapping) Node {
 	return Node{
-		ID:        "container:" + id,
-		Type:      "container",
-		Name:      name,
-		Image:     image,
-		Status:    status,
-		Labels:    labels,
-		Ports:     ports,
-		NetworkID: primaryNetworkID,
+		ID:     "container:" + name,
+		Type:   "container",
+		Name:   name,
+		Image:  image,
+		Status: status,
+		Labels: labels,
+		Ports:  ports,
 	}
 }
 
-func buildNetworkNode(id, name, driver string) Node {
+func buildNetworkNode(name, driver string) Node {
 	return Node{
-		ID:     "network:" + id,
+		ID:     "network:" + name,
 		Type:   "network",
 		Name:   name,
 		Driver: driver,
@@ -143,22 +142,24 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		return snap, err
 	}
 
+	// Map Docker's internal network hex IDs to human-readable names.
 	networkIDToName := make(map[string]string)
 	for _, n := range networks {
 		if n.Name == "bridge" || n.Name == "host" || n.Name == "none" {
 			continue
 		}
 		networkIDToName[n.ID] = n.Name
-		snap.Nodes = append(snap.Nodes, buildNetworkNode(n.ID, n.Name, n.Driver))
+		snap.Nodes = append(snap.Nodes, buildNetworkNode(n.Name, n.Driver))
 	}
 
+	// Resolve compose service names to container names for depends_on edges.
 	type projectService struct{ project, service string }
-	psToContainerID := make(map[projectService]string)
+	psToContainerName := make(map[projectService]string)
 	for _, c := range containers {
 		project := c.Labels["com.docker.compose.project"]
 		service := c.Labels["com.docker.compose.service"]
 		if project != "" && service != "" {
-			psToContainerID[projectService{project, service}] = c.ID[:12]
+			psToContainerName[projectService{project, service}] = strings.TrimPrefix(c.Names[0], "/")
 		}
 	}
 
@@ -175,50 +176,49 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		status := containerStatus(c.State, c.Status)
 		ports := extractPorts(c.Ports)
 
-		// Sort for stable primary network assignment across polls.
-		var trackedNetIDs []string
+		// Resolve Docker hex network IDs to names, sort for stable primary assignment.
+		var trackedNetNames []string
 		if c.NetworkSettings != nil {
 			for _, netSettings := range c.NetworkSettings.Networks {
-				netID := netSettings.NetworkID
-				if _, tracked := networkIDToName[netID]; tracked {
-					trackedNetIDs = append(trackedNetIDs, netID)
+				if netName, tracked := networkIDToName[netSettings.NetworkID]; tracked {
+					trackedNetNames = append(trackedNetNames, netName)
 				}
 			}
 		}
-		sort.Strings(trackedNetIDs)
+		sort.Strings(trackedNetNames)
 
-		var primaryNetID string
-		var secondaryNetIDs []string
-		for _, netID := range trackedNetIDs {
-			if primaryNetID == "" {
-				primaryNetID = netID
+		var primaryNet string
+		var secondaryNets []string
+		for _, netName := range trackedNetNames {
+			if primaryNet == "" {
+				primaryNet = netName
 			} else {
-				secondaryNetIDs = append(secondaryNetIDs, netID)
+				secondaryNets = append(secondaryNets, netName)
 			}
 		}
 
-		node := buildContainerNode(c.ID[:12], name, image, status, c.Labels, ports, "")
-		if primaryNetID != "" {
-			node.NetworkID = "network:" + primaryNetID
+		node := buildContainerNode(name, image, status, c.Labels, ports)
+		if primaryNet != "" {
+			node.NetworkID = "network:" + primaryNet
 		}
 		snap.Nodes = append(snap.Nodes, node)
 
-		for _, netID := range secondaryNetIDs {
+		for _, netName := range secondaryNets {
 			snap.Edges = append(snap.Edges, Edge{
-				ID:     "e:net:" + c.ID[:12] + ":" + netID[:12],
+				ID:     "e:net:" + name + ":" + netName,
 				Type:   "secondary_network",
-				Source: "container:" + c.ID[:12],
-				Target: "network:" + netID,
+				Source: "container:" + name,
+				Target: "network:" + netName,
 			})
 		}
 
 		for _, m := range c.Mounts {
 			if m.Type == "volume" {
 				snap.Edges = append(snap.Edges, Edge{
-					ID:        "e:vol:" + m.Name + ":" + c.ID[:12],
+					ID:        "e:vol:" + m.Name + ":" + name,
 					Type:      "volume_mount",
 					Source:    "volume:" + m.Name,
-					Target:    "container:" + c.ID[:12],
+					Target:    "container:" + name,
 					MountPath: m.Destination,
 				})
 			}
@@ -233,15 +233,15 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 					continue
 				}
 				depService := parts[0]
-				depContainerID, ok := psToContainerID[projectService{project, depService}]
+				depName, ok := psToContainerName[projectService{project, depService}]
 				if !ok {
 					continue
 				}
 				snap.Edges = append(snap.Edges, Edge{
-					ID:     "e:dep:" + c.ID[:12] + ":" + depContainerID,
+					ID:     "e:dep:" + name + ":" + depName,
 					Type:   "depends_on",
-					Source: "container:" + c.ID[:12],
-					Target: "container:" + depContainerID,
+					Source: "container:" + name,
+					Target: "container:" + depName,
 				})
 			}
 		}
@@ -316,16 +316,7 @@ func containerStatus(state, statusStr string) string {
 	if strings.Contains(statusStr, "(unhealthy)") {
 		return "unhealthy"
 	}
-	switch state {
-	case "running":
-		return "running"
-	case "paused":
-		return "stopped"
-	case "exited", "dead", "created":
-		return "stopped"
-	default:
-		return state
-	}
+	return state
 }
 
 func extractPorts(apiPorts []containertypes.Port) []PortMapping {

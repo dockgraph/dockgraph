@@ -137,18 +137,24 @@ func mergeSnapshots(composeSnaps, dockerSnaps map[string]*collector.GraphSnapsho
 		}
 	}
 
+	nodeIDs := make(map[string]bool, len(result.Nodes))
+	for _, n := range result.Nodes {
+		nodeIDs[n.ID] = true
+	}
+
 	edgeIDs := make(map[string]bool)
-	for _, e := range dockerEdges {
-		if !edgeIDs[e.ID] {
-			edgeIDs[e.ID] = true
-			result.Edges = append(result.Edges, e)
+	addEdge := func(e collector.Edge) {
+		if edgeIDs[e.ID] || !nodeIDs[e.Source] || !nodeIDs[e.Target] {
+			return
 		}
+		edgeIDs[e.ID] = true
+		result.Edges = append(result.Edges, e)
+	}
+	for _, e := range dockerEdges {
+		addEdge(e)
 	}
 	for _, e := range composeEdges {
-		if !edgeIDs[e.ID] {
-			edgeIDs[e.ID] = true
-			result.Edges = append(result.Edges, e)
-		}
+		addEdge(e)
 	}
 
 	sort.Slice(result.Nodes, func(i, j int) bool { return result.Nodes[i].ID < result.Nodes[j].ID })
