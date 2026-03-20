@@ -138,10 +138,18 @@ function toReactFlowNodes(dfNodes: DFNode[], dfEdges: DFEdge[]): RFNode[] {
   return rfNodes;
 }
 
+const ACTIVE_STATUSES = new Set(['running']);
+
+function isEndpointActive(node: DFNode | undefined): boolean {
+  if (!node) return false;
+  if (node.type !== 'container') return true;
+  return ACTIVE_STATUSES.has(node.status ?? '');
+}
+
 function toReactFlowEdges(dfEdges: DFEdge[], dfNodes: DFNode[], defaultStroke: string): RFEdge[] {
   const nodeMap = new Map(dfNodes.map((n) => [n.id, n]));
 
-  return dfEdges.map((e) => {
+  return dfEdges.filter((e) => nodeMap.has(e.source) && nodeMap.has(e.target)).map((e) => {
     const isVolume = e.type === 'volume_mount';
     const isSecondary = e.type === 'secondary_network';
 
@@ -152,12 +160,16 @@ function toReactFlowEdges(dfEdges: DFEdge[], dfNodes: DFNode[], defaultStroke: s
       stroke = targetNet ? networkColor(targetNet.name) : defaultStroke;
     }
 
+    const sourceNode = nodeMap.get(e.source);
+    const targetNode = nodeMap.get(e.target);
+    const active = isEndpointActive(sourceNode) && isEndpointActive(targetNode);
+
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       type: 'elk',
-      data: { edgeType: e.type },
+      data: { edgeType: e.type, active },
       style: { stroke, strokeWidth: 1 },
     };
   });
@@ -320,6 +332,8 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
         nodesDraggable={false}
         nodesConnectable={false}
         fitView
+        minZoom={0.05}
+        maxZoom={2}
         proOptions={{ hideAttribution: true }}
         style={{ background: theme.canvasBg }}
       >

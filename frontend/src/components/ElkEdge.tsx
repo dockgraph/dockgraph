@@ -19,15 +19,16 @@ function estimatePathLength(d: string): number {
 }
 
 export function ElkEdge({ data, style }: EdgeProps) {
-  const edgeData = data as Record<string, string> | undefined;
-  const path = edgeData?.path;
+  const edgeData = data as Record<string, unknown> | undefined;
+  const path = edgeData?.path as string | undefined;
   if (!path) return null;
 
-  const animated = edgeData?.edgeType === 'depends_on';
+  const active = edgeData?.active !== false;
+  const animated = edgeData?.edgeType === 'depends_on' && active;
 
   const stroke = (style?.stroke as string) ?? '#475569';
   const strokeWidth = (style?.strokeWidth as number) ?? 1;
-  const strokeDasharray = style?.strokeDasharray as string | undefined;
+  const strokeDasharray = !active ? '4 3' : (style?.strokeDasharray as string | undefined);
   const opacity = (style?.opacity as number) ?? 1;
 
   const coords = path.match(/-?[\d.]+/g)?.map(Number) ?? [];
