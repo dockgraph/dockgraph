@@ -42,19 +42,6 @@ func (m *Manager) Subscribe() <-chan collector.StateMessage {
 	return ch
 }
 
-func (m *Manager) Unsubscribe(ch <-chan collector.StateMessage) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	for id, sub := range m.subscribers {
-		if (<-chan collector.StateMessage)(sub) == ch {
-			delete(m.subscribers, id)
-			close(sub)
-			return
-		}
-	}
-}
-
 func (m *Manager) Current() collector.GraphSnapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

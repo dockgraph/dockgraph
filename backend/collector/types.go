@@ -44,7 +44,7 @@ type DeltaUpdate struct {
 type WireMessage struct {
 	Type    string      `json:"type"`
 	Version int         `json:"version"`
-	Data    interface{} `json:"data"`
+	Data    any `json:"data"`
 }
 
 func NewSnapshotMessage(s GraphSnapshot) WireMessage {
