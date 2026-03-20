@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -187,78 +187,77 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
     return () => { cancelled = true; };
   }, [dfNodes, dfEdges, setNodes, setEdges, theme.edgeStroke]);
 
-  const connectedEdgeIds = new Set<string>();
-  const connectedNodeIds = new Set<string>();
-  const highlightedGroupIds = new Set<string>();
-  const selectedNode = selection?.type === 'node'
-    ? nodes.find((n) => n.id === selection.id)
-    : null;
-  const isGroupSelection = selectedNode?.type === 'networkGroup';
+  const { styledNodes, styledEdges } = useMemo(() => {
+    if (!selection) return { styledNodes: nodes, styledEdges: edges };
 
-  if (selection?.type === 'node') {
-    if (isGroupSelection) {      highlightedGroupIds.add(selection.id);
-      const childIds = new Set(
-        nodes.filter((n) => n.parentId === selection.id).map((n) => n.id),
-      );
-      for (const id of childIds) connectedNodeIds.add(id);
-      for (const e of edges) {
-        if (childIds.has(e.source) || childIds.has(e.target) ||
-            e.source === selection.id || e.target === selection.id) {
-          connectedEdgeIds.add(e.id);
-          connectedNodeIds.add(e.source);
-          connectedNodeIds.add(e.target);
-          const remoteId = childIds.has(e.source) ? e.target : e.source;
-          const remoteNode = nodes.find((n) => n.id === remoteId);
-          if (remoteNode?.parentId) highlightedGroupIds.add(remoteNode.parentId);
+    const connectedEdgeIds = new Set<string>();
+    const connectedNodeIds = new Set<string>();
+    const highlightedGroupIds = new Set<string>();
+    const selectedNode = selection.type === 'node'
+      ? nodes.find((n) => n.id === selection.id)
+      : null;
+    const isGroupSelection = selectedNode?.type === 'networkGroup';
+
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+    if (selection.type === 'node') {
+      if (isGroupSelection) {
+        highlightedGroupIds.add(selection.id);
+        const childIds = new Set(
+          nodes.filter((n) => n.parentId === selection.id).map((n) => n.id),
+        );
+        for (const id of childIds) connectedNodeIds.add(id);
+        for (const e of edges) {
+          if (childIds.has(e.source) || childIds.has(e.target) ||
+              e.source === selection.id || e.target === selection.id) {
+            connectedEdgeIds.add(e.id);
+            connectedNodeIds.add(e.source);
+            connectedNodeIds.add(e.target);
+            const remoteId = childIds.has(e.source) ? e.target : e.source;
+            const remoteNode = nodeById.get(remoteId);
+            if (remoteNode?.parentId) highlightedGroupIds.add(remoteNode.parentId);
+          }
+        }
+      } else {
+        connectedNodeIds.add(selection.id);
+        for (const e of edges) {
+          if (e.source === selection.id || e.target === selection.id) {
+            connectedEdgeIds.add(e.id);
+            connectedNodeIds.add(e.source);
+            connectedNodeIds.add(e.target);
+          }
         }
       }
-    } else {
-      connectedNodeIds.add(selection.id);
-      for (const e of edges) {
-        if (e.source === selection.id || e.target === selection.id) {
-          connectedEdgeIds.add(e.id);
-          connectedNodeIds.add(e.source);
-          connectedNodeIds.add(e.target);
+    } else if (selection.type === 'edge') {
+      const edge = edges.find((e) => e.id === selection.id);
+      if (edge) {
+        connectedEdgeIds.add(edge.id);
+        connectedNodeIds.add(edge.source);
+        connectedNodeIds.add(edge.target);
+      }
+    }
+
+    if (!isGroupSelection) {
+      for (const n of nodes) {
+        if (connectedNodeIds.has(n.id) && n.parentId) {
+          highlightedGroupIds.add(n.parentId);
         }
       }
     }
-  } else if (selection?.type === 'edge') {
-    const edge = edges.find((e) => e.id === selection.id);
-    if (edge) {
-      connectedEdgeIds.add(edge.id);
-      connectedNodeIds.add(edge.source);
-      connectedNodeIds.add(edge.target);
-    }
-  }
 
-  if (selection && !isGroupSelection) {
-    for (const n of nodes) {
-      if (connectedNodeIds.has(n.id) && n.parentId) {
-        highlightedGroupIds.add(n.parentId);
-      }
-    }
-  }
-
-  const styledNodes = selection
-    ? nodes.map((n) => {
-        if (n.type === 'networkGroup') {
-          const highlighted = highlightedGroupIds.has(n.id);
-          return { ...n, style: { ...n.style, opacity: highlighted ? 1 : 0.2 } };
-        }
-        const highlighted = connectedNodeIds.has(n.id);
+    return {
+      styledNodes: nodes.map((n) => {
+        const highlighted = n.type === 'networkGroup'
+          ? highlightedGroupIds.has(n.id)
+          : connectedNodeIds.has(n.id);
         return { ...n, style: { ...n.style, opacity: highlighted ? 1 : 0.2 } };
-      })
-    : nodes;
-
-  const styledEdges = selection
-    ? edges.map((e) => {
-        const highlighted = connectedEdgeIds.has(e.id);
-        return {
-          ...e,
-          style: { ...e.style, opacity: highlighted ? 1 : 0.15 },
-        };
-      })
-    : edges;
+      }),
+      styledEdges: edges.map((e) => ({
+        ...e,
+        style: { ...e.style, opacity: connectedEdgeIds.has(e.id) ? 1 : 0.15 },
+      })),
+    };
+  }, [selection, nodes, edges]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: RFNode) => {
     setSelection((prev) =>

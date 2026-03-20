@@ -7,6 +7,12 @@ interface DockerFlowState {
   connected: boolean;
 }
 
+function snapshotFingerprint(nodes: DFNode[], edges: DFEdge[]): string {
+  const nk = nodes.map((n) => `${n.id}:${n.status ?? ''}`).join(',');
+  const ek = edges.map((e) => e.id).join(',');
+  return nk + '|' + ek;
+}
+
 export function useDockerFlow(): DockerFlowState {
   const [state, setState] = useState<DockerFlowState>({
     nodes: [],
@@ -18,18 +24,14 @@ export function useDockerFlow(): DockerFlowState {
   const retryRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
+  const fingerprintRef = useRef('');
   const maxRetryDelay = 30_000;
 
   const applySnapshot = useCallback((snap: GraphSnapshot) => {
-    setState((prev) => {
-      if (
-        JSON.stringify(prev.nodes) === JSON.stringify(snap.nodes) &&
-        JSON.stringify(prev.edges) === JSON.stringify(snap.edges)
-      ) {
-        return prev;
-      }
-      return { ...prev, nodes: snap.nodes, edges: snap.edges };
-    });
+    const fp = snapshotFingerprint(snap.nodes, snap.edges);
+    if (fp === fingerprintRef.current) return;
+    fingerprintRef.current = fp;
+    setState((prev) => ({ ...prev, nodes: snap.nodes, edges: snap.edges }));
   }, []);
 
   const applyDelta = useCallback((delta: DeltaUpdate) => {

@@ -36,8 +36,10 @@ function findComponents(
   edges: RFEdge[],
   childToParent: Map<string, string>,
 ): string[][] {
+  const topIdSet = new Set(topIds);
+
   function topOf(id: string): string | undefined {
-    return childToParent.get(id) ?? (topIds.includes(id) ? id : undefined);
+    return childToParent.get(id) ?? (topIdSet.has(id) ? id : undefined);
   }
 
   const adj = new Map<string, Set<string>>();
