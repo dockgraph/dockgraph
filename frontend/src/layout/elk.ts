@@ -365,19 +365,34 @@ function extractEdgePaths(
   out: Map<string, string>,
 ): void {
   for (const edge of (node as { edges?: ElkExtendedEdge[] }).edges ?? []) {
-    const section = edge.sections?.[0];
-    if (!section) continue;
+    // Skip edges already extracted at a higher hierarchy level — prevents
+    // a child-level partial path from overwriting the full cross-group path.
+    if (out.has(edge.id)) continue;
 
-    const points: Point[] = [
-      { x: section.startPoint.x + offsetX, y: section.startPoint.y + offsetY },
-    ];
-    for (const bp of section.bendPoints ?? []) {
-      points.push({ x: bp.x + offsetX, y: bp.y + offsetY });
+    const sections = edge.sections;
+    if (!sections || sections.length === 0) continue;
+
+    // Concatenate ALL sections: ELK can split cross-hierarchy edges into
+    // multiple sections (one per hierarchy level crossed).
+    const points: Point[] = [];
+    for (const section of sections) {
+      const sp: Point = {
+        x: section.startPoint.x + offsetX,
+        y: section.startPoint.y + offsetY,
+      };
+      // Deduplicate junction points between consecutive sections
+      const prev = points[points.length - 1];
+      if (!prev || Math.abs(sp.x - prev.x) > 0.5 || Math.abs(sp.y - prev.y) > 0.5) {
+        points.push(sp);
+      }
+      for (const bp of section.bendPoints ?? []) {
+        points.push({ x: bp.x + offsetX, y: bp.y + offsetY });
+      }
+      points.push({
+        x: section.endPoint.x + offsetX,
+        y: section.endPoint.y + offsetY,
+      });
     }
-    points.push({
-      x: section.endPoint.x + offsetX,
-      y: section.endPoint.y + offsetY,
-    });
 
     const smoothed = smoothUturns(points);
     let d = `M ${smoothed[0].x} ${smoothed[0].y}`;
@@ -396,3 +411,4 @@ function extractEdgePaths(
     );
   }
 }
+
