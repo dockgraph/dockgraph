@@ -6,12 +6,14 @@ import type { DFNode } from '../types';
 
 type ContainerNodeData = {
   dfNode: DFNode;
+  nodeWidth?: number;
 };
 
 export function ContainerNode({ data }: NodeProps) {
-  const { dfNode } = data as ContainerNodeData;
+  const { dfNode, nodeWidth } = data as ContainerNodeData;
+  const w = (nodeWidth ?? 200) - 4; // subtract border widths
   const { theme } = useTheme();
-  const statusColor = STATUS_COLORS[dfNode.status ?? 'stopped'] ?? STATUS_COLORS.stopped;
+  const statusColor = STATUS_COLORS[dfNode.status ?? 'exited'] ?? STATUS_COLORS.exited;
   const isGhost = dfNode.status === 'not_running';
 
   return (
@@ -24,8 +26,8 @@ export function ContainerNode({ data }: NodeProps) {
         borderLeft: `3px solid ${statusColor}`,
         borderRadius: 4,
         padding: '6px 10px',
-        width: 196,
-        height: 65,
+        width: w,
+        height: 70,
         boxSizing: 'border-box',
         overflow: 'hidden',
         opacity: isGhost ? 0.5 : 1,
@@ -42,7 +44,7 @@ export function ContainerNode({ data }: NodeProps) {
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            maxWidth: 170,
+            maxWidth: 'calc(100% - 16px)',
             display: 'inline-block',
           }}
           title={dfNode.name}

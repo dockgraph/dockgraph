@@ -3,9 +3,27 @@ import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 
 const elk = new ELK();
 
-const NODE_WIDTH = 200;
-const NODE_HEIGHT = 65;
+const MIN_NODE_WIDTH = 140;
+const MAX_NODE_WIDTH = 250;
+const NODE_HEIGHT = 70;
 const VOLUME_HEIGHT = 40;
+const NODE_PADDING = 52; // icon + status dot + margins
+
+function measureNodeWidth(nodes: RFNode[]): number {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+
+  let maxW = 0;
+  for (const n of nodes) {
+    if (n.type === 'networkGroup') continue;
+    const label = (n.data as { dfNode: { name: string } }).dfNode.name;
+    const isVolume = n.type === 'volumeNode';
+    ctx.font = isVolume ? '600 11px sans-serif' : '600 12px sans-serif';
+    const textW = ctx.measureText(label).width;
+    maxW = Math.max(maxW, textW + NODE_PADDING);
+  }
+  return Math.max(MIN_NODE_WIDTH, Math.min(MAX_NODE_WIDTH, Math.ceil(maxW)));
+}
 
 const ELK_OPTIONS = {
   'elk.algorithm': 'layered',
@@ -16,10 +34,13 @@ const ELK_OPTIONS = {
   'elk.spacing.edgeNode': '20',
   'elk.spacing.edgeEdge': '12',
   'elk.layered.spacing.nodeNodeBetweenLayers': '35',
+  'elk.layered.spacing.edgeNodeBetweenLayers': '15',
+  'elk.layered.spacing.edgeEdgeBetweenLayers': '12',
   'elk.spacing.componentComponent': '60',
   'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
   'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-  'elk.layered.compaction.postCompaction.strategy': 'EDGE_LENGTH',
+  'elk.layered.nodePlacement.networkSimplex.nodeFlexibility.default': 'NODE_SIZE',
+  'elk.layered.compaction.postCompaction.strategy': 'NONE',
 };
 
 const GROUP_OPTIONS = {
@@ -80,6 +101,8 @@ export async function computeLayout(
   nodes: RFNode[],
   edges: RFEdge[],
 ): Promise<LayoutResult> {
+  const nodeWidth = measureNodeWidth(nodes);
+
   const groups = nodes.filter((n) => n.type === 'networkGroup');
   const children = nodes.filter((n) => n.parentId);
   const freeNodes = nodes.filter(
@@ -113,7 +136,7 @@ export async function computeLayout(
           children: groupChildren.length > 0
             ? groupChildren.map((child) => ({
                 id: child.id,
-                width: NODE_WIDTH,
+                width: nodeWidth,
                 height: nodeMap.get(child.id)?.type === 'volumeNode' ? VOLUME_HEIGHT : NODE_HEIGHT,
                 layoutOptions: { 'elk.alignment': 'TOP' },
               }))
@@ -121,7 +144,7 @@ export async function computeLayout(
         });
       } else {
         const h = rfNode.type === 'volumeNode' ? VOLUME_HEIGHT : NODE_HEIGHT;
-        allElkChildren.push({ id, width: NODE_WIDTH, height: h, layoutOptions: { 'elk.alignment': 'TOP' } });
+        allElkChildren.push({ id, width: nodeWidth, height: h, layoutOptions: { 'elk.alignment': 'TOP' } });
       }
     }
 
@@ -264,7 +287,14 @@ export async function computeLayout(
     return e;
   });
 
-  return { nodes: [...groups, ...children, ...freeNodes], edges: updatedEdges };
+  const allNodes = [...groups, ...children, ...freeNodes];
+  for (const n of allNodes) {
+    if (n.type !== 'networkGroup') {
+      n.data = { ...n.data, nodeWidth };
+    }
+  }
+
+  return { nodes: allNodes, edges: updatedEdges };
 }
 
 interface Point { x: number; y: number }

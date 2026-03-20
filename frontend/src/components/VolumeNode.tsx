@@ -5,10 +5,12 @@ import type { DFNode } from '../types';
 
 type VolumeNodeData = {
   dfNode: DFNode;
+  nodeWidth?: number;
 };
 
 export function VolumeNode({ data }: NodeProps) {
-  const { dfNode } = data as VolumeNodeData;
+  const { dfNode, nodeWidth } = data as VolumeNodeData;
+  const w = (nodeWidth ?? 200) - 4;
   const { theme } = useTheme();
 
   return (
@@ -18,13 +20,13 @@ export function VolumeNode({ data }: NodeProps) {
         borderTop: `1px solid ${theme.nodeBorder}`,
         borderRight: `1px solid ${theme.nodeBorder}`,
         borderBottom: `1px solid ${theme.nodeBorder}`,
-        borderLeft: '3px solid #f97316',
+        borderLeft: '3px solid #94a3b8',
         borderRadius: 4,
         padding: '5px 10px',
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        width: 196,
+        width: w,
         height: 40,
         boxSizing: 'border-box',
       }}

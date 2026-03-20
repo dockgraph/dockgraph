@@ -45,9 +45,9 @@ const dark: Theme = {
   panelText: '#94a3b8',
   minimapBg: '#1e293b',
   minimapMask: 'rgba(15, 23, 42, 0.7)',
-  groupBgAlpha: '06',
-  groupBorderAlpha: '40',
-  groupTextAlpha: 'cc',
+  groupBgAlpha: '0a',
+  groupBorderAlpha: '4a',
+  groupTextAlpha: 'd4',
 };
 
 const light: Theme = {
@@ -67,9 +67,9 @@ const light: Theme = {
   panelText: '#5c5448',
   minimapBg: '#f7f5f1',
   minimapMask: 'rgba(250, 248, 245, 0.7)',
-  groupBgAlpha: '0a',
-  groupBorderAlpha: '30',
-  groupTextAlpha: 'aa',
+  groupBgAlpha: '0f',
+  groupBorderAlpha: '3a',
+  groupTextAlpha: 'b2',
 };
 
 interface ThemeContextValue {

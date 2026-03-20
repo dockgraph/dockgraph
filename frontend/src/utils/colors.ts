@@ -23,6 +23,9 @@ export function networkColor(networkName: string): string {
 export const STATUS_COLORS: Record<string, string> = {
   running: '#22c55e',
   unhealthy: '#f59e0b',
-  stopped: '#ef4444',
+  paused: '#3b82f6',
+  exited: '#ef4444',
+  dead: '#a855f7',
+  created: '#06b6d4',
   not_running: '#64748b',
 };
