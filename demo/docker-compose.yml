@@ -1,5 +1,5 @@
 # Demo: Large-scale production SaaS platform
-# ~40 services across 6 isolated networks with realistic dependency chains.
+# ~46 services across 7 networks with realistic dependency chains.
 # All application services use busybox (sleep) — minimal resource usage.
 
 name: acme-platform
@@ -16,6 +16,8 @@ networks:
   messaging:
     driver: bridge
   monitoring:
+    driver: bridge
+  ci:
     driver: bridge
 
 volumes:
@@ -34,6 +36,10 @@ volumes:
   grafana-data:
   loki-data:
   tempo-data:
+  alertmanager-data:
+  artifact-data:
+  ci-postgres-data:
+  ci-redis-data:
 
 services:
 
@@ -275,6 +281,8 @@ services:
   search-indexer:
     image: busybox
     command: sh -c "sleep infinity"
+    profiles:
+      - with-indexer
     networks:
       - workers
     depends_on:
@@ -285,7 +293,7 @@ services:
 
   report-scheduler:
     image: busybox
-    command: sh -c "sleep infinity"
+    command: sh -c "echo 'report batch complete' && exit 0"
     networks:
       - workers
     depends_on:
@@ -342,6 +350,10 @@ services:
   elasticsearch:
     image: busybox
     command: sh -c "sleep infinity"
+    healthcheck:
+      test: ["CMD-SHELL", "false"]
+      interval: 10s
+      retries: 1
     networks:
       - data
     volumes:
@@ -444,6 +456,8 @@ services:
     depends_on:
       prometheus:
         condition: service_started
+    volumes:
+      - alertmanager-data:/alertmanager
 
   node-exporter:
     image: prom/node-exporter:latest
@@ -455,3 +469,104 @@ services:
     command: sh -c "sleep infinity"
     networks:
       - monitoring
+
+  # ── On-demand services (inactive by default) ─────────────────
+  #    Activated via: docker compose --profile ops up
+
+  db-backup:
+    image: busybox
+    command: sh -c "sleep infinity"
+    profiles:
+      - ops
+    networks:
+      - data
+    depends_on:
+      postgres-primary:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  staging-proxy:
+    image: nginx:alpine
+    profiles:
+      - staging
+    networks:
+      - public
+      - api
+    depends_on:
+      api-gateway:
+        condition: service_started
+
+  load-tester:
+    image: busybox
+    command: sh -c "sleep infinity"
+    profiles:
+      - testing
+    networks:
+      - public
+    depends_on:
+      nginx-lb:
+        condition: service_started
+
+  # ── Internal CI/CD (isolated) ────────────────────────────────
+  #    Completely separate from the main platform — no shared
+  #    networks, no cross-dependencies.
+
+  ci-server:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - ci
+    depends_on:
+      ci-runner-1:
+        condition: service_started
+      ci-runner-2:
+        condition: service_started
+      artifact-store:
+        condition: service_started
+      ci-postgres:
+        condition: service_started
+      ci-redis:
+        condition: service_started
+
+  ci-runner-1:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - ci
+    depends_on:
+      artifact-store:
+        condition: service_started
+
+  ci-runner-2:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - ci
+    depends_on:
+      artifact-store:
+        condition: service_started
+
+  artifact-store:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - ci
+    volumes:
+      - artifact-data:/artifacts
+
+  ci-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ci
+    networks:
+      - ci
+    volumes:
+      - ci-postgres-data:/var/lib/postgresql/data
+
+  ci-redis:
+    image: redis:7-alpine
+    networks:
+      - ci
+    volumes:
+      - ci-redis-data:/data
