@@ -12,3 +12,7 @@ frontend/dist/
 
 # OS
 .DS_Store
+
+# Environment
+.env
+.env.*
