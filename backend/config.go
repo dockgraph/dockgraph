@@ -5,12 +5,14 @@ import (
 	"time"
 )
 
+// Config holds runtime configuration loaded from environment variables.
 type Config struct {
-	Port         string
-	PollInterval time.Duration
-	ComposeDir   string
+	Port         string        // HTTP listen port (DF_PORT, default "7800")
+	PollInterval time.Duration // Docker API poll interval (DF_POLL_INTERVAL, default 30s)
+	ComposeDir   string        // Directory to scan for compose files (DF_COMPOSE_DIR, default "/app/compose")
 }
 
+// LoadConfig reads configuration from environment variables with sensible defaults.
 func LoadConfig() Config {
 	cfg := Config{
 		Port:         "7800",

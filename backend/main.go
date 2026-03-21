@@ -1,3 +1,6 @@
+// Package main is the entry point for docker-flow, a real-time Docker
+// infrastructure visualizer. It connects Docker and Compose collectors
+// to a state manager and serves a WebSocket-powered web UI.
 package main
 
 import (
@@ -43,31 +46,10 @@ func main() {
 		defer cc.Stop()
 	}
 
-	go func() {
-		for {
-			select {
-			case update := <-dc.Updates():
-				mgr.HandleUpdate("docker", update)
-			case update := <-cc.Updates():
-				mgr.HandleUpdate("compose", update)
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	go pipeUpdates(ctx, mgr, dc, cc)
 
 	hub := api.NewHub()
-	sub := mgr.Subscribe()
-	go func() {
-		for {
-			select {
-			case msg := <-sub:
-				hub.Broadcast(msg)
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	go pipeToHub(ctx, mgr.Subscribe(), hub)
 
 	staticFS, err := fs.Sub(frontend.Assets, "dist")
 	if err != nil {
@@ -88,5 +70,31 @@ func main() {
 	log.Printf("docker-flow listening on %s", addr)
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatal(err)
+	}
+}
+
+// pipeUpdates routes collector snapshots into the state manager until the context is cancelled.
+func pipeUpdates(ctx context.Context, mgr *state.Manager, dc *collector.DockerCollector, cc *collector.ComposeCollector) {
+	for {
+		select {
+		case update := <-dc.Updates():
+			mgr.HandleUpdate("docker", update)
+		case update := <-cc.Updates():
+			mgr.HandleUpdate("compose", update)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// pipeToHub forwards merged state messages to the WebSocket hub for broadcast.
+func pipeToHub(ctx context.Context, sub <-chan collector.StateMessage, hub *api.Hub) {
+	for {
+		select {
+		case msg := <-sub:
+			hub.Broadcast(msg)
+		case <-ctx.Done():
+			return
+		}
 	}
 }

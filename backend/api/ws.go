@@ -1,3 +1,5 @@
+// Package api provides the HTTP server, WebSocket hub, and static file
+// serving for the docker-flow web interface.
 package api
 
 import (
@@ -15,6 +17,8 @@ const (
 	pingPeriod  = 30 * time.Second
 )
 
+// checkOrigin validates WebSocket upgrade requests by comparing the Origin
+// header against the request Host. Empty origins (non-browser clients) are allowed.
 func checkOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
@@ -33,18 +37,23 @@ type wsClient struct {
 	sendCh chan collector.WireMessage
 }
 
+// Hub manages WebSocket client connections and broadcasts state updates.
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[*wsClient]bool
 	current *collector.GraphSnapshot
 }
 
+// NewHub creates an empty WebSocket hub.
 func NewHub() *Hub {
 	return &Hub{
 		clients: make(map[*wsClient]bool),
 	}
 }
 
+// HandleWS upgrades an HTTP request to a WebSocket connection and registers
+// the client with the hub. Each connection gets a writer pump (outbound messages
+// and pings) and a reader pump (pong handling and disconnect detection).
 func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -52,65 +61,75 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &wsClient{
+	c := &wsClient{
 		conn:   conn,
 		sendCh: make(chan collector.WireMessage, 32),
 	}
 
 	h.mu.Lock()
-	h.clients[client] = true
+	h.clients[c] = true
 	snapshot := h.current
 	h.mu.Unlock()
 
 	if snapshot != nil {
-		client.sendCh <- collector.NewSnapshotMessage(*snapshot)
+		c.sendCh <- collector.NewSnapshotMessage(*snapshot)
 	}
 
-	go func() {
-		ticker := time.NewTicker(pingPeriod)
-		defer func() {
-			ticker.Stop()
-			conn.Close()
-		}()
-		for {
-			select {
-			case msg, ok := <-client.sendCh:
-				if !ok {
-					return
-				}
-				if err := conn.WriteJSON(msg); err != nil {
-					return
-				}
-			case <-ticker.C:
-				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
-					return
-				}
-			}
-		}
+	go c.writePump()
+	go c.readPump(h)
+}
+
+// writePump sends queued state messages to the WebSocket connection
+// and issues periodic pings to detect stale connections.
+func (c *wsClient) writePump() {
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
 	}()
-
-	go func() {
-		defer func() {
-			h.mu.Lock()
-			delete(h.clients, client)
-			h.mu.Unlock()
-			close(client.sendCh)
-		}()
-
-		conn.SetReadDeadline(time.Now().Add(pongTimeout))
-		conn.SetPongHandler(func(string) error {
-			conn.SetReadDeadline(time.Now().Add(pongTimeout))
-			return nil
-		})
-
-		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
+	for {
+		select {
+		case msg, ok := <-c.sendCh:
+			if !ok {
+				return
+			}
+			if err := c.conn.WriteJSON(msg); err != nil {
+				return
+			}
+		case <-ticker.C:
+			if err := c.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
 				return
 			}
 		}
-	}()
+	}
 }
 
+// readPump keeps the connection alive by handling pong responses. When the
+// client disconnects (read error), it unregisters from the hub and closes
+// the send channel to shut down the writer.
+func (c *wsClient) readPump(h *Hub) {
+	defer func() {
+		h.mu.Lock()
+		delete(h.clients, c)
+		h.mu.Unlock()
+		close(c.sendCh)
+	}()
+
+	c.conn.SetReadDeadline(time.Now().Add(pongTimeout))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(pongTimeout))
+		return nil
+	})
+
+	for {
+		if _, _, err := c.conn.ReadMessage(); err != nil {
+			return
+		}
+	}
+}
+
+// Broadcast sends a state message to all connected WebSocket clients.
+// Messages are dropped for slow clients to prevent backpressure.
 func (h *Hub) Broadcast(msg collector.StateMessage) {
 	var wire collector.WireMessage
 	if msg.Type == "snapshot" && msg.Snapshot != nil {
@@ -139,6 +158,7 @@ func (h *Hub) Broadcast(msg collector.StateMessage) {
 	}
 }
 
+// ClientCount returns the number of active WebSocket connections.
 func (h *Hub) ClientCount() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

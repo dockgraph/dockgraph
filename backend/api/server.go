@@ -9,6 +9,10 @@ import (
 	"github.com/docker/docker/client"
 )
 
+// NewServer sets up the HTTP routes for the application:
+//   - GET /healthz — checks Docker daemon connectivity
+//   - GET /ws      — upgrades to WebSocket for live graph updates
+//   - /*           — serves the embedded frontend SPA
 func NewServer(hub *Hub, staticFS fs.FS, dockerCli client.APIClient) http.Handler {
 	mux := http.NewServeMux()
 
@@ -24,12 +28,12 @@ func NewServer(hub *Hub, staticFS fs.FS, dockerCli client.APIClient) http.Handle
 	})
 
 	mux.HandleFunc("GET /ws", hub.HandleWS)
-
 	mux.HandleFunc("/", spaHandler(staticFS))
 
 	return mux
 }
 
+// spaHandler serves static files and falls back to index.html for client-side routing.
 func spaHandler(fsys fs.FS) http.HandlerFunc {
 	fileServer := http.FileServerFS(fsys)
 
