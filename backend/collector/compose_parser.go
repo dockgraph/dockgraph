@@ -1,0 +1,171 @@
+package collector
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/compose-spec/compose-go/v2/loader"
+	composetypes "github.com/compose-spec/compose-go/v2/types"
+)
+
+// composeNaming provides Docker Compose naming conventions for a given project.
+// Docker Compose uses different separators for different resource types:
+//
+//	networks/volumes: {project}_{name}   (underscore)
+//	containers:       {project}-{service}-1 (hyphens)
+type composeNaming struct {
+	project string
+}
+
+func (n composeNaming) network(name string) string  { return n.project + "_" + name }
+func (n composeNaming) volume(name string) string    { return n.project + "_" + name }
+func (n composeNaming) container(name string) string { return n.project + "-" + name + "-1" }
+
+// buildComposeNetworkNodes creates graph nodes for each non-default network
+// defined in the compose file.
+func buildComposeNetworkNodes(project *composetypes.Project, naming composeNaming, sourceName string) ([]Node, map[string]bool) {
+	tracked := make(map[string]bool)
+	var nodes []Node
+	for name := range project.Networks {
+		if name == "default" {
+			continue
+		}
+		tracked[name] = true
+		fullName := naming.network(name)
+		node := buildNetworkNode(fullName, "")
+		node.Source = sourceName
+		nodes = append(nodes, node)
+	}
+	return nodes, tracked
+}
+
+// buildComposeVolumeNodes creates graph nodes for each named volume
+// defined in the compose file.
+func buildComposeVolumeNodes(project *composetypes.Project, naming composeNaming, sourceName string) []Node {
+	var nodes []Node
+	for name := range project.Volumes {
+		fullName := naming.volume(name)
+		node := buildVolumeNode(fullName, "")
+		node.Source = sourceName
+		nodes = append(nodes, node)
+	}
+	return nodes
+}
+
+// parseComposePorts converts compose port configs into the common PortMapping format.
+func parseComposePorts(ports []composetypes.ServicePortConfig) []PortMapping {
+	var result []PortMapping
+	for _, p := range ports {
+		if p.Published != "" {
+			var hostPort int
+			fmt.Sscanf(p.Published, "%d", &hostPort)
+			result = append(result, PortMapping{
+				Host:      hostPort,
+				Container: int(p.Target),
+			})
+		}
+	}
+	return result
+}
+
+// buildServiceNode creates a container node for a single compose service,
+// classifies its networks, and delegates edge creation to buildServiceEdges.
+func buildServiceNode(svc composetypes.ServiceConfig, naming composeNaming, trackedNets map[string]bool, sourceName string) (Node, []Edge) {
+	svcName := naming.container(svc.Name)
+
+	var trackedNetNames []string
+	for netName := range svc.Networks {
+		if trackedNets[netName] {
+			trackedNetNames = append(trackedNetNames, netName)
+		}
+	}
+	primary, secondaryNets := classifyNetworks(trackedNetNames)
+
+	node := buildContainerNode(svcName, svc.Image, "not_running", nil, parseComposePorts(svc.Ports))
+	node.Source = sourceName
+	if primary != "" {
+		node.NetworkID = "network:" + naming.network(primary)
+	}
+
+	edges := buildServiceEdges(svc, naming, svcName, secondaryNets)
+	return node, edges
+}
+
+// buildServiceEdges creates secondary-network, depends_on, and volume-mount
+// edges for a compose service.
+func buildServiceEdges(svc composetypes.ServiceConfig, naming composeNaming, svcName string, secondaryNets []string) []Edge {
+	containerID := "container:" + svcName
+	var edges []Edge
+
+	for _, netName := range secondaryNets {
+		fullNetName := naming.network(netName)
+		edges = append(edges, Edge{
+			ID:     "e:net:" + svcName + ":" + fullNetName,
+			Type:   "secondary_network",
+			Source: containerID,
+			Target: "network:" + fullNetName,
+		})
+	}
+
+	for depName := range svc.DependsOn {
+		depFullName := naming.container(depName)
+		edges = append(edges, Edge{
+			ID:     "e:dep:" + svcName + ":" + depFullName,
+			Type:   "depends_on",
+			Source: containerID,
+			Target: "container:" + depFullName,
+		})
+	}
+
+	for _, v := range svc.Volumes {
+		if v.Type == "volume" {
+			fullVolName := naming.volume(v.Source)
+			edges = append(edges, Edge{
+				ID:        "e:vol:" + fullVolName + ":" + svcName,
+				Type:      "volume_mount",
+				Source:    "volume:" + fullVolName,
+				Target:    containerID,
+				MountPath: v.Target,
+			})
+		}
+	}
+
+	return edges
+}
+
+// parseComposeFile loads a Docker Compose file and converts it into a graph
+// snapshot containing all services, networks, volumes, and their relationships.
+func parseComposeFile(path, sourceName string) (GraphSnapshot, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return GraphSnapshot{}, err
+	}
+
+	project, err := loader.LoadWithContext(context.Background(), composetypes.ConfigDetails{
+		ConfigFiles: []composetypes.ConfigFile{
+			{Filename: path, Content: data},
+		},
+	})
+	if err != nil {
+		return GraphSnapshot{}, fmt.Errorf("%w (does the file have a top-level 'name' field?)", err)
+	}
+
+	naming := composeNaming{project: project.Name}
+	var snap GraphSnapshot
+
+	networkNodes, trackedNets := buildComposeNetworkNodes(project, naming, sourceName)
+	snap.Nodes = append(snap.Nodes, networkNodes...)
+	snap.Nodes = append(snap.Nodes, buildComposeVolumeNodes(project, naming, sourceName)...)
+
+	for _, svc := range project.AllServices() {
+		if svc.Labels[SelfExcludeLabel] == "true" {
+			continue
+		}
+		node, edges := buildServiceNode(svc, naming, trackedNets, sourceName)
+		snap.Nodes = append(snap.Nodes, node)
+		snap.Edges = append(snap.Edges, edges...)
+	}
+
+	return snap, nil
+}

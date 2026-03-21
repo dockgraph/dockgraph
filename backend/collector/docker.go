@@ -3,55 +3,16 @@ package collector
 import (
 	"context"
 	"log"
-	"sort"
-	"strings"
 	"sync"
 	"time"
 
-	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
-	networktypes "github.com/docker/docker/api/types/network"
-	volumetypes "github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 )
 
-const selfLabel = "dev.dockerflow.self"
-
-func isSelfContainer(image string) bool {
-	return strings.Contains(image, "docker-flow")
-}
-
-func buildContainerNode(name, image, status string, labels map[string]string, ports []PortMapping) Node {
-	return Node{
-		ID:     "container:" + name,
-		Type:   "container",
-		Name:   name,
-		Image:  image,
-		Status: status,
-		Labels: labels,
-		Ports:  ports,
-	}
-}
-
-func buildNetworkNode(name, driver string) Node {
-	return Node{
-		ID:     "network:" + name,
-		Type:   "network",
-		Name:   name,
-		Driver: driver,
-	}
-}
-
-func buildVolumeNode(name, driver string) Node {
-	return Node{
-		ID:     "volume:" + name,
-		Type:   "volume",
-		Name:   name,
-		Driver: driver,
-	}
-}
-
+// DockerCollector monitors the local Docker daemon for container, network,
+// and volume changes, producing graph snapshots on each topology change.
 type DockerCollector struct {
 	client       client.APIClient
 	pollInterval time.Duration
@@ -60,6 +21,8 @@ type DockerCollector struct {
 	wg           sync.WaitGroup
 }
 
+// NewDockerCollector creates a collector that polls the Docker daemon at the
+// given interval and also reacts to real-time Docker events.
 func NewDockerCollector(cli client.APIClient, pollInterval time.Duration) *DockerCollector {
 	return &DockerCollector{
 		client:       cli,
@@ -69,10 +32,14 @@ func NewDockerCollector(cli client.APIClient, pollInterval time.Duration) *Docke
 	}
 }
 
+// Updates returns a read-only channel that emits state updates whenever
+// the Docker topology changes.
 func (d *DockerCollector) Updates() <-chan StateUpdate {
 	return d.updates
 }
 
+// Start performs an initial poll and then launches background goroutines
+// for periodic polling and real-time event watching.
 func (d *DockerCollector) Start(ctx context.Context) error {
 	if err := d.poll(ctx); err != nil {
 		return err
@@ -87,25 +54,13 @@ func (d *DockerCollector) Start(ctx context.Context) error {
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
-		ticker := time.NewTicker(d.pollInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if err := d.poll(ctx); err != nil {
-					log.Printf("poll error: %v", err)
-				}
-			case <-d.stopCh:
-				return
-			case <-ctx.Done():
-				return
-			}
-		}
+		d.pollLoop(ctx)
 	}()
 
 	return nil
 }
 
+// Stop signals all background goroutines to exit and waits for them to finish.
 func (d *DockerCollector) Stop() error {
 	close(d.stopCh)
 	d.wg.Wait()
@@ -124,149 +79,26 @@ func (d *DockerCollector) poll(ctx context.Context) error {
 	return nil
 }
 
-func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, error) {
-	var snap GraphSnapshot
-
-	containers, err := d.client.ContainerList(ctx, containertypes.ListOptions{All: true})
-	if err != nil {
-		return snap, err
-	}
-
-	networks, err := d.client.NetworkList(ctx, networktypes.ListOptions{})
-	if err != nil {
-		return snap, err
-	}
-
-	volResp, err := d.client.VolumeList(ctx, volumetypes.ListOptions{})
-	if err != nil {
-		return snap, err
-	}
-
-	// Map Docker's internal network hex IDs to human-readable names.
-	networkIDToName := make(map[string]string)
-	for _, n := range networks {
-		if n.Name == "bridge" || n.Name == "host" || n.Name == "none" {
-			continue
-		}
-		networkIDToName[n.ID] = n.Name
-		snap.Nodes = append(snap.Nodes, buildNetworkNode(n.Name, n.Driver))
-	}
-
-	// Resolve compose service names to container names for depends_on edges.
-	type projectService struct{ project, service string }
-	psToContainerName := make(map[projectService]string)
-	for _, c := range containers {
-		project := c.Labels["com.docker.compose.project"]
-		service := c.Labels["com.docker.compose.service"]
-		if project != "" && service != "" {
-			psToContainerName[projectService{project, service}] = strings.TrimPrefix(c.Names[0], "/")
-		}
-	}
-
-	for _, c := range containers {
-		image := c.Image
-		if isSelfContainer(image) {
-			continue
-		}
-		if c.Labels[selfLabel] == "true" {
-			continue
-		}
-
-		name := strings.TrimPrefix(c.Names[0], "/")
-		status := containerStatus(c.State, c.Status)
-		ports := extractPorts(c.Ports)
-
-		// Resolve Docker hex network IDs to names, sort for stable primary assignment.
-		var trackedNetNames []string
-		if c.NetworkSettings != nil {
-			for _, netSettings := range c.NetworkSettings.Networks {
-				if netName, tracked := networkIDToName[netSettings.NetworkID]; tracked {
-					trackedNetNames = append(trackedNetNames, netName)
-				}
+func (d *DockerCollector) pollLoop(ctx context.Context) {
+	ticker := time.NewTicker(d.pollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if err := d.poll(ctx); err != nil {
+				log.Printf("poll error: %v", err)
 			}
-		}
-		sort.Strings(trackedNetNames)
-
-		var primaryNet string
-		var secondaryNets []string
-		for _, netName := range trackedNetNames {
-			if primaryNet == "" {
-				primaryNet = netName
-			} else {
-				secondaryNets = append(secondaryNets, netName)
-			}
-		}
-
-		node := buildContainerNode(name, image, status, c.Labels, ports)
-		if primaryNet != "" {
-			node.NetworkID = "network:" + primaryNet
-		}
-		snap.Nodes = append(snap.Nodes, node)
-
-		for _, netName := range secondaryNets {
-			snap.Edges = append(snap.Edges, Edge{
-				ID:     "e:net:" + name + ":" + netName,
-				Type:   "secondary_network",
-				Source: "container:" + name,
-				Target: "network:" + netName,
-			})
-		}
-
-		for _, m := range c.Mounts {
-			if m.Type == "volume" {
-				snap.Edges = append(snap.Edges, Edge{
-					ID:        "e:vol:" + m.Name + ":" + name,
-					Type:      "volume_mount",
-					Source:    "volume:" + m.Name,
-					Target:    "container:" + name,
-					MountPath: m.Destination,
-				})
-			}
-		}
-
-		project := c.Labels["com.docker.compose.project"]
-		depsLabel := c.Labels["com.docker.compose.depends_on"]
-		if project != "" && depsLabel != "" {
-			for _, entry := range strings.Split(depsLabel, ",") {
-				parts := strings.SplitN(entry, ":", 3)
-				if len(parts) == 0 || parts[0] == "" {
-					continue
-				}
-				depService := parts[0]
-				depName, ok := psToContainerName[projectService{project, depService}]
-				if !ok {
-					continue
-				}
-				snap.Edges = append(snap.Edges, Edge{
-					ID:     "e:dep:" + name + ":" + depName,
-					Type:   "depends_on",
-					Source: "container:" + name,
-					Target: "container:" + depName,
-				})
-			}
+		case <-d.stopCh:
+			return
+		case <-ctx.Done():
+			return
 		}
 	}
-
-	for _, v := range volResp.Volumes {
-		snap.Nodes = append(snap.Nodes, buildVolumeNode(v.Name, v.Driver))
-	}
-
-	sort.Slice(snap.Nodes, func(i, j int) bool { return snap.Nodes[i].ID < snap.Nodes[j].ID })
-	sort.Slice(snap.Edges, func(i, j int) bool { return snap.Edges[i].ID < snap.Edges[j].ID })
-
-	return snap, nil
 }
 
-func topologyEvent(action events.Action) bool {
-	switch string(action) {
-	case "start", "stop", "die", "kill", "create", "destroy", "rename",
-		"pause", "unpause", "health_status",
-		"connect", "disconnect":
-		return true
-	}
-	return false
-}
-
+// watchEvents subscribes to the Docker event stream and triggers a poll
+// whenever a topology-relevant event occurs. Events are debounced to avoid
+// redundant polls when Docker emits a burst (e.g. during docker-compose up).
 func (d *DockerCollector) watchEvents(ctx context.Context) {
 	eventFilter := filters.NewArgs()
 	eventFilter.Add("type", string(events.ContainerEventType))
@@ -281,13 +113,15 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 	for {
 		select {
 		case msg := <-msgCh:
-			if !topologyEvent(msg.Action) {
+			if !isTopologyEvent(msg.Action) {
 				continue
 			}
 			if debounceTimer != nil {
 				debounceTimer.Stop()
 			}
-			debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+			// 500ms debounce: Docker emits a burst of events during compose up/down,
+		// and polling on every event would waste resources.
+		debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
 				select {
 				case debounceCh <- struct{}{}:
 				default:
@@ -302,6 +136,7 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 				return
 			}
 			log.Printf("docker events error: %v, reconnecting...", err)
+			// Brief backoff to avoid tight-loop reconnection when the daemon is temporarily unavailable.
 			time.Sleep(2 * time.Second)
 			msgCh, errCh = d.client.Events(ctx, events.ListOptions{Filters: eventFilter})
 		case <-d.stopCh:
@@ -310,24 +145,4 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 			return
 		}
 	}
-}
-
-func containerStatus(state, statusStr string) string {
-	if strings.Contains(statusStr, "(unhealthy)") {
-		return "unhealthy"
-	}
-	return state
-}
-
-func extractPorts(apiPorts []containertypes.Port) []PortMapping {
-	var ports []PortMapping
-	for _, p := range apiPorts {
-		if p.PublicPort != 0 {
-			ports = append(ports, PortMapping{
-				Host:      int(p.PublicPort),
-				Container: int(p.PrivatePort),
-			})
-		}
-	}
-	return ports
 }
