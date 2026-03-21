@@ -104,16 +104,14 @@ function toReactFlowNodes(dfNodes: DFNode[], dfEdges: DFEdge[]): RFNode[] {
       containerGroup.set(c.id, UNMANAGED_GROUP_ID);
     }
   }  const volumeMountEdges = dfEdges.filter((e) => e.type === 'volume_mount');
-  const volumeGroupMap = new Map<string, string | null>();
+  const volumeGroupMap = new Map<string, string>();
   for (const e of volumeMountEdges) {
     const group = containerGroup.get(e.target);
-    if (!volumeGroupMap.has(e.source)) {
-      volumeGroupMap.set(e.source, group ?? null);
-    } else {
-      const existing = volumeGroupMap.get(e.source);
-      if (existing !== group) {
-        volumeGroupMap.set(e.source, null); // spans multiple groups
-      }
+    // Always keep the first group — placing the volume inside a group ensures
+    // both edge endpoints are at the same hierarchy depth, which ELK needs for
+    // correct cross-group edge routing (same structure as depends_on edges).
+    if (!volumeGroupMap.has(e.source) && group) {
+      volumeGroupMap.set(e.source, group);
     }
   }
 
