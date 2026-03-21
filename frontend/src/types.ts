@@ -42,3 +42,26 @@ export interface WireMessage {
   version: number;
   data: GraphSnapshot | DeltaUpdate;
 }
+
+// Node data types used by React Flow custom components
+
+export interface ContainerNodeData {
+  dfNode: DFNode;
+  nodeWidth?: number;
+}
+
+export interface VolumeNodeData {
+  dfNode: DFNode;
+  nodeWidth?: number;
+}
+
+export interface NetworkGroupData {
+  dfNode: DFNode;
+}
+
+/** Typed payload for ELK-routed edges. */
+export interface ElkEdgeData {
+  path?: string;
+  edgeType?: string;
+  active?: boolean;
+}

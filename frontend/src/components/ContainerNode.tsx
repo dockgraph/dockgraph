@@ -2,15 +2,17 @@ import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { STATUS_COLORS } from '../utils/colors';
 import { useTheme } from '../theme';
-import type { DFNode } from '../types';
+import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE } from '../utils/constants';
+import type { ContainerNodeData } from '../types';
 
-type ContainerNodeData = {
-  dfNode: DFNode;
-  nodeWidth?: number;
+const ellipsis: React.CSSProperties = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 export function ContainerNode({ data }: NodeProps) {
-  const { dfNode, nodeWidth } = data as ContainerNodeData;
+  const { dfNode, nodeWidth } = data as unknown as ContainerNodeData;
   const w = (nodeWidth ?? 200) - 4; // subtract border widths
   const { theme } = useTheme();
   const statusColor = STATUS_COLORS[dfNode.status ?? 'exited'] ?? STATUS_COLORS.exited;
@@ -27,7 +29,7 @@ export function ContainerNode({ data }: NodeProps) {
         borderRadius: 4,
         padding: '6px 10px',
         width: w,
-        height: 70,
+        height: CONTAINER_NODE_HEIGHT,
         boxSizing: 'border-box',
         overflow: 'hidden',
         opacity: isGhost ? 0.5 : 1,
@@ -38,12 +40,10 @@ export function ContainerNode({ data }: NodeProps) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span
           style={{
+            ...ellipsis,
             fontSize: 12,
             fontWeight: 600,
             color: theme.nodeText,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
             maxWidth: 'calc(100% - 16px)',
             display: 'inline-block',
           }}
@@ -53,8 +53,8 @@ export function ContainerNode({ data }: NodeProps) {
         </span>
         <span
           style={{
-            width: 6,
-            height: 6,
+            width: STATUS_DOT_SIZE,
+            height: STATUS_DOT_SIZE,
             borderRadius: '50%',
             background: statusColor,
             display: 'inline-block',
@@ -66,12 +66,10 @@ export function ContainerNode({ data }: NodeProps) {
       {dfNode.image && (
         <div
           style={{
+            ...ellipsis,
             fontSize: 10,
             color: theme.nodeSubtext,
             marginTop: 2,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
           }}
           title={dfNode.image}
         >

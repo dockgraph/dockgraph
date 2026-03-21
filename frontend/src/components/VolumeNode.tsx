@@ -1,15 +1,10 @@
 import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { useTheme } from '../theme';
-import type { DFNode } from '../types';
-
-type VolumeNodeData = {
-  dfNode: DFNode;
-  nodeWidth?: number;
-};
+import type { VolumeNodeData } from '../types';
 
 export function VolumeNode({ data }: NodeProps) {
-  const { dfNode, nodeWidth } = data as VolumeNodeData;
+  const { dfNode, nodeWidth } = data as unknown as VolumeNodeData;
   const w = (nodeWidth ?? 200) - 4;
   const { theme } = useTheme();
 

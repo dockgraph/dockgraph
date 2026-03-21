@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DFNode, DFEdge, GraphSnapshot, DeltaUpdate, WireMessage } from '../types';
+import { RECONNECT_MAX_DELAY } from '../utils/constants';
 
 interface DockerFlowState {
   nodes: DFNode[];
@@ -7,12 +8,26 @@ interface DockerFlowState {
   connected: boolean;
 }
 
+/**
+ * Produces a lightweight fingerprint of the current graph state.
+ * Prevents redundant re-renders when the WebSocket pushes a snapshot
+ * that is structurally identical to what we already have (same node IDs,
+ * same statuses, same edge set).
+ */
 function snapshotFingerprint(nodes: DFNode[], edges: DFEdge[]): string {
   const nk = nodes.map((n) => `${n.id}:${n.status ?? ''}`).join(',');
   const ek = edges.map((e) => e.id).join(',');
   return nk + '|' + ek;
 }
 
+/**
+ * Manages the WebSocket connection to the docker-flow backend.
+ *
+ * On mount, opens a WebSocket that receives the initial graph snapshot
+ * followed by incremental delta updates as containers start/stop. The
+ * connection automatically reconnects with exponential backoff (capped
+ * at 30 seconds) if the server drops or the network blips.
+ */
 export function useDockerFlow(): DockerFlowState {
   const [state, setState] = useState<DockerFlowState>({
     nodes: [],
@@ -25,7 +40,7 @@ export function useDockerFlow(): DockerFlowState {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
   const fingerprintRef = useRef('');
-  const maxRetryDelay = 30_000;
+  const maxRetryDelay = RECONNECT_MAX_DELAY;
 
   const applySnapshot = useCallback((snap: GraphSnapshot) => {
     const fp = snapshotFingerprint(snap.nodes, snap.edges);

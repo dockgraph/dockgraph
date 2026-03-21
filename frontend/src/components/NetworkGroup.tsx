@@ -2,14 +2,10 @@ import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { networkColor } from '../utils/colors';
 import { useTheme } from '../theme';
-import type { DFNode } from '../types';
-
-type NetworkGroupData = {
-  dfNode: DFNode;
-};
+import type { NetworkGroupData } from '../types';
 
 export function NetworkGroup({ data }: NodeProps) {
-  const { dfNode } = data as NetworkGroupData;
+  const { dfNode } = data as unknown as NetworkGroupData;
   const { theme } = useTheme();
   const color = networkColor(dfNode.name);
 

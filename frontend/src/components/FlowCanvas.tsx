@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -16,7 +16,10 @@ import { NetworkGroup } from './NetworkGroup';
 import { VolumeNode } from './VolumeNode';
 import { ElkEdge } from './ElkEdge';
 import { ThemeToggle } from './ThemeToggle';
+import { StatusIndicator } from './StatusIndicator';
 import { computeLayout } from '../layout/elk';
+import { toReactFlowNodes, toReactFlowEdges } from '../utils/graphTransform';
+import { useSelectionHighlight } from '../hooks/useSelectionHighlight';
 import { networkColor } from '../utils/colors';
 import { useTheme } from '../theme';
 import type { DFNode, DFEdge } from '../types';
@@ -37,148 +40,9 @@ interface FlowCanvasProps {
   connected: boolean;
 }
 
-const UNMANAGED_GROUP_ID = 'group:unmanaged';
-
-function toReactFlowNodes(dfNodes: DFNode[], dfEdges: DFEdge[]): RFNode[] {
-  const rfNodes: RFNode[] = [];
-
-  const containers = dfNodes.filter((n) => n.type === 'container');
-  const networks = dfNodes.filter((n) => n.type === 'network');
-
-  const networksWithChildren = new Set(
-    containers.filter((c) => c.networkId).map((c) => c.networkId),
-  );
-  const networksWithEdges = new Set(
-    dfEdges.filter((e) => e.type === 'secondary_network').map((e) => e.target),
-  );
-
-  for (const net of networks) {
-    if (!networksWithChildren.has(net.id) && !networksWithEdges.has(net.id)) {
-      continue;
-    }
-    rfNodes.push({
-      id: net.id,
-      type: 'networkGroup',
-      position: { x: 0, y: 0 },
-      data: { dfNode: net },
-      style: { width: 200, height: 150 },
-    });
-  }
-
-  const hasUnmanaged = containers.some((c) => !c.source && !c.networkId);
-
-  if (hasUnmanaged) {
-    rfNodes.push({
-      id: UNMANAGED_GROUP_ID,
-      type: 'networkGroup',
-      position: { x: 0, y: 0 },
-      data: {
-        dfNode: { id: UNMANAGED_GROUP_ID, type: 'network', name: 'unmanaged' } as DFNode,
-      },
-      style: { width: 200, height: 150 },
-    });
-  }
-
-  for (const c of containers) {
-    const node: RFNode = {
-      id: c.id,
-      type: 'containerNode',
-      position: { x: 0, y: 0 },
-      data: { dfNode: c },
-    };
-    if (c.networkId) {
-      node.parentId = c.networkId;
-      node.extent = 'parent';
-    } else if (!c.source) {
-      node.parentId = UNMANAGED_GROUP_ID;
-      node.extent = 'parent';
-    }
-    rfNodes.push(node);
-  }
-
-  const containerGroup = new Map<string, string>();
-  for (const c of containers) {
-    if (c.networkId) {
-      containerGroup.set(c.id, c.networkId);
-    } else if (!c.source) {
-      containerGroup.set(c.id, UNMANAGED_GROUP_ID);
-    }
-  }  const volumeMountEdges = dfEdges.filter((e) => e.type === 'volume_mount');
-  const volumeGroupMap = new Map<string, string>();
-  for (const e of volumeMountEdges) {
-    const group = containerGroup.get(e.target);
-    // Always keep the first group — placing the volume inside a group ensures
-    // both edge endpoints are at the same hierarchy depth, which ELK needs for
-    // correct cross-group edge routing (same structure as depends_on edges).
-    if (!volumeGroupMap.has(e.source) && group) {
-      volumeGroupMap.set(e.source, group);
-    }
-  }
-
-  const groupIds = new Set(rfNodes.filter((n) => n.type === 'networkGroup').map((n) => n.id));
-
-  const volumes = dfNodes.filter((n) => n.type === 'volume');
-  for (const v of volumes) {
-    const group = volumeGroupMap.get(v.id);
-    const node: RFNode = {
-      id: v.id,
-      type: 'volumeNode',
-      position: { x: 0, y: 0 },
-      data: { dfNode: v },
-    };
-    if (group && groupIds.has(group)) {
-      node.parentId = group;
-      node.extent = 'parent';
-    }
-    rfNodes.push(node);
-  }
-
-  return rfNodes;
-}
-
-const ACTIVE_STATUSES = new Set(['running']);
-
-function isEndpointActive(node: DFNode | undefined): boolean {
-  if (!node) return false;
-  if (node.type !== 'container') return true;
-  return ACTIVE_STATUSES.has(node.status ?? '');
-}
-
-function toReactFlowEdges(dfEdges: DFEdge[], dfNodes: DFNode[], defaultStroke: string): RFEdge[] {
-  const nodeMap = new Map(dfNodes.map((n) => [n.id, n]));
-
-  return dfEdges.filter((e) => nodeMap.has(e.source) && nodeMap.has(e.target)).map((e) => {
-    const isVolume = e.type === 'volume_mount';
-    const isSecondary = e.type === 'secondary_network';
-
-    let stroke = defaultStroke;
-    if (isVolume) stroke = '#f97316';
-    if (isSecondary) {
-      const targetNet = nodeMap.get(e.target);
-      stroke = targetNet ? networkColor(targetNet.name) : defaultStroke;
-    }
-
-    const sourceNode = nodeMap.get(e.source);
-    const targetNode = nodeMap.get(e.target);
-    const active = isEndpointActive(sourceNode) && isEndpointActive(targetNode);
-
-    return {
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      type: 'elk',
-      data: { edgeType: e.type, active },
-      style: { stroke, strokeWidth: 1 },
-    };
-  });
-}
-
 export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
-  const [selection, setSelection] = useState<
-    { type: 'node'; id: string } | { type: 'edge'; id: string } | null
-  >(null);
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -197,124 +61,12 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
     return () => { cancelled = true; };
   }, [dfNodes, dfEdges, setNodes, setEdges, theme.edgeStroke]);
 
-  const { styledNodes, styledEdges } = useMemo(() => {
-    if (!selection) return { styledNodes: nodes, styledEdges: edges };
-
-    const connectedEdgeIds = new Set<string>();
-    const connectedNodeIds = new Set<string>();
-    const highlightedGroupIds = new Set<string>();
-    const selectedNode = selection.type === 'node'
-      ? nodes.find((n) => n.id === selection.id)
-      : null;
-    const isGroupSelection = selectedNode?.type === 'networkGroup';
-
-    const nodeById = new Map(nodes.map((n) => [n.id, n]));
-
-    if (selection.type === 'node') {
-      if (isGroupSelection) {
-        highlightedGroupIds.add(selection.id);
-        const childIds = new Set(
-          nodes.filter((n) => n.parentId === selection.id).map((n) => n.id),
-        );
-        for (const id of childIds) connectedNodeIds.add(id);
-        for (const e of edges) {
-          if (childIds.has(e.source) || childIds.has(e.target) ||
-              e.source === selection.id || e.target === selection.id) {
-            connectedEdgeIds.add(e.id);
-            connectedNodeIds.add(e.source);
-            connectedNodeIds.add(e.target);
-            const remoteId = childIds.has(e.source) ? e.target : e.source;
-            const remoteNode = nodeById.get(remoteId);
-            if (remoteNode?.parentId) highlightedGroupIds.add(remoteNode.parentId);
-          }
-        }
-      } else {
-        connectedNodeIds.add(selection.id);
-        for (const e of edges) {
-          if (e.source === selection.id || e.target === selection.id) {
-            connectedEdgeIds.add(e.id);
-            connectedNodeIds.add(e.source);
-            connectedNodeIds.add(e.target);
-          }
-        }
-      }
-    } else if (selection.type === 'edge') {
-      const edge = edges.find((e) => e.id === selection.id);
-      if (edge) {
-        connectedEdgeIds.add(edge.id);
-        connectedNodeIds.add(edge.source);
-        connectedNodeIds.add(edge.target);
-      }
-    }
-
-    if (!isGroupSelection) {
-      for (const n of nodes) {
-        if (connectedNodeIds.has(n.id) && n.parentId) {
-          highlightedGroupIds.add(n.parentId);
-        }
-      }
-    }
-
-    return {
-      styledNodes: nodes.map((n) => {
-        const highlighted = n.type === 'networkGroup'
-          ? highlightedGroupIds.has(n.id)
-          : connectedNodeIds.has(n.id);
-        return { ...n, style: { ...n.style, opacity: highlighted ? 1 : 0.2 } };
-      }),
-      styledEdges: edges.map((e) => ({
-        ...e,
-        style: { ...e.style, opacity: connectedEdgeIds.has(e.id) ? 1 : 0.15 },
-      })),
-    };
-  }, [selection, nodes, edges]);
-
-  const onNodeClick = useCallback((_: React.MouseEvent, node: RFNode) => {
-    setSelection((prev) =>
-      prev?.type === 'node' && prev.id === node.id ? null : { type: 'node', id: node.id },
-    );
-  }, []);
-
-  const onEdgeClick = useCallback((_: React.MouseEvent, edge: RFEdge) => {
-    setSelection((prev) =>
-      prev?.type === 'edge' && prev.id === edge.id ? null : { type: 'edge', id: edge.id },
-    );
-  }, []);
-
-  const onPaneClick = useCallback(() => {
-    setSelection(null);
-  }, []);
+  const { styledNodes, styledEdges, onNodeClick, onEdgeClick, onPaneClick } =
+    useSelectionHighlight(nodes, edges);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <div
-        style={{
-          position: 'absolute',
-          top: 10,
-          left: 10,
-          zIndex: 10,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          background: theme.panelBg,
-          border: `1px solid ${theme.panelBorder}`,
-          borderRadius: 6,
-          padding: '4px 10px',
-          fontSize: 11,
-          color: theme.panelText,
-        }}
-      >
-        <span
-          style={{
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            background: connected ? '#22c55e' : '#ef4444',
-          }}
-        />
-        {connected ? 'Live' : 'Disconnected'}
-      </div>
-
+      <StatusIndicator connected={connected} />
       <ThemeToggle />
 
       <ReactFlow

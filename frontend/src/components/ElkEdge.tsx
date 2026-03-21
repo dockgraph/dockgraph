@@ -1,12 +1,16 @@
 import { useMemo } from 'react';
 import type { EdgeProps } from '@xyflow/react';
+import type { ElkEdgeData } from '../types';
 
-const DOT_SPEED = 160;      // px per second — max travel speed
-const MIN_DUR = 1.5;        // seconds — floor so short edges don't crawl
-const DOT_SPACING = 150;    // px between dots — longer edges get more dots
+// Animation parameters for the flowing dots on depends_on edges.
+// Dots travel along the SVG path to visualize active dependencies.
+const DOT_SPEED = 160;      // px per second
+const MIN_DUR = 1.5;        // seconds — floor so short edges stay visible
+const DOT_SPACING = 150;    // px between dots
 const MIN_DOTS = 3;
 const MAX_DOTS = 8;
 
+/** Estimates polyline length from an SVG path's coordinate pairs. */
 function estimatePathLength(d: string): number {
   const coords = d.match(/-?[\d.]+/g)?.map(Number) ?? [];
   let length = 0;
@@ -18,9 +22,14 @@ function estimatePathLength(d: string): number {
   return length;
 }
 
+/**
+ * Custom edge component that renders ELK-computed orthogonal paths.
+ * Depends-on edges between running containers show animated dots
+ * traveling along the path to indicate active connections.
+ */
 export function ElkEdge({ data, style }: EdgeProps) {
-  const edgeData = data as Record<string, unknown> | undefined;
-  const path = edgeData?.path as string | undefined;
+  const edgeData = data as ElkEdgeData | undefined;
+  const path = edgeData?.path;
   if (!path) return null;
 
   const active = edgeData?.active !== false;
