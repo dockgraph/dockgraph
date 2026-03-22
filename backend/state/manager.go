@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/dockgraph/docker-flow/collector"
+	"github.com/dockgraph/dockgraph/collector"
 )
 
 type subID int

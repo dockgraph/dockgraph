@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DFNode, DFEdge, GraphSnapshot, DeltaUpdate, WireMessage } from '../types';
 import { RECONNECT_MAX_DELAY } from '../utils/constants';
 
-interface DockerFlowState {
+interface DockGraphState {
   nodes: DFNode[];
   edges: DFEdge[];
   connected: boolean;
@@ -21,15 +21,15 @@ function snapshotFingerprint(nodes: DFNode[], edges: DFEdge[]): string {
 }
 
 /**
- * Manages the WebSocket connection to the docker-flow backend.
+ * Manages the WebSocket connection to the dockgraph backend.
  *
  * On mount, opens a WebSocket that receives the initial graph snapshot
  * followed by incremental delta updates as containers start/stop. The
  * connection automatically reconnects with exponential backoff (capped
  * at 30 seconds) if the server drops or the network blips.
  */
-export function useDockerFlow(): DockerFlowState {
-  const [state, setState] = useState<DockerFlowState>({
+export function useDockGraph(): DockGraphState {
+  const [state, setState] = useState<DockGraphState>({
     nodes: [],
     edges: [],
     connected: false,

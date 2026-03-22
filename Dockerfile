@@ -14,10 +14,10 @@ COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 COPY --from=frontend /app/frontend/dist ./frontend/dist
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o docker-flow .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o dockgraph .
 
 # Stage 3: Runtime
 FROM gcr.io/distroless/static:latest
-COPY --from=backend /app/docker-flow /docker-flow
+COPY --from=backend /app/dockgraph /dockgraph
 EXPOSE 7800
-ENTRYPOINT ["/docker-flow"]
+ENTRYPOINT ["/dockgraph"]

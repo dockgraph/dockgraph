@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dockgraph/docker-flow/collector"
+	"github.com/dockgraph/dockgraph/collector"
 )
 
 func TestMergeSnapshots(t *testing.T) {

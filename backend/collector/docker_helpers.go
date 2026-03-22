@@ -7,12 +7,12 @@ import (
 	"github.com/docker/docker/api/types/events"
 )
 
-// SelfExcludeLabel marks a container as belonging to docker-flow itself,
+// SelfExcludeLabel marks a container as belonging to dockgraph itself,
 // causing it to be excluded from the topology graph.
-const SelfExcludeLabel = "dev.dockerflow.self"
+const SelfExcludeLabel = "dev.dockgraph.self"
 
 func isSelfContainer(image string) bool {
-	return strings.Contains(image, "docker-flow")
+	return strings.Contains(image, "dockgraph")
 }
 
 // isTopologyEvent returns true for Docker events that indicate a change

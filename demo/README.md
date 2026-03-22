@@ -1,6 +1,6 @@
 # Demo: Acme Platform
 
-A simulated SaaS platform with ~46 services across 7 networks for showcasing Docker Flow with a realistic production-like topology.
+A simulated SaaS platform with ~46 services across 7 networks for showcasing DockGraph with a realistic production-like topology.
 
 ## Quick Start
 
@@ -13,7 +13,7 @@ docker compose up -d
 ./start.sh
 ```
 
-Then start Docker Flow from the project root to visualize it:
+Then start DockGraph from the project root to visualize it:
 
 ```bash
 docker compose up -d
@@ -78,7 +78,7 @@ docker compose --profile with-loadtest up -d
 
 ## Experimenting
 
-Try these to see Docker Flow react in real time:
+Try these to see DockGraph react in real time:
 
 ```bash
 # Stop a service and watch it turn grey

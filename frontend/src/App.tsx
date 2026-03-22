@@ -1,7 +1,7 @@
 import { ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { FlowCanvas } from './components/FlowCanvas';
-import { useDockerFlow } from './hooks/useDockerFlow';
+import { useDockGraph } from './hooks/useDockGraph';
 import { ThemeProvider, useTheme } from './theme';
 
 function globalStyles(mode: 'dark' | 'light') {
@@ -41,7 +41,7 @@ function globalStyles(mode: 'dark' | 'light') {
 }
 
 function AppContent() {
-  const { nodes, edges, connected } = useDockerFlow();
+  const { nodes, edges, connected } = useDockGraph();
   const { theme } = useTheme();
 
   return (

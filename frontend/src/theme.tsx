@@ -82,7 +82,7 @@ const ThemeContext = createContext<ThemeContextValue>({
   toggle: () => {},
 });
 
-const STORAGE_KEY = 'docker-flow-theme';
+const STORAGE_KEY = 'dockgraph-theme';
 
 function getInitialMode(): 'dark' | 'light' {
   try {

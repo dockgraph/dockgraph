@@ -1,4 +1,4 @@
-// Package main is the entry point for docker-flow, a real-time Docker
+// Package main is the entry point for dockgraph, a real-time Docker
 // infrastructure visualizer. It connects Docker and Compose collectors
 // to a state manager and serves a WebSocket-powered web UI.
 package main
@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dockgraph/docker-flow/api"
-	"github.com/dockgraph/docker-flow/collector"
-	"github.com/dockgraph/docker-flow/frontend"
-	"github.com/dockgraph/docker-flow/state"
+	"github.com/dockgraph/dockgraph/api"
+	"github.com/dockgraph/dockgraph/collector"
+	"github.com/dockgraph/dockgraph/frontend"
+	"github.com/dockgraph/dockgraph/state"
 	"github.com/docker/docker/client"
 )
 
@@ -67,7 +67,7 @@ func main() {
 		server.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("docker-flow listening on %s", addr)
+	log.Printf("dockgraph listening on %s", addr)
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatal(err)
 	}

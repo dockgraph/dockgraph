@@ -1,8 +1,8 @@
-# Docker Flow
+# DockGraph
 
 Real-time Docker infrastructure visualizer. See your containers, networks, volumes, and their relationships as an interactive graph that updates live as your infrastructure changes.
 
-<!-- TODO: Add screenshot/GIF of Docker Flow running with the demo stack -->
+<!-- TODO: Add screenshot/GIF of DockGraph running with the demo stack -->
 
 ## Features
 
@@ -16,7 +16,7 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 - **Dark/light theme** — toggle between themes, persisted in localStorage
 - **Click-to-highlight** — click any node or edge to highlight its connections, fading unrelated elements
 - **Single binary** — frontend is embedded into the Go binary; one container, no external dependencies
-- **Self-excluding** — Docker Flow hides its own container from the graph
+- **Self-excluding** — DockGraph hides its own container from the graph
 
 ## Quick Start
 
@@ -24,7 +24,7 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 docker run -d \
   -p 7800:7800 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  ghcr.io/dockgraph/docker-flow
+  ghcr.io/dockgraph/dockgraph
 ```
 
 Open [http://localhost:7800](http://localhost:7800).
@@ -36,20 +36,20 @@ docker run -d \
   -p 7800:7800 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v ./docker-compose.yml:/app/compose/docker-compose.yml:ro \
-  ghcr.io/dockgraph/docker-flow
+  ghcr.io/dockgraph/dockgraph
 ```
 
 Or use Docker Compose:
 
 ```bash
-git clone https://github.com/dockgraph/docker-flow.git
-cd docker-flow
+git clone https://github.com/dockgraph/dockgraph.git
+cd dockgraph
 docker compose up -d
 ```
 
 ## Demo
 
-A ~46-service simulated SaaS platform is included for showcasing Docker Flow with a realistic topology. See [`demo/README.md`](demo/README.md) for setup and architecture.
+A ~46-service simulated SaaS platform is included for showcasing DockGraph with a realistic topology. See [`demo/README.md`](demo/README.md) for setup and architecture.
 
 ## Configuration
 
@@ -61,7 +61,7 @@ A ~46-service simulated SaaS platform is included for showcasing Docker Flow wit
 
 ## How It Works
 
-Docker Flow runs two collectors concurrently:
+DockGraph runs two collectors concurrently:
 
 1. **Docker collector** — polls the Docker API and watches the event stream for container, network, and volume changes
 2. **Compose collector** — parses `docker-compose.yml` files and watches for filesystem changes
@@ -82,8 +82,8 @@ For implementation details, see the [backend](backend/README.md) and [frontend](
 
 ```bash
 cd backend
-go build -o docker-flow .
-./docker-flow
+go build -o dockgraph .
+./dockgraph
 ```
 
 ### Frontend

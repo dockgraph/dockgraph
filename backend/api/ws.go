@@ -1,5 +1,5 @@
 // Package api provides the HTTP server, WebSocket hub, and static file
-// serving for the docker-flow web interface.
+// serving for the dockgraph web interface.
 package api
 
 import (
@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dockgraph/docker-flow/collector"
+	"github.com/dockgraph/dockgraph/collector"
 	"github.com/gorilla/websocket"
 )
 

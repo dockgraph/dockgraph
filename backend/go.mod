@@ -1,4 +1,4 @@
-module github.com/dockgraph/docker-flow
+module github.com/dockgraph/dockgraph
 
 go 1.26
 

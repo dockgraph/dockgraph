@@ -1,4 +1,4 @@
-# Docker Flow — Backend
+# DockGraph — Backend
 
 Go server that monitors Docker infrastructure in real time and serves a graph topology over WebSocket. Watches the Docker daemon for container, network, and volume changes while simultaneously parsing Docker Compose files to include services that haven't started yet.
 
@@ -10,8 +10,8 @@ Go server that monitors Docker infrastructure in real time and serves a graph to
 ## Quick Start
 
 ```bash
-go build -o docker-flow .
-./docker-flow
+go build -o dockgraph .
+./dockgraph
 ```
 
 The server starts on `:7800` by default and serves the embedded frontend SPA.

@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== Docker Flow Smoke Test ==="
+echo "=== DockGraph Smoke Test ==="
 
 echo "Building image..."
-docker build -t docker-flow:test .
+docker build -t dockgraph:test .
 
 echo "Starting container..."
-docker run -d --name docker-flow-test \
+docker run -d --name dockgraph-test \
   -p 7801:7800 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  docker-flow:test
+  dockgraph:test
 
 cleanup() {
   echo "Cleaning up..."
-  docker stop docker-flow-test 2>/dev/null || true
-  docker rm docker-flow-test 2>/dev/null || true
+  docker stop dockgraph-test 2>/dev/null || true
+  docker rm dockgraph-test 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -27,7 +27,7 @@ for i in $(seq 1 10); do
   fi
   if [ "$i" -eq 10 ]; then
     echo "FAIL: health check did not pass"
-    docker logs docker-flow-test
+    docker logs dockgraph-test
     exit 1
   fi
   sleep 1

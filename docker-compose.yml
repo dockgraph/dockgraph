@@ -1,7 +1,7 @@
-name: docker-flow
+name: dockgraph
 
 services:
-  docker-flow:
+  dockgraph:
     build: .
     ports:
       - "7800:7800"
@@ -10,4 +10,4 @@ services:
       - ./docker-compose.yml:/app/compose/docker-compose.yml:ro
       - ./demo/docker-compose.yml:/app/compose/demo.yml:ro
                     labels:
-      dev.dockerflow.self: "true"
+      dev.dockgraph.self: "true"

@@ -59,11 +59,11 @@ func TestBuildVolumeNode(t *testing.T) {
 }
 
 func TestSelfExclusion(t *testing.T) {
-	if !isSelfContainer("docker-flow:latest") {
-		t.Error("should detect docker-flow image")
+	if !isSelfContainer("dockgraph:latest") {
+		t.Error("should detect dockgraph image")
 	}
-	if !isSelfContainer("ghcr.io/user/docker-flow:v1.0") {
-		t.Error("should detect docker-flow in registry path")
+	if !isSelfContainer("ghcr.io/user/dockgraph:v1.0") {
+		t.Error("should detect dockgraph in registry path")
 	}
 	if isSelfContainer("postgres:16") {
 		t.Error("should not exclude postgres")

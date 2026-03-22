@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dockgraph/docker-flow/collector"
+	"github.com/dockgraph/dockgraph/collector"
 	"github.com/gorilla/websocket"
 )
 

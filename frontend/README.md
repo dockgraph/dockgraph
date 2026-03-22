@@ -1,4 +1,4 @@
-# Docker Flow — Frontend
+# DockGraph — Frontend
 
 React application that renders a real-time, interactive graph of your Docker infrastructure. Receives topology data over WebSocket and visualizes containers, networks, and volumes as a hierarchical graph using the [ELK](https://www.eclipse.org/elk/) layout algorithm.
 
@@ -22,7 +22,7 @@ src/
 │   ├── StatusIndicator.tsx   # WebSocket connection status badge
 │   └── ThemeToggle.tsx       # Dark/light theme switch
 ├── hooks/
-│   ├── useDockerFlow.ts      # WebSocket connection, reconnect, delta updates
+│   ├── useDockGraph.ts      # WebSocket connection, reconnect, delta updates
 │   └── useSelectionHighlight.ts  # Click-to-highlight with opacity fading
 ├── layout/              # ELK layout pipeline
 │   ├── elk.ts               # Pipeline orchestrator
@@ -66,7 +66,7 @@ The dev server starts on `http://localhost:5173` and proxies WebSocket and API r
 ### Data Flow
 
 ```
-Backend (WebSocket) → useDockerFlow hook → FlowCanvas
+Backend (WebSocket) → useDockGraph hook → FlowCanvas
                                               ↓
                               graphTransform (domain → React Flow)
                                               ↓
@@ -75,7 +75,7 @@ Backend (WebSocket) → useDockerFlow hook → FlowCanvas
                               React Flow renders nodes + edges
 ```
 
-1. **`useDockerFlow`** connects to `/ws`, receives an initial snapshot, then incremental delta updates as containers start/stop. Auto-reconnects with exponential backoff.
+1. **`useDockGraph`** connects to `/ws`, receives an initial snapshot, then incremental delta updates as containers start/stop. Auto-reconnects with exponential backoff.
 
 2. **`graphTransform`** converts the backend's flat node/edge model into React Flow's hierarchical structure — containers are grouped inside network groups, volumes are placed in the group of their first consumer.
 
@@ -91,4 +91,4 @@ Backend (WebSocket) → useDockerFlow hook → FlowCanvas
 
 - **Hierarchy depth consistency**: Volumes are assigned to the network group of their first consumer. This ensures all edge endpoints are at the same hierarchy depth, which ELK requires for correct cross-group edge routing.
 
-- **Delta updates**: After the initial snapshot, the backend sends only changed nodes/edges. The `useDockerFlow` hook merges deltas into the current state to minimize re-renders.
+- **Delta updates**: After the initial snapshot, the backend sends only changed nodes/edges. The `useDockGraph` hook merges deltas into the current state to minimize re-renders.
