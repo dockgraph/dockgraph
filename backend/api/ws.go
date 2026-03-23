@@ -39,15 +39,17 @@ type wsClient struct {
 
 // Hub manages WebSocket client connections and broadcasts state updates.
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[*wsClient]bool
-	current *collector.GraphSnapshot
+	mu         sync.RWMutex
+	clients    map[*wsClient]bool
+	current    *collector.GraphSnapshot
+	MaxClients int
 }
 
 // NewHub creates an empty WebSocket hub.
 func NewHub() *Hub {
 	return &Hub{
-		clients: make(map[*wsClient]bool),
+		clients:    make(map[*wsClient]bool),
+		MaxClients: 128,
 	}
 }
 
@@ -67,6 +69,13 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.mu.Lock()
+	if h.MaxClients > 0 && len(h.clients) >= h.MaxClients {
+		h.mu.Unlock()
+		conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "too many connections"))
+		conn.Close()
+		return
+	}
 	h.clients[c] = true
 	snapshot := h.current
 	h.mu.Unlock()

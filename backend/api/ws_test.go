@@ -207,3 +207,46 @@ func TestSecurityHeaders(t *testing.T) {
 		}
 	}
 }
+
+func TestHubRejectsOverLimit(t *testing.T) {
+	hub := NewHub()
+	hub.MaxClients = 2
+
+	server := httptest.NewServer(http.HandlerFunc(hub.HandleWS))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	var conns []*websocket.Conn
+	for i := 0; i < 2; i++ {
+		ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		if err != nil {
+			t.Fatalf("connection %d failed: %v", i, err)
+		}
+		conns = append(conns, ws)
+	}
+	defer func() {
+		for _, c := range conns {
+			c.Close()
+		}
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Third connection upgrades but is immediately closed with CloseTryAgainLater
+	ws3, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("expected upgrade to succeed before close: %v", err)
+	}
+	defer ws3.Close()
+
+	// The server closes the connection immediately — read should fail
+	_, _, err = ws3.ReadMessage()
+	if err == nil {
+		t.Fatal("expected read error on over-limit connection")
+	}
+	closeErr, ok := err.(*websocket.CloseError)
+	if ok && closeErr.Code != websocket.CloseTryAgainLater {
+		t.Errorf("expected CloseTryAgainLater (1013), got %d", closeErr.Code)
+	}
+}
