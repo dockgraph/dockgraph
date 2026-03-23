@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/dockgraph/dockgraph/collector"
@@ -179,5 +180,30 @@ func TestCheckOrigin(t *testing.T) {
 				t.Errorf("checkOrigin(%q, host=%q) = %v, want %v", tc.origin, tc.host, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	hub := NewHub()
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, nil)
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	tests := []struct {
+		header, want string
+	}{
+		{"X-Content-Type-Options", "nosniff"},
+		{"X-Frame-Options", "DENY"},
+	}
+	for _, tt := range tests {
+		if got := resp.Header.Get(tt.header); got != tt.want {
+			t.Errorf("%s = %q, want %q", tt.header, got, tt.want)
+		}
 	}
 }
