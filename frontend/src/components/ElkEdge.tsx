@@ -30,10 +30,19 @@ function estimatePathLength(d: string): number {
 export function ElkEdge({ data, style }: EdgeProps) {
   const edgeData = data as ElkEdgeData | undefined;
   const path = edgeData?.path;
-  if (!path) return null;
-
   const active = edgeData?.active !== false;
   const animated = edgeData?.edgeType === 'depends_on' && active;
+
+  const { dur, dotCount } = useMemo(() => {
+    if (!animated || !path) return { dur: 0, dotCount: 0 };
+    const length = estimatePathLength(path);
+    return {
+      dur: Math.max(MIN_DUR, length / DOT_SPEED),
+      dotCount: Math.min(MAX_DOTS, Math.max(MIN_DOTS, Math.round(length / DOT_SPACING))),
+    };
+  }, [animated, path]);
+
+  if (!path) return null;
 
   const stroke = (style?.stroke as string) ?? '#475569';
   const strokeWidth = (style?.strokeWidth as number) ?? 1;
@@ -45,15 +54,6 @@ export function ElkEdge({ data, style }: EdgeProps) {
   const startY = coords[1];
   const endX = coords[coords.length - 2];
   const endY = coords[coords.length - 1];
-
-  const { dur, dotCount } = useMemo(() => {
-    if (!animated) return { dur: 0, dotCount: 0 };
-    const length = estimatePathLength(path);
-    return {
-      dur: Math.max(MIN_DUR, length / DOT_SPEED),
-      dotCount: Math.min(MAX_DOTS, Math.max(MIN_DOTS, Math.round(length / DOT_SPACING))),
-    };
-  }, [animated, path]);
 
   return (
     <g opacity={opacity} style={{ cursor: 'pointer' }}>

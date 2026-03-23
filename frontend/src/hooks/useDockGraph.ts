@@ -40,6 +40,7 @@ export function useDockGraph(): DockGraphState {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
   const fingerprintRef = useRef('');
+  const connectRef = useRef<(() => void) | null>(null);
   const maxRetryDelay = RECONNECT_MAX_DELAY;
 
   const applySnapshot = useCallback((snap: GraphSnapshot) => {
@@ -114,13 +115,17 @@ export function useDockGraph(): DockGraphState {
 
       const delay = Math.min(1000 * Math.pow(2, retryRef.current), maxRetryDelay);
       retryRef.current++;
-      retryTimerRef.current = setTimeout(connect, delay);
+      retryTimerRef.current = setTimeout(() => connectRef.current?.(), delay);
     };
 
     ws.onerror = () => {
       ws.close();
     };
-  }, [applySnapshot, applyDelta]);
+  }, [applySnapshot, applyDelta, maxRetryDelay]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     unmountedRef.current = false;

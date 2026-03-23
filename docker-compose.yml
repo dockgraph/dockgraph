@@ -8,6 +8,5 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./docker-compose.yml:/app/compose/docker-compose.yml:ro
-      - ./demo/docker-compose.yml:/app/compose/demo.yml:ro
-                    labels:
+    labels:
       dev.dockgraph.self: "true"
