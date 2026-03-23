@@ -58,7 +58,12 @@ func main() {
 
 	handler := api.NewServer(hub, staticFS, dockerCli)
 	addr := ":" + cfg.Port
-	server := &http.Server{Addr: addr, Handler: handler}
+	server := &http.Server{
+		Addr:        addr,
+		Handler:     handler,
+		ReadTimeout: 15 * time.Second,
+		IdleTimeout: 120 * time.Second,
+	}
 
 	go func() {
 		<-ctx.Done()
