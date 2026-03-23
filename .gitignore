@@ -29,6 +29,9 @@ lerna-debug.log*
 # OS
 .DS_Store
 
+# Local overrides
+docker-compose.override.yml
+
 # Environment
 .env
 .env.*
