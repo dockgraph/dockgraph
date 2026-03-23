@@ -1,7 +1,9 @@
 package main
 
 import (
+	"log"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -21,7 +23,12 @@ func LoadConfig() Config {
 	}
 
 	if v := os.Getenv("DF_PORT"); v != "" {
-		cfg.Port = v
+		port, err := strconv.Atoi(v)
+		if err != nil || port < 1 || port > 65535 {
+			log.Printf("invalid DF_PORT %q, using default %s", v, cfg.Port)
+		} else {
+			cfg.Port = v
+		}
 	}
 	if v := os.Getenv("DF_POLL_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
