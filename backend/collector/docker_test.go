@@ -16,10 +16,7 @@ func TestBuildNodeFromContainer(t *testing.T) {
 		"my-api",
 		"python:3.12",
 		"running",
-		map[string]string{
-			"com.docker.compose.service": "api",
-			"com.docker.compose.project": "myapp",
-		},
+		nil,
 		[]PortMapping{{Host: 8000, Container: 8000}},
 	)
 
@@ -37,6 +34,9 @@ func TestBuildNodeFromContainer(t *testing.T) {
 	}
 	if len(node.Ports) != 1 || node.Ports[0].Host != 8000 {
 		t.Errorf("expected port 8000, got %v", node.Ports)
+	}
+	if node.Labels != nil {
+		t.Error("expected nil labels — labels must not be forwarded to clients")
 	}
 }
 
