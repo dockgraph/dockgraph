@@ -99,7 +99,13 @@ export function useDockGraph(): DockGraphState {
     };
 
     ws.onmessage = (event) => {
-      const msg: WireMessage = JSON.parse(event.data);
+      let msg: WireMessage;
+      try {
+        msg = JSON.parse(event.data);
+      } catch (e) {
+        console.warn('failed to parse WebSocket message', e);
+        return;
+      }
       if (msg.type === 'snapshot') {
         applySnapshot(msg.data as GraphSnapshot);
       } else if (msg.type === 'delta') {
