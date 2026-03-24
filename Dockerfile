@@ -20,4 +20,6 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o dockgraph .
 FROM gcr.io/distroless/static:nonroot@sha256:e3f945647ffb95b5839c07038d64f9811adf17308b9121d8a2b87b6a22a80a39
 COPY --from=backend /app/dockgraph /dockgraph
 EXPOSE 7800
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=5s \
+  CMD ["/dockgraph", "--healthcheck"]
 ENTRYPOINT ["/dockgraph"]

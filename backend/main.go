@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -21,6 +22,15 @@ import (
 
 func main() {
 	cfg := LoadConfig()
+
+	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get("http://localhost:" + cfg.Port + "/healthz")
+		if err != nil || resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

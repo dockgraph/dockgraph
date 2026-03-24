@@ -10,3 +10,9 @@ services:
       - ./docker-compose.yml:/app/compose/docker-compose.yml:ro
     labels:
       dev.dockgraph.self: "true"
+    healthcheck:
+      test: ["/dockgraph", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
