@@ -11,8 +11,16 @@ services:
     labels:
       dev.dockgraph.self: "true"
     healthcheck:
-      test: ["/dockgraph", "--healthcheck"]
+      test: ["CMD", "/dockgraph", "--healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
