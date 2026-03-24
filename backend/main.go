@@ -49,7 +49,11 @@ func main() {
 	go pipeUpdates(ctx, mgr, dc, cc)
 
 	hub := api.NewHub()
-	go pipeToHub(ctx, mgr.Subscribe(), hub)
+	sub, unsub := mgr.Subscribe()
+	go func() {
+		defer unsub()
+		pipeToHub(ctx, sub, hub)
+	}()
 
 	staticFS, err := fs.Sub(frontend.Assets, "dist")
 	if err != nil {
@@ -96,7 +100,10 @@ func pipeUpdates(ctx context.Context, mgr *state.Manager, dc *collector.DockerCo
 func pipeToHub(ctx context.Context, sub <-chan collector.StateMessage, hub *api.Hub) {
 	for {
 		select {
-		case msg := <-sub:
+		case msg, ok := <-sub:
+			if !ok {
+				return
+			}
 			hub.Broadcast(msg)
 		case <-ctx.Done():
 			return

@@ -30,15 +30,17 @@ func NewManager() *Manager {
 }
 
 // Subscribe returns a channel that receives state messages whenever the merged
-// graph changes. If a merged graph already exists, the current state is sent
-// immediately so new subscribers start with a complete view.
-func (m *Manager) Subscribe() <-chan collector.StateMessage {
+// graph changes, along with a cleanup function to unsubscribe. If a merged
+// graph already exists, the current state is sent immediately so new
+// subscribers start with a complete view.
+func (m *Manager) Subscribe() (<-chan collector.StateMessage, func()) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	ch := make(chan collector.StateMessage, 16)
 	m.nextID++
-	m.subscribers[m.nextID] = ch
+	id := m.nextID
+	m.subscribers[id] = ch
 
 	if len(m.merged.Nodes) > 0 {
 		ch <- collector.StateMessage{
@@ -47,7 +49,16 @@ func (m *Manager) Subscribe() <-chan collector.StateMessage {
 		}
 	}
 
-	return ch
+	var once sync.Once
+	unsub := func() {
+		once.Do(func() {
+			m.mu.Lock()
+			delete(m.subscribers, id)
+			m.mu.Unlock()
+		})
+	}
+
+	return ch, unsub
 }
 
 // Current returns the latest merged graph snapshot.

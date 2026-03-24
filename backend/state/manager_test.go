@@ -47,7 +47,8 @@ func TestMergeSnapshots(t *testing.T) {
 
 func TestSubscribe(t *testing.T) {
 	m := NewManager()
-	ch := m.Subscribe()
+	ch, unsub := m.Subscribe()
+	defer unsub()
 
 	go func() {
 		m.HandleUpdate("test", collector.StateUpdate{
@@ -69,5 +70,30 @@ func TestSubscribe(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for subscription message")
+	}
+}
+
+func TestUnsubscribe(t *testing.T) {
+	m := NewManager()
+	_, unsub := m.Subscribe()
+	_, unsub2 := m.Subscribe()
+
+	unsub()
+
+	m.mu.RLock()
+	count := len(m.subscribers)
+	m.mu.RUnlock()
+
+	if count != 1 {
+		t.Errorf("expected 1 subscriber after unsubscribe, got %d", count)
+	}
+
+	unsub2()
+	m.mu.RLock()
+	count = len(m.subscribers)
+	m.mu.RUnlock()
+
+	if count != 0 {
+		t.Errorf("expected 0 subscribers after both unsubscribe, got %d", count)
 	}
 }
