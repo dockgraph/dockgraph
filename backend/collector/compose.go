@@ -72,7 +72,7 @@ func (c *ComposeCollector) scan(ctx context.Context) error {
 		sourceName := filepath.Base(f)
 		snap, err := parseComposeFile(f, sourceName)
 		if err != nil {
-			log.Printf("warning: failed to parse %s: %v", f, err)
+			log.Printf("warning: failed to parse %s: %v", sourceName, err)
 			continue
 		}
 		allNodes = append(allNodes, snap.Nodes...)
