@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -104,14 +105,27 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 		return nil
 	})
 
+	var debounceTimer *time.Timer
+	debounceCh := make(chan struct{}, 1)
+
 	for {
 		select {
 		case event := <-watcher.Events:
 			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove) != 0 {
-				log.Printf("compose file changed: %s", event.Name)
-				if err := c.scan(ctx); err != nil {
-					log.Printf("rescan error: %v", err)
+				if debounceTimer != nil {
+					debounceTimer.Stop()
 				}
+				debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+					select {
+					case debounceCh <- struct{}{}:
+					default:
+					}
+				})
+			}
+		case <-debounceCh:
+			log.Printf("compose files changed, rescanning")
+			if err := c.scan(ctx); err != nil {
+				log.Printf("rescan error: %v", err)
 			}
 		case err := <-watcher.Errors:
 			log.Printf("watcher error: %v", err)
