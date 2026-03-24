@@ -166,7 +166,7 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 	serviceNames := resolveServiceNames(res.containers)
 
 	for _, c := range res.containers {
-		if isSelfContainer(c.Image) || c.Labels[SelfExcludeLabel] == "true" {
+		if c.Labels[SelfExcludeLabel] == "true" {
 			continue
 		}
 

@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"strings"
 	"testing"
 
 	containertypes "github.com/docker/docker/api/types/container"
@@ -67,15 +68,31 @@ func TestBuildVolumeNode(t *testing.T) {
 
 // --- Helpers ---
 
-func TestSelfExclusion(t *testing.T) {
-	if !isSelfContainer("dockgraph:latest") {
-		t.Error("should detect dockgraph image")
+func TestSelfExclusionByLabel(t *testing.T) {
+	containers := []containertypes.Summary{
+		{
+			Names: []string{"/app"},
+			Image: "dockgraph:latest",
+			State: "running",
+		},
+		{
+			Names:  []string{"/self"},
+			Image:  "myapp:1.0",
+			Labels: map[string]string{SelfExcludeLabel: "true"},
+			State:  "running",
+		},
 	}
-	if !isSelfContainer("ghcr.io/user/dockgraph:v1.0") {
-		t.Error("should detect dockgraph in registry path")
+
+	var included []string
+	for _, c := range containers {
+		if c.Labels[SelfExcludeLabel] == "true" {
+			continue
+		}
+		included = append(included, strings.TrimPrefix(c.Names[0], "/"))
 	}
-	if isSelfContainer("postgres:16") {
-		t.Error("should not exclude postgres")
+
+	if len(included) != 1 || included[0] != "app" {
+		t.Errorf("expected only 'app' to be included, got %v", included)
 	}
 }
 

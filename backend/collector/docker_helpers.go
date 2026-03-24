@@ -11,10 +11,6 @@ import (
 // causing it to be excluded from the topology graph.
 const SelfExcludeLabel = "dev.dockgraph.self"
 
-func isSelfContainer(image string) bool {
-	return strings.Contains(image, "dockgraph")
-}
-
 // isTopologyEvent returns true for Docker events that indicate a change
 // in the container/network/volume topology.
 func isTopologyEvent(action events.Action) bool {
