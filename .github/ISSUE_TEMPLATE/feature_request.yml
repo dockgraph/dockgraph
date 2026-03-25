@@ -1,0 +1,58 @@
+name: Feature Request
+description: Suggest a new feature or improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for DockGraph? We'd love to hear it!
+
+        **Tip:** Search [existing issues](https://github.com/dockgraph/dockgraph/issues?q=is%3Aissue+label%3Aenhancement) first — someone may have suggested it already.
+
+  - type: checkboxes
+    id: duplicate-check
+    attributes:
+      label: Duplicate check
+      options:
+        - label: I searched existing issues and didn't find a similar request
+          required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is this needed?
+      description: What problem does this solve? What's the motivation?
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like to see?
+      description: Describe the feature or improvement.
+    validations:
+      required: true
+
+  - type: textarea
+    id: who
+    attributes:
+      label: Who is this for?
+      description: What kind of user benefits from this? (e.g., DevOps engineers monitoring staging, developers debugging compose stacks)
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered other approaches or workarounds?
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or examples
+      description: If another tool does something similar, show us. Drag and drop images directly — don't use external image hosts.
+    validations:
+      required: false
