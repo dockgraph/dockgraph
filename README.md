@@ -24,7 +24,7 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 docker run -d \
   -p 7800:7800 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  ghcr.io/dockgraph/dockgraph
+  dockgraph/dockgraph
 ```
 
 Open [http://localhost:7800](http://localhost:7800).
@@ -36,7 +36,7 @@ docker run -d \
   -p 7800:7800 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v ./docker-compose.yml:/app/compose/docker-compose.yml:ro \
-  ghcr.io/dockgraph/dockgraph
+  dockgraph/dockgraph
 ```
 
 Or use Docker Compose:
