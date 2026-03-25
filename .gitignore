@@ -1,3 +1,5 @@
+# Should update .dockerignore as well
+
 # Go
 backend/dockgraph
 
@@ -35,3 +37,6 @@ docker-compose.override.yml
 # Environment
 .env
 .env.*
+
+# Temporary
+tmp/
