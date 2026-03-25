@@ -3,6 +3,9 @@ name: dockgraph
 services:
   dockgraph:
     build: .
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "7800:7800"
     volumes:
