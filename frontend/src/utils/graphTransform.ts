@@ -1,12 +1,12 @@
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import { networkColor } from './colors';
-import type { DFNode, DFEdge } from '../types';
+import type { DGNode, DGEdge } from '../types';
 
 const UNMANAGED_GROUP_ID = 'group:unmanaged';
 
 const RUNNING_STATUSES = new Set(['running']);
 
-function isEndpointActive(node: DFNode | undefined): boolean {
+function isEndpointActive(node: DGNode | undefined): boolean {
   if (!node) return false;
   if (node.type !== 'container') return true;
   return RUNNING_STATUSES.has(node.status ?? '');
@@ -14,9 +14,9 @@ function isEndpointActive(node: DFNode | undefined): boolean {
 
 /** Creates React Flow group nodes for networks that have children or secondary edges. */
 function buildNetworkGroups(
-  networks: DFNode[],
-  containers: DFNode[],
-  dfEdges: DFEdge[],
+  networks: DGNode[],
+  containers: DGNode[],
+  dgEdges: DGEdge[],
 ): RFNode[] {
   const rfNodes: RFNode[] = [];
 
@@ -24,7 +24,7 @@ function buildNetworkGroups(
     containers.filter((c) => c.networkId).map((c) => c.networkId),
   );
   const networksWithEdges = new Set(
-    dfEdges.filter((e) => e.type === 'secondary_network').map((e) => e.target),
+    dgEdges.filter((e) => e.type === 'secondary_network').map((e) => e.target),
   );
 
   for (const net of networks) {
@@ -35,7 +35,7 @@ function buildNetworkGroups(
       id: net.id,
       type: 'networkGroup',
       position: { x: 0, y: 0 },
-      data: { dfNode: net },
+      data: { dgNode: net },
       style: { width: 200, height: 150 },
     });
   }
@@ -47,7 +47,7 @@ function buildNetworkGroups(
       type: 'networkGroup',
       position: { x: 0, y: 0 },
       data: {
-        dfNode: { id: UNMANAGED_GROUP_ID, type: 'network', name: 'unmanaged' } as DFNode,
+        dgNode: { id: UNMANAGED_GROUP_ID, type: 'network', name: 'unmanaged' } as DGNode,
       },
       style: { width: 200, height: 150 },
     });
@@ -57,13 +57,13 @@ function buildNetworkGroups(
 }
 
 /** Creates React Flow nodes for containers, assigning each to its network group. */
-function buildContainerNodes(containers: DFNode[]): RFNode[] {
+function buildContainerNodes(containers: DGNode[]): RFNode[] {
   return containers.map((c) => {
     const node: RFNode = {
       id: c.id,
       type: 'containerNode',
       position: { x: 0, y: 0 },
-      data: { dfNode: c },
+      data: { dgNode: c },
     };
     if (c.networkId) {
       node.parentId = c.networkId;
@@ -81,9 +81,9 @@ function buildContainerNodes(containers: DFNode[]): RFNode[] {
  * of its first consumer so volume-mount edges stay at the same hierarchy depth.
  */
 function buildVolumeNodes(
-  volumes: DFNode[],
-  containers: DFNode[],
-  dfEdges: DFEdge[],
+  volumes: DGNode[],
+  containers: DGNode[],
+  dgEdges: DGEdge[],
   groupIds: Set<string>,
 ): RFNode[] {
   const containerGroup = new Map<string, string>();
@@ -96,7 +96,7 @@ function buildVolumeNodes(
   }
 
   const volumeGroupMap = new Map<string, string>();
-  for (const e of dfEdges.filter((e) => e.type === 'volume_mount')) {
+  for (const e of dgEdges.filter((e) => e.type === 'volume_mount')) {
     const group = containerGroup.get(e.target);
     if (!volumeGroupMap.has(e.source) && group) {
       volumeGroupMap.set(e.source, group);
@@ -109,7 +109,7 @@ function buildVolumeNodes(
       id: v.id,
       type: 'volumeNode',
       position: { x: 0, y: 0 },
-      data: { dfNode: v },
+      data: { dgNode: v },
     };
     if (group && groupIds.has(group)) {
       node.parentId = group;
@@ -120,33 +120,33 @@ function buildVolumeNodes(
 }
 
 /**
- * Converts domain nodes (DFNode) into React Flow nodes, organizing containers
+ * Converts domain nodes (DGNode) into React Flow nodes, organizing containers
  * into network groups and placing volumes inside the group of their first consumer.
  *
  * The grouping ensures that ELK can route edges correctly — both endpoints of an
  * edge must be at the same hierarchy depth for proper cross-group edge routing.
  */
-export function toReactFlowNodes(dfNodes: DFNode[], dfEdges: DFEdge[]): RFNode[] {
-  const containers = dfNodes.filter((n) => n.type === 'container');
-  const networks = dfNodes.filter((n) => n.type === 'network');
-  const volumes = dfNodes.filter((n) => n.type === 'volume');
+export function toReactFlowNodes(dgNodes: DGNode[], dgEdges: DGEdge[]): RFNode[] {
+  const containers = dgNodes.filter((n) => n.type === 'container');
+  const networks = dgNodes.filter((n) => n.type === 'network');
+  const volumes = dgNodes.filter((n) => n.type === 'volume');
 
-  const groups = buildNetworkGroups(networks, containers, dfEdges);
+  const groups = buildNetworkGroups(networks, containers, dgEdges);
   const containerNodes = buildContainerNodes(containers);
   const groupIds = new Set(groups.map((n) => n.id));
-  const volumeNodes = buildVolumeNodes(volumes, containers, dfEdges, groupIds);
+  const volumeNodes = buildVolumeNodes(volumes, containers, dgEdges, groupIds);
 
   return [...groups, ...containerNodes, ...volumeNodes];
 }
 
 /**
- * Converts domain edges (DFEdge) into React Flow edges with appropriate
+ * Converts domain edges (DGEdge) into React Flow edges with appropriate
  * stroke colors and active/inactive state based on endpoint container status.
  */
-export function toReactFlowEdges(dfEdges: DFEdge[], dfNodes: DFNode[], defaultStroke: string): RFEdge[] {
-  const nodeMap = new Map(dfNodes.map((n) => [n.id, n]));
+export function toReactFlowEdges(dgEdges: DGEdge[], dgNodes: DGNode[], defaultStroke: string): RFEdge[] {
+  const nodeMap = new Map(dgNodes.map((n) => [n.id, n]));
 
-  return dfEdges.filter((e) => nodeMap.has(e.source) && nodeMap.has(e.target)).map((e) => {
+  return dgEdges.filter((e) => nodeMap.has(e.source) && nodeMap.has(e.target)).map((e) => {
     const isVolume = e.type === 'volume_mount';
     const isSecondary = e.type === 'secondary_network';
 

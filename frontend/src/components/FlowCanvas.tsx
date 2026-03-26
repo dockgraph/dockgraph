@@ -22,7 +22,7 @@ import { toReactFlowNodes, toReactFlowEdges } from '../utils/graphTransform';
 import { useSelectionHighlight } from '../hooks/useSelectionHighlight';
 import { networkColor } from '../utils/colors';
 import { useTheme } from '../theme';
-import type { DFNode, DFEdge } from '../types';
+import type { DGNode, DGEdge } from '../types';
 
 const nodeTypes = {
   containerNode: ContainerNode,
@@ -35,22 +35,22 @@ const edgeTypes = {
 };
 
 interface FlowCanvasProps {
-  dfNodes: DFNode[];
-  dfEdges: DFEdge[];
+  dgNodes: DGNode[];
+  dgEdges: DGEdge[];
   connected: boolean;
 }
 
-export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
+export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
   const { theme } = useTheme();
 
   useEffect(() => {
-    if (dfNodes.length === 0) return;
+    if (dgNodes.length === 0) return;
     let cancelled = false;
 
-    const rfNodes = toReactFlowNodes(dfNodes, dfEdges);
-    const rfEdges = toReactFlowEdges(dfEdges, dfNodes, theme.edgeStroke);
+    const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
+    const rfEdges = toReactFlowEdges(dgEdges, dgNodes, theme.edgeStroke);
 
     computeLayout(rfNodes, rfEdges).then((layout) => {
       if (cancelled) return;
@@ -59,7 +59,7 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
     });
 
     return () => { cancelled = true; };
-  }, [dfNodes, dfEdges, setNodes, setEdges, theme.edgeStroke]);
+  }, [dgNodes, dgEdges, setNodes, setEdges, theme.edgeStroke]);
 
   const { styledNodes, styledEdges, onNodeClick, onEdgeClick, onPaneClick } =
     useSelectionHighlight(nodes, edges);
@@ -97,7 +97,7 @@ export function FlowCanvas({ dfNodes, dfEdges, connected }: FlowCanvasProps) {
           maskColor={theme.minimapMask}
           nodeColor={(node) => {
             if (node.type === 'networkGroup') {
-              return networkColor((node.data as { dfNode: DFNode }).dfNode.name) + '40';
+              return networkColor((node.data as { dgNode: DGNode }).dgNode.name) + '40';
             }
             if (node.type === 'volumeNode') {
               return '#f9731640';

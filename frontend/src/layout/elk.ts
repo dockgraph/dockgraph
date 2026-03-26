@@ -22,7 +22,7 @@ function measureNodeWidth(nodes: RFNode[]): number {
   let maxW = 0;
   for (const n of nodes) {
     if (n.type === 'networkGroup') continue;
-    const label = (n.data as { dfNode: { name: string } }).dfNode.name;
+    const label = (n.data as { dgNode: { name: string } }).dgNode.name;
     const isVolume = n.type === 'volumeNode';
     ctx.font = isVolume ? '600 11px sans-serif' : '600 12px sans-serif';
     const textW = ctx.measureText(label).width;

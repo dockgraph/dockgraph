@@ -35,7 +35,7 @@ src/
 │   ├── colors.ts             # Deterministic network colors, status palette
 │   └── constants.ts          # Shared layout and visual constants
 ├── theme.tsx            # Dark/light theme context with localStorage
-├── types.ts             # Domain types (DFNode, DFEdge, GraphSnapshot)
+├── types.ts             # Domain types (DGNode, DGEdge, GraphSnapshot)
 ├── App.tsx              # Root component with providers and global styles
 └── main.tsx             # Entry point
 ```
