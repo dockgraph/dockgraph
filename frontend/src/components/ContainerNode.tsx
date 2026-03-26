@@ -2,7 +2,7 @@ import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { STATUS_COLORS } from '../utils/colors';
 import { useTheme } from '../theme';
-import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE } from '../utils/constants';
+import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY } from '../utils/constants';
 import type { ContainerNodeData } from '../types';
 
 const ellipsis: React.CSSProperties = {
@@ -17,6 +17,9 @@ export function ContainerNode({ data }: NodeProps) {
   const { theme } = useTheme();
   const statusColor = STATUS_COLORS[dfNode.status ?? 'exited'] ?? STATUS_COLORS.exited;
   const isGhost = dfNode.status === 'not_running';
+  const isActive = dfNode.status === 'running' || dfNode.status === 'unhealthy';
+  const isPaused = dfNode.status === 'paused';
+  const opacity = isActive ? 1 : isPaused ? PAUSED_OPACITY : INACTIVE_OPACITY;
 
   return (
     <div
@@ -32,7 +35,7 @@ export function ContainerNode({ data }: NodeProps) {
         height: CONTAINER_NODE_HEIGHT,
         boxSizing: 'border-box',
         overflow: 'hidden',
-        opacity: isGhost ? 0.5 : 1,
+        opacity,
       }}
     >
       <NodeHandles />

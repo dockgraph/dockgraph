@@ -188,7 +188,7 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 	}
 
 	for _, v := range res.volumes {
-		snap.Nodes = append(snap.Nodes, buildVolumeNode(v.Name, v.Driver))
+		snap.Nodes = append(snap.Nodes, buildVolumeNode(v.Name, v.Driver, "created"))
 	}
 
 	// Deterministic ordering prevents false-positive diffs in the state manager's merge.

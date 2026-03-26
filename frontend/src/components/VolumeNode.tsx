@@ -2,19 +2,21 @@ import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { useTheme } from '../theme';
 import type { VolumeNodeData } from '../types';
+import { INACTIVE_OPACITY } from '../utils/constants';
 
 export function VolumeNode({ data }: NodeProps) {
   const { dfNode, nodeWidth } = data as unknown as VolumeNodeData;
   const w = (nodeWidth ?? 200) - 4;
   const { theme } = useTheme();
+  const isGhost = dfNode.status === 'not_running';
 
   return (
     <div
       style={{
         background: theme.nodeBg,
-        borderTop: `1px solid ${theme.nodeBorder}`,
-        borderRight: `1px solid ${theme.nodeBorder}`,
-        borderBottom: `1px solid ${theme.nodeBorder}`,
+        borderTop: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
+        borderRight: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
+        borderBottom: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
         borderLeft: '3px solid #94a3b8',
         borderRadius: 4,
         padding: '5px 10px',
@@ -24,6 +26,7 @@ export function VolumeNode({ data }: NodeProps) {
         width: w,
         height: 40,
         boxSizing: 'border-box',
+        opacity: isGhost ? INACTIVE_OPACITY : 1,
       }}
     >
       <NodeHandles />

@@ -46,7 +46,7 @@ func buildComposeVolumeNodes(project *composetypes.Project, naming composeNaming
 	var nodes []Node
 	for name := range project.Volumes {
 		fullName := naming.volume(name)
-		node := buildVolumeNode(fullName, "")
+		node := buildVolumeNode(fullName, "", "not_running")
 		node.Source = sourceName
 		nodes = append(nodes, node)
 	}

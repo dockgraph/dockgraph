@@ -15,5 +15,11 @@ export const EDGE_FADE_OPACITY = 0.15;
 /** Maximum delay between WebSocket reconnection attempts (ms). */
 export const RECONNECT_MAX_DELAY = 30_000;
 
+/** Opacity for paused container nodes. */
+export const PAUSED_OPACITY = 0.7;
+
+/** Opacity for inactive (exited/created/dead/ghost) nodes. */
+export const INACTIVE_OPACITY = 0.5;
+
 /** Diameter of the status indicator dot on container nodes. */
 export const STATUS_DOT_SIZE = 6;
