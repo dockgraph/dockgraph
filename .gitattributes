@@ -1,0 +1,35 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Go
+*.go text diff=golang
+go.sum linguist-generated
+
+# Frontend
+*.ts text diff
+*.tsx text diff
+*.js text diff
+*.css text diff
+*.html text diff
+
+# Config
+*.yml text diff
+*.yaml text diff
+*.json text diff
+*.toml text diff
+Dockerfile* linguist-language=Dockerfile
+Makefile linguist-language=Makefile
+
+# Documentation
+*.md text diff=markdown
+
+# Binary / generated
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Vendored / generated — exclude from language stats
+frontend/package-lock.json linguist-generated
