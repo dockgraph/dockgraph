@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -20,8 +21,16 @@ import (
 	"github.com/docker/docker/client"
 )
 
+// Version is set at build time via -ldflags.
+var Version = "dev"
+
 func main() {
 	cfg := LoadConfig()
+
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println("dockgraph", Version)
+		os.Exit(0)
+	}
 
 	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {
 		client := &http.Client{Timeout: 5 * time.Second}
