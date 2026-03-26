@@ -120,8 +120,8 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 				debounceTimer.Stop()
 			}
 			// 500ms debounce: Docker emits a burst of events during compose up/down,
-		// and polling on every event would waste resources.
-		debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+			// and polling on every event would waste resources.
+			debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
 				select {
 				case debounceCh <- struct{}{}:
 				default:

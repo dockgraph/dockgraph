@@ -1,0 +1,50 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - goconst
+    - misspell
+    - revive
+    - gocritic
+    - unconvert
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Closer).Close
+        - (net.Conn).Close
+        - (*github.com/gorilla/websocket.Conn).Close
+        - (*github.com/gorilla/websocket.Conn).WriteMessage
+        - (*github.com/gorilla/websocket.Conn).SetReadDeadline
+    goconst:
+      min-occurrences: 4
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer # common Go pattern for startup fatal errors
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters: [errcheck, goconst]
+      - source: "defer "
+        linters: [errcheck]
+    paths:
+      - vendor
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofumpt

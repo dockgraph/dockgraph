@@ -141,14 +141,15 @@ func (c *wsClient) readPump(h *Hub) {
 // Messages are dropped for slow clients to prevent backpressure.
 func (h *Hub) Broadcast(msg collector.StateMessage) {
 	var wire collector.WireMessage
-	if msg.Type == "snapshot" && msg.Snapshot != nil {
+	switch {
+	case msg.Type == "snapshot" && msg.Snapshot != nil:
 		wire = collector.NewSnapshotMessage(*msg.Snapshot)
 		h.mu.Lock()
 		h.current = msg.Snapshot
 		h.mu.Unlock()
-	} else if msg.Type == "delta" && msg.Delta != nil {
+	case msg.Type == "delta" && msg.Delta != nil:
 		wire = collector.NewDeltaMessage(*msg.Delta)
-	} else {
+	default:
 		return
 	}
 

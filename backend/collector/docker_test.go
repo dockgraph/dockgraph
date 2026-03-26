@@ -6,7 +6,6 @@ import (
 
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/network"
 	networktypes "github.com/docker/docker/api/types/network"
 )
 
@@ -162,9 +161,9 @@ func TestExtractPortsEmpty(t *testing.T) {
 func TestResolveNetworkNames(t *testing.T) {
 	networks := []networktypes.Summary{
 		{ID: "abc", Name: "my-app-net"},
-		{ID: "def", Name: "bridge"},  // built-in, excluded
-		{ID: "ghi", Name: "host"},    // built-in, excluded
-		{ID: "jkl", Name: "none"},    // built-in, excluded
+		{ID: "def", Name: "bridge"}, // built-in, excluded
+		{ID: "ghi", Name: "host"},   // built-in, excluded
+		{ID: "jkl", Name: "none"},   // built-in, excluded
 		{ID: "mno", Name: "backend"},
 	}
 
@@ -191,14 +190,14 @@ func TestResolveNetworkNamesEmpty(t *testing.T) {
 func TestResolveServiceNames(t *testing.T) {
 	containers := []containertypes.Summary{
 		{
-			Names:  []string{"/myapp-web-1"},
+			Names: []string{"/myapp-web-1"},
 			Labels: map[string]string{
 				"com.docker.compose.project": "myapp",
 				"com.docker.compose.service": "web",
 			},
 		},
 		{
-			Names:  []string{"/myapp-db-1"},
+			Names: []string{"/myapp-db-1"},
 			Labels: map[string]string{
 				"com.docker.compose.project": "myapp",
 				"com.docker.compose.service": "db",
@@ -228,7 +227,7 @@ func TestResolveServiceNames(t *testing.T) {
 func TestClassifyContainerNetworks(t *testing.T) {
 	container := containertypes.Summary{
 		NetworkSettings: &containertypes.NetworkSettingsSummary{
-			Networks: map[string]*network.EndpointSettings{
+			Networks: map[string]*networktypes.EndpointSettings{
 				"backend": {NetworkID: "net-abc"},
 				"shared":  {NetworkID: "net-def"},
 			},
@@ -264,7 +263,7 @@ func TestClassifyContainerNetworksNilSettings(t *testing.T) {
 func TestClassifyContainerNetworksUnknownID(t *testing.T) {
 	container := containertypes.Summary{
 		NetworkSettings: &containertypes.NetworkSettingsSummary{
-			Networks: map[string]*network.EndpointSettings{
+			Networks: map[string]*networktypes.EndpointSettings{
 				"bridge": {NetworkID: "unknown-id"},
 			},
 		},
@@ -285,7 +284,7 @@ func TestClassifyContainerNetworksUnknownID(t *testing.T) {
 func TestBuildContainerEdges(t *testing.T) {
 	container := containertypes.Summary{
 		NetworkSettings: &containertypes.NetworkSettingsSummary{
-			Networks: map[string]*network.EndpointSettings{
+			Networks: map[string]*networktypes.EndpointSettings{
 				"primary": {NetworkID: "net-1"},
 				"shared":  {NetworkID: "net-2"},
 			},
@@ -341,7 +340,7 @@ func TestBuildContainerEdges(t *testing.T) {
 func TestBuildContainerEdgesNoLabels(t *testing.T) {
 	container := containertypes.Summary{
 		NetworkSettings: &containertypes.NetworkSettingsSummary{
-			Networks: map[string]*network.EndpointSettings{
+			Networks: map[string]*networktypes.EndpointSettings{
 				"only": {NetworkID: "net-1"},
 			},
 		},

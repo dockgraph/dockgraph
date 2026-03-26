@@ -18,7 +18,7 @@ type composeNaming struct {
 	project string
 }
 
-func (n composeNaming) network(name string) string  { return n.project + "_" + name }
+func (n composeNaming) network(name string) string   { return n.project + "_" + name }
 func (n composeNaming) volume(name string) string    { return n.project + "_" + name }
 func (n composeNaming) container(name string) string { return n.project + "-" + name + "-1" }
 
@@ -59,7 +59,7 @@ func parseComposePorts(ports []composetypes.ServicePortConfig) []PortMapping {
 	for _, p := range ports {
 		if p.Published != "" {
 			var hostPort int
-			fmt.Sscanf(p.Published, "%d", &hostPort)
+			_, _ = fmt.Sscanf(p.Published, "%d", &hostPort)
 			result = append(result, PortMapping{
 				Host:      hostPort,
 				Container: int(p.Target),

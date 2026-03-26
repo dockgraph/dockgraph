@@ -95,7 +95,7 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 	}
 	defer watcher.Close()
 
-	filepath.WalkDir(c.dir, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(c.dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || !d.IsDir() {
 			return nil
 		}

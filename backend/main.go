@@ -14,11 +14,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/docker/docker/client"
 	"github.com/dockgraph/dockgraph/api"
 	"github.com/dockgraph/dockgraph/collector"
 	"github.com/dockgraph/dockgraph/frontend"
 	"github.com/dockgraph/dockgraph/state"
-	"github.com/docker/docker/client"
 )
 
 // Version is set at build time via -ldflags.
@@ -41,14 +41,14 @@ func main() {
 		os.Exit(0)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		log.Fatalf("failed to create Docker client: %v", err)
 	}
 	defer dockerCli.Close()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	mgr := state.NewManager()
 
@@ -92,7 +92,7 @@ func main() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		server.Shutdown(shutdownCtx)
+		_ = server.Shutdown(shutdownCtx)
 	}()
 
 	log.Printf("dockgraph listening on %s", addr)
