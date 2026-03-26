@@ -55,11 +55,11 @@ A ~46-service simulated SaaS platform is included for showcasing DockGraph with 
 
 ## Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DF_PORT` | `7800` | HTTP listen port |
-| `DF_POLL_INTERVAL` | `30s` | Docker API polling interval |
-| `DF_COMPOSE_DIR` | `/app/compose` | Directory to scan for compose files |
+| Variable           | Default        | Description                         |
+| ------------------ | -------------- | ----------------------------------- |
+| `DF_PORT`          | `7800`         | HTTP listen port                    |
+| `DF_POLL_INTERVAL` | `30s`          | Docker API polling interval         |
+| `DF_COMPOSE_DIR`   | `/app/compose` | Directory to scan for compose files |
 
 ## How It Works
 
@@ -117,12 +117,18 @@ cd backend && go test ./...
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Backend | Go, Docker Engine API, gorilla/websocket |
-| Frontend | React 19, TypeScript, React Flow, ELK.js |
-| Build | Vite, multi-stage Dockerfile |
-| Runtime | distroless/static (production image) |
+| Component | Technology                               |
+| --------- | ---------------------------------------- |
+| Backend   | Go, Docker Engine API, gorilla/websocket |
+| Frontend  | React 19, TypeScript, React Flow, ELK.js |
+| Build     | Vite, multi-stage Dockerfile             |
+| Runtime   | distroless/static (production image)     |
+
+## Motivation
+
+Existing Docker UIs focus on container management, not on understanding how your infrastructure fits together. DockGraph was born out of the need to see the full picture — containers, networks, volumes, and their relationships — at a glance, updating in real time as things change.
+
+If you find this project useful, please consider giving it a ⭐ — it helps others discover it.
 
 ## Contributing
 
