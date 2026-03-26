@@ -24,7 +24,7 @@ All configuration is via environment variables:
 |----------|---------|-------------|
 | `DF_PORT` | `7800` | HTTP listen port |
 | `DF_POLL_INTERVAL` | `30s` | Docker API polling interval (Go duration) |
-| `DF_COMPOSE_DIR` | `/app/compose` | Directory to scan for `docker-compose.yml` files |
+| `DF_COMPOSE_DIR` | `/app/compose` | Directory to scan for compose files |
 
 ## Project Structure
 
@@ -57,7 +57,7 @@ Two independent collectors run concurrently:
 
 **DockerCollector** connects to the Docker daemon via the API client. It performs an initial poll on startup and then watches the event stream for topology-relevant changes (container create/destroy, network connect/disconnect). Events are debounced at 500ms to avoid redundant polls during burst operations like `docker compose up`.
 
-**ComposeCollector** scans a directory for `docker-compose.yml` files, parses them into graph nodes, and watches for filesystem changes via `fsnotify`. This surfaces services that are defined but not yet running, giving the UI a complete view of the intended topology.
+**ComposeCollector** scans a directory for compose files, parses them into graph nodes, and watches for filesystem changes via `fsnotify`. This surfaces services that are defined but not yet running, giving the UI a complete view of the intended topology.
 
 Both collectors implement the `Collector` interface and emit `StateUpdate` values on a channel.
 

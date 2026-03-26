@@ -8,7 +8,7 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 
 - **Live topology graph** — containers, networks, and volumes rendered as an interactive, zoomable graph
 - **Real-time updates** — watches the Docker event stream; the graph reflects changes within seconds
-- **Compose-aware** — parses `docker-compose.yml` files to show services that haven't started yet
+- **Compose-aware** — parses compose files to show services that haven't started yet
 - **Network grouping** — containers are visually grouped by their primary network
 - **Dependency visualization** — `depends_on` edges with animated flow dots for running services
 - **Volume relationships** — named volume mounts shown as edges between volumes and containers
@@ -24,28 +24,30 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 docker run -d \
   -p 7800:7800 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  --label dockgraph.self=true \
   dockgraph/dockgraph
 ```
 
 Open [http://localhost:7800](http://localhost:7800).
 
-To include Compose file definitions (shows services that aren't running yet):
+### Adding to your Docker Compose stack
 
-```bash
-docker run -d \
-  -p 7800:7800 \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v ./docker-compose.yml:/app/compose/docker-compose.yml:ro \
-  dockgraph/dockgraph
+Add DockGraph as a service in your existing `compose.yml`:
+
+```yaml
+services:
+  dockgraph:
+    image: dockgraph/dockgraph:latest
+    ports:
+      - "7800:7800"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./compose.yml:/app/compose/compose.yml:ro
+    labels:
+      dockgraph.self: "true"
 ```
 
-Or use Docker Compose:
-
-```bash
-git clone https://github.com/dockgraph/dockgraph.git
-cd dockgraph
-docker compose up -d
-```
+The compose file mount is optional — it lets DockGraph show services that aren't running yet.
 
 ## Demo
 
@@ -64,7 +66,7 @@ A ~46-service simulated SaaS platform is included for showcasing DockGraph with 
 DockGraph runs two collectors concurrently:
 
 1. **Docker collector** — polls the Docker API and watches the event stream for container, network, and volume changes
-2. **Compose collector** — parses `docker-compose.yml` files and watches for filesystem changes
+2. **Compose collector** — parses compose files and watches for filesystem changes
 
 Both feed into a state manager that merges their outputs (Docker runtime data takes precedence) and broadcasts the unified graph over WebSocket. The React frontend receives these updates and renders the topology using the [ELK](https://www.eclipse.org/elk/) layout algorithm.
 
@@ -78,17 +80,26 @@ For implementation details, see the [backend](backend/README.md) and [frontend](
 - Node.js 24+
 - Docker daemon
 
-### Backend
+### Using Make
 
 ```bash
+make build          # Build frontend + backend
+make test           # Run Go tests
+make lint           # Run all linters (golangci-lint + eslint)
+make docker         # Build Docker image locally
+make docker-up      # Start with Docker Compose
+make help           # Show all available targets
+```
+
+### Manual setup
+
+```bash
+# Backend
 cd backend
 go build -o dockgraph .
 ./dockgraph
-```
 
-### Frontend
-
-```bash
+# Frontend
 cd frontend
 npm install
 npm run dev
@@ -96,15 +107,11 @@ npm run dev
 
 The Vite dev server proxies `/ws` and `/healthz` to the backend at `localhost:7800`.
 
-### Docker Build
-
-```bash
-docker compose up --build
-```
-
 ### Running Tests
 
 ```bash
+make test
+# or
 cd backend && go test ./...
 ```
 
@@ -119,8 +126,10 @@ cd backend && go test ./...
 
 ## Contributing
 
-Contributions are welcome. Please open an issue to discuss changes before submitting a pull request.
+Contributions are welcome. Please read the [contributing guide](CONTRIBUTING.md) before submitting a pull request.
+
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md) code of conduct.
 
 ## License
 
-MIT
+This project is licensed under the [MIT License](LICENSE).
