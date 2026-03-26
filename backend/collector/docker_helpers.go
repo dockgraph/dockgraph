@@ -34,15 +34,23 @@ func containerStatus(state, statusStr string) string {
 }
 
 // extractPorts converts Docker's port list into the wire-format representation,
-// keeping only ports that have a published (host) mapping.
+// keeping only ports that have a published (host) mapping. Docker returns
+// separate entries for IPv4 and IPv6 bindings, so we deduplicate by
+// host:container pair.
 func extractPorts(apiPorts []containertypes.Port) []PortMapping {
+	type portKey struct{ host, container int }
+	seen := make(map[portKey]bool)
 	var ports []PortMapping
 	for _, p := range apiPorts {
 		if p.PublicPort != 0 {
-			ports = append(ports, PortMapping{
-				Host:      int(p.PublicPort),
-				Container: int(p.PrivatePort),
-			})
+			k := portKey{int(p.PublicPort), int(p.PrivatePort)}
+			if !seen[k] {
+				seen[k] = true
+				ports = append(ports, PortMapping{
+					Host:      k.host,
+					Container: k.container,
+				})
+			}
 		}
 	}
 	return ports
