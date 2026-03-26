@@ -1,8 +1,20 @@
+<div align="center" width="100%">
+    <img src="https://github.com/user-attachments/assets/7a3dfe49-8317-40e9-afe9-3a198dac0938" width="128" alt="DockGraph" />
+</div>
+
 # DockGraph
 
 Real-time Docker infrastructure visualizer. See your containers, networks, volumes, and their relationships as an interactive graph that updates live as your infrastructure changes.
 
-<!-- TODO: Add screenshot/GIF of DockGraph running with the demo stack -->
+[![GitHub Repo stars](https://img.shields.io/github/stars/dockgraph/dockgraph?logo=github&style=flat)](https://github.com/dockgraph/dockgraph)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/dockgraph/dockgraph/blob/main/LICENSE.md)
+[![Docker Pulls](https://img.shields.io/docker/pulls/dockgraph/dockgraph?logo=docker)](https://hub.docker.com/r/dockgraph/dockgraph/tags)
+[![Docker Image Version (latest semver)](https://img.shields.io/docker/v/dockgraph/dockgraph/latest?logo=docker&label=docker%20image%20ver.)](https://hub.docker.com/r/dockgraph/dockgraph/tags)
+[![GitHub last commit (branch)](https://img.shields.io/github/last-commit/dockgraph/dockgraph/main?logo=github)](https://github.com/dockgraph/dockgraph/commits/main/)
+
+<div align="center" width="100%">
+    <img src="https://github.com/user-attachments/assets/91f9ce7d-23da-45ca-963b-437106c14ddc" width="1280" alt="DockGraph screenshot" />
+</div>
 
 ## Features
 
@@ -39,34 +51,63 @@ services:
   dockgraph:
     image: dockgraph/dockgraph:latest
     ports:
-      - "7800:7800"
+      - "7800:7800"                                    # Web UI
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./compose.yml:/app/compose/compose.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # Docker API access
+      - ./compose.yml:/compose/compose.yml:ro          # Optional: show services before they start
     labels:
-      dockgraph.self: "true"
+      dockgraph.self: "true"                           # Hide DockGraph from its own graph
 ```
 
-The compose file mount is optional — it lets DockGraph show services that aren't running yet.
+Compose file mounts are optional — they let DockGraph show services defined in your compose files even when they aren't running yet. Just mount a file or directory and DockGraph picks it up automatically.
 
 ## Demo
 
-A ~46-service simulated SaaS platform is included for showcasing DockGraph with a realistic topology. See [`demo/README.md`](demo/README.md) for setup and architecture.
+Three demo stacks of increasing complexity are included for showcasing DockGraph at different scales — from a 5-service web app to a ~46-service SaaS platform. See [`demo/README.md`](demo/README.md) for setup and architecture.
 
 ## Configuration
 
-| Variable           | Default        | Description                         |
-| ------------------ | -------------- | ----------------------------------- |
-| `DF_PORT`          | `7800`         | HTTP listen port                    |
-| `DF_POLL_INTERVAL` | `30s`          | Docker API polling interval         |
-| `DF_COMPOSE_DIR`   | `/app/compose` | Directory to scan for compose files |
+DockGraph auto-detects compose files from mounted volumes — no extra configuration needed. Any bind-mounted file or directory (except the Docker socket) is scanned recursively for `.yml`/`.yaml` files.
+
+```yaml
+# Single file
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock:ro
+  - ./compose.yml:/compose/compose.yml:ro           # auto-detected
+
+# Entire directory (all .yml/.yaml files picked up recursively)
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock:ro
+  - ./stacks:/compose/stacks:ro                     # auto-detected
+
+# Multiple mounts
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock:ro
+  - ./frontend.yml:/compose/frontend.yml:ro          # auto-detected
+  - ./infra:/compose/infra:ro                        # auto-detected
+
+# Override auto-detection with DG_COMPOSE_PATH
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock:ro
+  - ./stacks:/compose/stacks:ro
+environment:
+  DG_COMPOSE_PATH: "/compose/stacks/production.yml"  # scan only this file
+```
+
+### Environment variables
+
+| Variable           | Default          | Description                                                  |
+| ------------------ | ---------------- | ------------------------------------------------------------ |
+| `DG_PORT`          | `7800`           | HTTP listen port                                             |
+| `DG_POLL_INTERVAL` | `30s`            | Docker API polling interval                                  |
+| `DG_COMPOSE_PATH`  | _(auto-detect)_  | Override: comma-separated list of compose files or directories to scan |
 
 ## How It Works
 
 DockGraph runs two collectors concurrently:
 
 1. **Docker collector** — polls the Docker API and watches the event stream for container, network, and volume changes
-2. **Compose collector** — parses compose files and watches for filesystem changes
+2. **Compose collector** — auto-detects compose files from mounted volumes, parses them, and watches for filesystem changes
 
 Both feed into a state manager that merges their outputs (Docker runtime data takes precedence) and broadcasts the unified graph over WebSocket. The React frontend receives these updates and renders the topology using the [ELK](https://www.eclipse.org/elk/) layout algorithm.
 

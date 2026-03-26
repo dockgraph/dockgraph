@@ -22,9 +22,11 @@ All configuration is via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DF_PORT` | `7800` | HTTP listen port |
-| `DF_POLL_INTERVAL` | `30s` | Docker API polling interval (Go duration) |
-| `DF_COMPOSE_DIR` | `/app/compose` | Directory to scan for compose files |
+| `DG_PORT` | `7800` | HTTP listen port |
+| `DG_POLL_INTERVAL` | `30s` | Docker API polling interval (Go duration) |
+| `DG_COMPOSE_PATH` | _(auto-detect)_ | Override: comma-separated compose files or directories to scan |
+
+Compose paths are auto-detected from the container's own bind mounts (excluding the Docker socket). Set `DG_COMPOSE_PATH` only if you need to override this behavior.
 
 ## Project Structure
 
@@ -42,7 +44,8 @@ backend/
 │   ├── docker_helpers.go    # Predicates: self-exclusion, topology events, status
 │   ├── node_builder.go      # Shared node constructors and network classification
 │   ├── compose.go           # Compose collector: file discovery + filesystem watcher
-│   └── compose_parser.go    # Parses compose YAML into graph nodes and edges
+│   ├── compose_parser.go    # Parses compose YAML into graph nodes and edges
+│   └── mounts.go            # Auto-detects compose paths from container bind mounts
 ├── state/
 │   └── manager.go           # Merges Docker + Compose snapshots, notifies subscribers
 └── frontend/
@@ -57,7 +60,7 @@ Two independent collectors run concurrently:
 
 **DockerCollector** connects to the Docker daemon via the API client. It performs an initial poll on startup and then watches the event stream for topology-relevant changes (container create/destroy, network connect/disconnect). Events are debounced at 500ms to avoid redundant polls during burst operations like `docker compose up`.
 
-**ComposeCollector** scans a directory for compose files, parses them into graph nodes, and watches for filesystem changes via `fsnotify`. This surfaces services that are defined but not yet running, giving the UI a complete view of the intended topology.
+**ComposeCollector** auto-detects compose files from the container's own bind mounts, parses them into graph nodes, and watches for filesystem changes via `fsnotify`. This surfaces services that are defined but not yet running, giving the UI a complete view of the intended topology.
 
 Both collectors implement the `Collector` interface and emit `StateUpdate` values on a channel.
 

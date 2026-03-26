@@ -1,4 +1,5 @@
-.PHONY: all build build-backend build-frontend test lint lint-backend lint-frontend vet fmt dev docker docker-up docker-down ci clean help
+.PHONY: all build build-backend build-frontend test lint lint-backend lint-frontend vet fmt dev docker docker-up docker-down ci clean help \
+	demo demo-down demo-small demo-small-down demo-medium demo-medium-down demo-large demo-large-down
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null)
 VERSION ?= $(if $(GIT_SHA),dev-$(GIT_SHA),dev)
@@ -45,9 +46,35 @@ docker-up: ## Start with Docker Compose
 docker-down: ## Stop Docker Compose
 	docker compose down
 
+# ── Demo stacks ───────────────────────────────────────────────
+
+demo: demo-small demo-medium demo-large ## Start all demo stacks
+
+demo-down: demo-small-down demo-medium-down demo-large-down ## Stop all demo stacks and remove volumes
+
+demo-small: ## Start small demo (5 services)
+	docker compose -f demo/compose-small.yml up -d
+
+demo-small-down: ## Stop small demo and remove volumes
+	docker compose -f demo/compose-small.yml down -v
+
+demo-medium: ## Start medium demo (~15 services)
+	docker compose -f demo/compose-medium.yml up -d
+
+demo-medium-down: ## Stop medium demo and remove volumes
+	docker compose -f demo/compose-medium.yml down -v
+
+demo-large: ## Start large demo (~46 services)
+	docker compose -f demo/compose-large.yml up -d
+
+demo-large-down: ## Stop large demo and remove volumes
+	docker compose -f demo/compose-large.yml down -v
+
+# ── Cleanup ───────────────────────────────────────────────────
+
 clean: ## Remove build artifacts
 	rm -f backend/dockgraph
 	rm -rf frontend/dist
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'

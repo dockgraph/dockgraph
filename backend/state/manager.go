@@ -126,6 +126,12 @@ func mergeSnapshots(composeSnaps, dockerSnaps map[string]*collector.GraphSnapsho
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
 	sort.Slice(edges, func(i, j int) bool { return edges[i].ID < edges[j].ID })
 
+	if nodes == nil {
+		nodes = []collector.Node{}
+	}
+	if edges == nil {
+		edges = []collector.Edge{}
+	}
 	return collector.GraphSnapshot{Nodes: nodes, Edges: edges}
 }
 

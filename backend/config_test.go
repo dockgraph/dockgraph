@@ -6,14 +6,17 @@ import (
 )
 
 func TestLoadConfigDefaults(t *testing.T) {
-	os.Unsetenv("DF_PORT")
-	os.Unsetenv("DF_POLL_INTERVAL")
-	os.Unsetenv("DF_COMPOSE_DIR")
+	os.Unsetenv("DG_PORT")
+	os.Unsetenv("DG_POLL_INTERVAL")
+	os.Unsetenv("DG_COMPOSE_PATH")
 
 	cfg := LoadConfig()
 
 	if cfg.Port != "7800" {
 		t.Errorf("expected default port 7800, got %s", cfg.Port)
+	}
+	if cfg.ComposePaths != nil {
+		t.Errorf("expected nil ComposePaths for auto-detect, got %v", cfg.ComposePaths)
 	}
 }
 
@@ -37,14 +40,14 @@ func TestLoadConfigRejectsInvalidPort(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.val == "" {
-				os.Unsetenv("DF_PORT")
+				os.Unsetenv("DG_PORT")
 			} else {
-				t.Setenv("DF_PORT", tt.val)
+				t.Setenv("DG_PORT", tt.val)
 			}
 
 			cfg := LoadConfig()
 			if cfg.Port != tt.want {
-				t.Errorf("DF_PORT=%q: got %s, want %s", tt.val, cfg.Port, tt.want)
+				t.Errorf("DG_PORT=%q: got %s, want %s", tt.val, cfg.Port, tt.want)
 			}
 		})
 	}

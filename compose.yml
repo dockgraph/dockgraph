@@ -8,11 +8,10 @@ services:
       # Host Port : Container Port
       - "7800:7800"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./compose.yml:/app/compose/compose.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker API access
+      - ./demo:/app/demo:ro                        # Demo stacks (optional)
     environment:
-      DF_PORT: "7800"                # HTTP listen port (must match container port)
-      DF_POLL_INTERVAL: "30s"        # Docker API polling interval
-      DF_COMPOSE_DIR: "/app/compose" # Directory to scan for compose files
+      DG_PORT: "7800"         # HTTP listen port (must match container port)
+      DG_POLL_INTERVAL: "30s" # Docker API polling interval
     labels:
       dockgraph.self: "true" # hides this container from the graph

@@ -1,0 +1,71 @@
+# Demo: Simple web stack
+# 5 services across 2 networks — a typical small project.
+
+name: demo-small
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  db_data:
+  redis_data:
+
+services:
+
+  # ── Edge ─────────────────────────────────────────────────────
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8070:80"
+    networks:
+      - frontend
+    depends_on:
+      app:
+        condition: service_started
+
+  # ── Application ──────────────────────────────────────────────
+
+  app:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  # ── Data ─────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: demo
+    networks:
+      - backend
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - backend
+    volumes:
+      - redis_data:/data
+
+  worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started

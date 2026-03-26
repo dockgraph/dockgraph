@@ -11,20 +11,21 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// ComposeCollector monitors Docker Compose files in a directory tree and
-// produces graph snapshots by parsing their service definitions.
+// ComposeCollector monitors Docker Compose files and produces graph snapshots
+// by parsing their service definitions. Paths can point to individual files
+// or directories (scanned recursively for .yml/.yaml files).
 type ComposeCollector struct {
-	dir     string
+	paths   []string
 	updates chan StateUpdate
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
 }
 
-// NewComposeCollector creates a collector that watches the given directory
-// for compose file changes.
-func NewComposeCollector(dir string) *ComposeCollector {
+// NewComposeCollector creates a collector that watches the given paths
+// for compose file changes. Each path can be a file or a directory.
+func NewComposeCollector(paths []string) *ComposeCollector {
 	return &ComposeCollector{
-		dir:     dir,
+		paths:   paths,
 		updates: make(chan StateUpdate, 16),
 		stopCh:  make(chan struct{}),
 	}
@@ -60,7 +61,7 @@ func (c *ComposeCollector) Stop() error {
 }
 
 func (c *ComposeCollector) scan(ctx context.Context) error {
-	files, err := findComposeFiles(c.dir)
+	files, err := resolveComposePaths(c.paths)
 	if err != nil {
 		return err
 	}
@@ -95,15 +96,28 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 	}
 	defer watcher.Close()
 
-	_ = filepath.WalkDir(c.dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || !d.IsDir() {
+	for _, p := range c.paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		if !info.IsDir() {
+			// Watch the parent directory so we catch writes to the file
+			if watchErr := watcher.Add(filepath.Dir(p)); watchErr != nil {
+				log.Printf("cannot watch %s: %v", filepath.Dir(p), watchErr)
+			}
+			continue
+		}
+		_ = filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
+			if err != nil || !d.IsDir() {
+				return nil
+			}
+			if watchErr := watcher.Add(path); watchErr != nil {
+				log.Printf("cannot watch %s: %v", path, watchErr)
+			}
 			return nil
-		}
-		if watchErr := watcher.Add(path); watchErr != nil {
-			log.Printf("cannot watch %s: %v", path, watchErr)
-		}
-		return nil
-	})
+		})
+	}
 
 	var debounceTimer *time.Timer
 	debounceCh := make(chan struct{}, 1)
@@ -137,27 +151,35 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 	}
 }
 
-// findComposeFiles recursively finds all .yaml/.yml files in a directory tree.
-func findComposeFiles(dir string) ([]string, error) {
+// resolveComposePaths expands a list of paths into concrete compose files.
+// Each path can be a .yml/.yaml file or a directory (scanned recursively).
+func resolveComposePaths(paths []string) ([]string, error) {
 	var files []string
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	for _, p := range paths {
+		info, err := os.Stat(p)
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		if !info.IsDir() {
+			files = append(files, p)
+			continue
+		}
+		err = filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			ext := filepath.Ext(d.Name())
+			if ext == ".yaml" || ext == ".yml" {
+				files = append(files, path)
+			}
 			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
-		if d.IsDir() {
-			return nil
-		}
-		ext := filepath.Ext(d.Name())
-		if ext == ".yaml" || ext == ".yml" {
-			files = append(files, path)
-		}
-		return nil
-	})
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
 	}
 	return files, nil
 }

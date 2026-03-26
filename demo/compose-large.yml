@@ -2,7 +2,7 @@
 # ~46 services across 7 networks with realistic dependency chains.
 # All application services use busybox (sleep) — minimal resource usage.
 
-name: acme-platform
+name: demo-large
 
 networks:
   public:
@@ -48,8 +48,8 @@ services:
   nginx-lb:
     image: nginx:alpine
     ports:
-      - "8443:443"
-      - "8080:80"
+      - "8445:443"
+      - "8085:80"
     networks:
       - public
     depends_on:

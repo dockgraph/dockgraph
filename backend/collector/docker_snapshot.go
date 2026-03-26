@@ -154,7 +154,10 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		return GraphSnapshot{}, err
 	}
 
-	var snap GraphSnapshot
+	snap := GraphSnapshot{
+		Nodes: []Node{},
+		Edges: []Edge{},
+	}
 
 	networkIDToName := resolveNetworkNames(res.networks)
 	for _, n := range res.networks {

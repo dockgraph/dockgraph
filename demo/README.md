@@ -1,34 +1,65 @@
-# Demo: Acme Platform
+# Demo Stacks
 
-A simulated SaaS platform with ~46 services across 7 networks for showcasing DockGraph with a realistic production-like topology.
+Three compose stacks of increasing complexity for showcasing DockGraph at different scales.
+
+| Stack | File | Services | Networks | Volumes | Description |
+|-------|------|----------|----------|---------|-------------|
+| **Small** | `compose-small.yml` | 5 | 2 | 2 | Classic web app: nginx, app, postgres, redis, worker |
+| **Medium** | `compose-medium.yml` | ~15 | 4 | 5 | E-commerce platform: edge, API services, workers, messaging |
+| **Large** | `compose-large.yml` | ~46 | 7 | 19 | Full SaaS platform: 6 tiers with CI/CD and observability |
 
 ## Quick Start
 
-```bash
-# From the project root
-cd demo
-docker compose up -d
+From the project root:
 
-# Or use the start script (also creates a "search-indexer" in stopped state)
-./start.sh
+```bash
+make demo-small          # Start small demo (5 services)
+make demo-medium         # Start medium demo (~15 services)
+make demo-large          # Start large demo (~46 services)
+make demo                # Start all three stacks
+
+make demo-small-down     # Stop small demo and remove volumes
+make demo-medium-down    # Stop medium demo and remove volumes
+make demo-large-down     # Stop large demo and remove volumes
+make demo-down           # Stop all demos and remove volumes
 ```
 
-Then start DockGraph from the project root to visualize it:
+Then start DockGraph to visualize:
 
 ```bash
 docker compose up -d
 # Open http://localhost:7800
 ```
 
-Tear down when done:
+## Small Stack
 
-```bash
-docker compose -f demo/docker-compose.yml down -v
+**5 services, 2 networks, 1 volume** — a classic three-tier web app.
+
+```
+nginx → app → postgres
+              → redis
+         worker → postgres, redis
 ```
 
-## Architecture
+| Network | Services |
+|---------|----------|
+| `frontend` | nginx, app |
+| `backend` | app, postgres, redis, worker |
 
-**7 networks, 20 volumes, ~46 services across 6 tiers:**
+## Medium Stack
+
+**~15 services, 4 networks, 5 volumes** — a mid-size e-commerce platform with microservices, async workers, and a message queue.
+
+| Network | Tier | Services |
+|---------|------|----------|
+| `public` | Edge | nginx, web-app, api-gateway |
+| `api` | Application | auth, product, order, notification |
+| `data` | Storage | postgres, redis, elasticsearch, minio |
+| `messaging` | Messaging | rabbitmq, order-worker, email-worker |
+
+## Large Stack
+
+**~46 services, 7 networks, 19 volumes** — a full production-like SaaS platform across 6 tiers.
 
 | Network | Tier | Services |
 |---------|------|----------|
@@ -40,41 +71,21 @@ docker compose -f demo/docker-compose.yml down -v
 | `monitoring` | Observability | prometheus, grafana, loki, tempo, alertmanager, node-exporter, cadvisor |
 | `ci` | CI/CD | ci-server, ci-runner-1, ci-runner-2, artifact-store, ci-postgres, ci-redis |
 
-## What It Demonstrates
+### Profiled Services
 
-| Feature | How it appears |
-|---------|----------------|
-| **Network isolation** | 7 colored network groups with clear tier separation |
-| **Multi-network containers** | api-gateway (public + api), order-service (api + messaging), prometheus (monitoring + api) |
-| **Deep dependency chains** | nginx-lb → api-gateway → order-service → postgres, rabbitmq |
-| **Shared databases** | Multiple API services all depending on postgres + redis |
-| **Volume mounts** | 20 named volumes across data, monitoring, and CI tiers |
-| **Message queues** | Workers connected to rabbitmq/kafka via the messaging network |
-| **Animated dependencies** | `depends_on` edges show flowing dots for ~31 active dependency relationships |
-| **Exposed ports** | nginx :80/:443, grafana :3000, rabbitmq :15672, minio :9001 |
-| **Container states** | Running, stopped, and created containers all visible with distinct styling |
-| **Profiled services** | `search-indexer` created but not started (use `./start.sh`) |
-
-## Profiled Services
-
-Some services are behind Compose profiles for on-demand use:
+Some services in the large stack are behind Compose profiles:
 
 ```bash
-# Start with the database backup service
-docker compose --profile with-backup up -d
-
-# Start with the staging proxy
-docker compose --profile with-staging up -d
-
-# Start with the load tester
-docker compose --profile with-loadtest up -d
+docker compose -f demo/compose-large.yml --profile ops up -d         # db-backup
+docker compose -f demo/compose-large.yml --profile staging up -d     # staging-proxy
+docker compose -f demo/compose-large.yml --profile testing up -d     # load-tester
 ```
 
 ## Resource Usage
 
 - Application services use `busybox` with `sleep infinity` — near-zero CPU and memory.
-- Infrastructure services (postgres, redis, prometheus, grafana, rabbitmq) use real images for realistic health checks and status data.
-- Total memory footprint is roughly ~1.5 GB with all services running.
+- Infrastructure services (postgres, redis, prometheus, grafana, rabbitmq) use real images for realistic health checks.
+- Estimated memory: small ~200 MB, medium ~500 MB, large ~1.5 GB.
 
 ## Experimenting
 
@@ -82,14 +93,11 @@ Try these to see DockGraph react in real time:
 
 ```bash
 # Stop a service and watch it turn grey
-docker stop acme-platform-order-service-1
-
-# Bring it back
-docker start acme-platform-order-service-1
+docker stop demo-medium-order-service-1
 
 # Scale up a worker
-docker compose -f demo/docker-compose.yml up -d --scale email-worker=3
+docker compose -f demo/compose-medium.yml up -d --scale email-worker=3
 
-# Take down an entire tier
-docker compose -f demo/docker-compose.yml stop kafka zookeeper
+# Take down a tier in the large stack
+docker compose -f demo/compose-large.yml stop kafka zookeeper
 ```
