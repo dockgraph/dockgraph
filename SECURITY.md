@@ -2,6 +2,8 @@
 
 ## Supported Versions
 
+We use [Semantic Versioning](https://semver.org/).
+
 | Version | Supported |
 |---------|-----------|
 | Latest  | Yes       |
