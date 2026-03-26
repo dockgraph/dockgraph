@@ -12,13 +12,13 @@ const ellipsis: React.CSSProperties = {
 };
 
 export function ContainerNode({ data }: NodeProps) {
-  const { dfNode, nodeWidth } = data as unknown as ContainerNodeData;
+  const { dgNode, nodeWidth } = data as unknown as ContainerNodeData;
   const w = (nodeWidth ?? 200) - 4; // subtract border widths
   const { theme } = useTheme();
-  const statusColor = STATUS_COLORS[dfNode.status ?? 'exited'] ?? STATUS_COLORS.exited;
-  const isGhost = dfNode.status === 'not_running';
-  const isActive = dfNode.status === 'running' || dfNode.status === 'unhealthy';
-  const isPaused = dfNode.status === 'paused';
+  const statusColor = STATUS_COLORS[dgNode.status ?? 'exited'] ?? STATUS_COLORS.exited;
+  const isGhost = dgNode.status === 'not_running';
+  const isActive = dgNode.status === 'running' || dgNode.status === 'unhealthy';
+  const isPaused = dgNode.status === 'paused';
   const opacity = isActive ? 1 : isPaused ? PAUSED_OPACITY : INACTIVE_OPACITY;
 
   return (
@@ -50,9 +50,9 @@ export function ContainerNode({ data }: NodeProps) {
             maxWidth: 'calc(100% - 16px)',
             display: 'inline-block',
           }}
-          title={dfNode.name}
+          title={dgNode.name}
         >
-          {dfNode.name}
+          {dgNode.name}
         </span>
         <span
           style={{
@@ -66,7 +66,7 @@ export function ContainerNode({ data }: NodeProps) {
         />
       </div>
 
-      {dfNode.image && (
+      {dgNode.image && (
         <div
           style={{
             ...ellipsis,
@@ -74,15 +74,15 @@ export function ContainerNode({ data }: NodeProps) {
             color: theme.nodeSubtext,
             marginTop: 2,
           }}
-          title={dfNode.image}
+          title={dgNode.image}
         >
-          {dfNode.image}
+          {dgNode.image}
         </div>
       )}
 
-      {dfNode.ports && dfNode.ports.length > 0 && (
+      {dgNode.ports && dgNode.ports.length > 0 && (
         <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {dfNode.ports.map((p) => (
+          {dgNode.ports.map((p) => (
             <span
               key={`${p.host}-${p.container}`}
               style={{

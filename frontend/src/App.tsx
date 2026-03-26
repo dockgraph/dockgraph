@@ -47,7 +47,7 @@ function AppContent() {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <style>{globalStyles(theme.mode)}</style>
-      <FlowCanvas dfNodes={nodes} dfEdges={edges} connected={connected} />
+      <FlowCanvas dgNodes={nodes} dgEdges={edges} connected={connected} />
     </div>
   );
 }

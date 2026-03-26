@@ -5,10 +5,10 @@ import type { VolumeNodeData } from '../types';
 import { INACTIVE_OPACITY } from '../utils/constants';
 
 export function VolumeNode({ data }: NodeProps) {
-  const { dfNode, nodeWidth } = data as unknown as VolumeNodeData;
+  const { dgNode, nodeWidth } = data as unknown as VolumeNodeData;
   const w = (nodeWidth ?? 200) - 4;
   const { theme } = useTheme();
-  const isGhost = dfNode.status === 'not_running';
+  const isGhost = dgNode.status === 'not_running';
 
   return (
     <div
@@ -42,12 +42,12 @@ export function VolumeNode({ data }: NodeProps) {
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}
-          title={dfNode.name}
+          title={dgNode.name}
         >
-          {dfNode.name}
+          {dgNode.name}
         </div>
-        {dfNode.driver && (
-          <div style={{ fontSize: 9, color: theme.nodeSubtext }}>{dfNode.driver}</div>
+        {dgNode.driver && (
+          <div style={{ fontSize: 9, color: theme.nodeSubtext }}>{dgNode.driver}</div>
         )}
       </div>
 

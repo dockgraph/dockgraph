@@ -3,7 +3,7 @@ export interface PortMapping {
   container: number;
 }
 
-export interface DFNode {
+export interface DGNode {
   id: string;
   type: 'container' | 'network' | 'volume';
   name: string;
@@ -16,7 +16,7 @@ export interface DFNode {
   source?: string;
 }
 
-export interface DFEdge {
+export interface DGEdge {
   id: string;
   type: 'volume_mount' | 'depends_on' | 'secondary_network';
   source: string;
@@ -25,15 +25,15 @@ export interface DFEdge {
 }
 
 export interface GraphSnapshot {
-  nodes: DFNode[];
-  edges: DFEdge[];
+  nodes: DGNode[];
+  edges: DGEdge[];
 }
 
 export interface DeltaUpdate {
-  nodesAdded?: DFNode[];
+  nodesAdded?: DGNode[];
   nodesRemoved?: string[];
-  nodesUpdated?: Partial<DFNode>[];
-  edgesAdded?: DFEdge[];
+  nodesUpdated?: Partial<DGNode>[];
+  edgesAdded?: DGEdge[];
   edgesRemoved?: string[];
 }
 
@@ -46,17 +46,17 @@ export interface WireMessage {
 // Node data types used by React Flow custom components
 
 export interface ContainerNodeData {
-  dfNode: DFNode;
+  dgNode: DGNode;
   nodeWidth?: number;
 }
 
 export interface VolumeNodeData {
-  dfNode: DFNode;
+  dgNode: DGNode;
   nodeWidth?: number;
 }
 
 export interface NetworkGroupData {
-  dfNode: DFNode;
+  dgNode: DGNode;
 }
 
 /** Typed payload for ELK-routed edges. */

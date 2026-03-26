@@ -5,9 +5,9 @@ import { useTheme } from '../theme';
 import type { NetworkGroupData } from '../types';
 
 export function NetworkGroup({ data }: NodeProps) {
-  const { dfNode } = data as unknown as NetworkGroupData;
+  const { dgNode } = data as unknown as NetworkGroupData;
   const { theme } = useTheme();
-  const color = networkColor(dfNode.name);
+  const color = networkColor(dgNode.name);
 
   return (
     <div
@@ -32,7 +32,7 @@ export function NetworkGroup({ data }: NodeProps) {
           textTransform: 'uppercase' as const,
         }}
       >
-        {dfNode.name}
+        {dgNode.name}
       </div>
 
     </div>

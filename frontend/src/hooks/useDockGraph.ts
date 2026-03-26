@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DFNode, DFEdge, GraphSnapshot, DeltaUpdate, WireMessage } from '../types';
+import type { DGNode, DGEdge, GraphSnapshot, DeltaUpdate, WireMessage } from '../types';
 import { RECONNECT_MAX_DELAY } from '../utils/constants';
 
 interface DockGraphState {
-  nodes: DFNode[];
-  edges: DFEdge[];
+  nodes: DGNode[];
+  edges: DGEdge[];
   connected: boolean;
 }
 
@@ -14,7 +14,7 @@ interface DockGraphState {
  * that is structurally identical to what we already have (same node IDs,
  * same statuses, same edge set).
  */
-function snapshotFingerprint(nodes: DFNode[], edges: DFEdge[]): string {
+function snapshotFingerprint(nodes: DGNode[], edges: DGEdge[]): string {
   const nk = (nodes ?? []).map((n) => `${n.id}:${n.status ?? ''}`).join(',');
   const ek = (edges ?? []).map((e) => e.id).join(',');
   return nk + '|' + ek;
@@ -70,7 +70,7 @@ export function useDockGraph(): DockGraphState {
         for (const update of delta.nodesUpdated) {
           const idx = nodes.findIndex((n) => n.id === update.id);
           if (idx !== -1) {
-            nodes[idx] = { ...nodes[idx], ...update } as DFNode;
+            nodes[idx] = { ...nodes[idx], ...update } as DGNode;
           }
         }
       }
