@@ -58,7 +58,20 @@ func main() {
 	}
 	defer dc.Stop()
 
-	cc := collector.NewComposeCollector(cfg.ComposeDir)
+	composePaths := cfg.ComposePaths
+	if len(composePaths) > 0 {
+		log.Printf("using explicit compose paths: %v", composePaths)
+	} else {
+		detected, detectErr := collector.DetectComposePaths(ctx, dockerCli)
+		if detectErr != nil {
+			log.Printf("failed to detect compose paths from mounts: %v", detectErr)
+		} else if len(detected) > 0 {
+			log.Printf("auto-detected compose paths from mounts: %v", detected)
+			composePaths = detected
+		}
+	}
+
+	cc := collector.NewComposeCollector(composePaths)
 	if err := cc.Start(ctx); err != nil {
 		log.Printf("compose collector start failed (continuing without): %v", err)
 	} else {
