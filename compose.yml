@@ -5,9 +5,14 @@ services:
     build: .
     container_name: dockgraph
     ports:
+      # Host Port : Container Port
       - "7800:7800"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./compose.yml:/app/compose/compose.yml:ro
+    environment:
+      DF_PORT: "7800"                # HTTP listen port (must match container port)
+      DF_POLL_INTERVAL: "30s"        # Docker API polling interval
+      DF_COMPOSE_DIR: "/app/compose" # Directory to scan for compose files
     labels:
       dockgraph.self: "true" # hides this container from the graph
