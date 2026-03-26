@@ -1,0 +1,169 @@
+# Demo: E-commerce platform
+# ~15 services across 4 networks — a mid-size microservice application.
+
+name: demo-medium
+
+networks:
+  public:
+    driver: bridge
+  api:
+    driver: bridge
+  data:
+    driver: bridge
+  messaging:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  elasticsearch-data:
+  minio-data:
+
+services:
+
+  # ── Public edge ──────────────────────────────────────────────
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8075:80"
+    networks:
+      - public
+    depends_on:
+      web-app:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+
+  web-app:
+    image: nginx:alpine
+    networks:
+      - public
+    depends_on:
+      api-gateway:
+        condition: service_started
+
+  api-gateway:
+    image: nginx:alpine
+    networks:
+      - public
+      - api
+    depends_on:
+      auth-service:
+        condition: service_started
+      product-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+
+  # ── API services ─────────────────────────────────────────────
+
+  auth-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  product-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+    depends_on:
+      postgres:
+        condition: service_started
+      elasticsearch:
+        condition: service_started
+
+  order-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - messaging
+    depends_on:
+      postgres:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  notification-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - messaging
+    depends_on:
+      rabbitmq:
+        condition: service_started
+
+  # ── Background workers ──────────────────────────────────────
+
+  order-worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - messaging
+    depends_on:
+      rabbitmq:
+        condition: service_started
+
+  email-worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - messaging
+    depends_on:
+      rabbitmq:
+        condition: service_started
+
+  # ── Data tier ────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: demo
+    networks:
+      - data
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - data
+    volumes:
+      - redis-data:/data
+
+  elasticsearch:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - data
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+  minio:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - data
+    volumes:
+      - minio-data:/data
+
+  # ── Messaging ────────────────────────────────────────────────
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "15673:15672"
+    networks:
+      - messaging
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq

@@ -1,11 +1,19 @@
 #!/bin/sh
 set -e
 
-COMPOSE_FILE="$(dirname "$0")/docker-compose.yml"
-PROJECT="acme-platform"
+DIR="$(dirname "$0")"
 
-# Start all default-profile services
-docker compose -p "$PROJECT" -f "$COMPOSE_FILE" up -d
+echo "Starting small demo (5 services)..."
+docker compose -f "$DIR/compose-small.yml" up -d
+
+echo "Starting medium demo (~15 services)..."
+docker compose -f "$DIR/compose-medium.yml" up -d
+
+echo "Starting large demo (~46 services)..."
+docker compose -f "$DIR/compose-large.yml" up -d
 
 # Create profiled services without starting them (shows "created" state)
-docker compose -p "$PROJECT" -f "$COMPOSE_FILE" --profile with-indexer create search-indexer
+docker compose -f "$DIR/compose-large.yml" --profile with-indexer create search-indexer
+
+echo ""
+echo "All demos running. Open http://localhost:7800 to visualize."
