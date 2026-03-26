@@ -15,8 +15,8 @@ interface DockGraphState {
  * same statuses, same edge set).
  */
 function snapshotFingerprint(nodes: DFNode[], edges: DFEdge[]): string {
-  const nk = nodes.map((n) => `${n.id}:${n.status ?? ''}`).join(',');
-  const ek = edges.map((e) => e.id).join(',');
+  const nk = (nodes ?? []).map((n) => `${n.id}:${n.status ?? ''}`).join(',');
+  const ek = (edges ?? []).map((e) => e.id).join(',');
   return nk + '|' + ek;
 }
 
@@ -44,10 +44,12 @@ export function useDockGraph(): DockGraphState {
   const maxRetryDelay = RECONNECT_MAX_DELAY;
 
   const applySnapshot = useCallback((snap: GraphSnapshot) => {
-    const fp = snapshotFingerprint(snap.nodes, snap.edges);
+    const nodes = snap.nodes ?? [];
+    const edges = snap.edges ?? [];
+    const fp = snapshotFingerprint(nodes, edges);
     if (fp === fingerprintRef.current) return;
     fingerprintRef.current = fp;
-    setState((prev) => ({ ...prev, nodes: snap.nodes, edges: snap.edges }));
+    setState((prev) => ({ ...prev, nodes, edges }));
   }, []);
 
   const applyDelta = useCallback((delta: DeltaUpdate) => {
