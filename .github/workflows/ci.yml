@@ -57,7 +57,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        # TODO: remove --legacy-peer-deps once typescript-eslint supports TypeScript 6
+        run: npm ci --legacy-peer-deps
         working-directory: frontend
 
       - name: Lint
