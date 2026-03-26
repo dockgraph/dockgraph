@@ -65,6 +65,23 @@ func TestParseVolumeMountEdges(t *testing.T) {
 	}
 }
 
+func TestComposeVolumeStatus(t *testing.T) {
+	snap, err := parseComposeFile(filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	volumes := filterNodes(snap.Nodes, "volume")
+	if len(volumes) == 0 {
+		t.Fatal("expected at least one volume")
+	}
+	for _, v := range volumes {
+		if v.Status != "not_running" {
+			t.Errorf("expected compose volume %s to have status not_running, got %s", v.Name, v.Status)
+		}
+	}
+}
+
 func filterNodes(nodes []Node, nodeType string) []Node {
 	var filtered []Node
 	for _, n := range nodes {

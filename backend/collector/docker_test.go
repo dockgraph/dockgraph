@@ -55,13 +55,16 @@ func TestBuildNetworkNode(t *testing.T) {
 }
 
 func TestBuildVolumeNode(t *testing.T) {
-	node := buildVolumeNode("pg-data", "local")
+	node := buildVolumeNode("pg-data", "local", "created")
 
 	if node.ID != "volume:pg-data" {
 		t.Errorf("expected ID volume:pg-data, got %s", node.ID)
 	}
 	if node.Type != "volume" {
 		t.Errorf("expected type volume, got %s", node.Type)
+	}
+	if node.Status != "created" {
+		t.Errorf("expected status created, got %s", node.Status)
 	}
 }
 

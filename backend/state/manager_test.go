@@ -45,6 +45,45 @@ func TestMergeSnapshots(t *testing.T) {
 	}
 }
 
+func TestMergeVolumeStatus(t *testing.T) {
+	m := NewManager()
+
+	composeSnap := collector.GraphSnapshot{
+		Nodes: []collector.Node{
+			{ID: "volume:myapp_pgdata", Type: "volume", Name: "myapp_pgdata", Status: "not_running", Source: "compose.yaml"},
+		},
+	}
+
+	dockerSnap := collector.GraphSnapshot{
+		Nodes: []collector.Node{
+			{ID: "volume:myapp_pgdata", Type: "volume", Name: "myapp_pgdata", Status: "created", Driver: "local"},
+		},
+	}
+
+	m.HandleUpdate("compose", collector.StateUpdate{Snapshot: &composeSnap})
+	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: &dockerSnap})
+
+	merged := m.Current()
+
+	var volNode *collector.Node
+	for _, n := range merged.Nodes {
+		if n.Name == "myapp_pgdata" && n.Type == "volume" {
+			volNode = &n
+			break
+		}
+	}
+
+	if volNode == nil {
+		t.Fatal("volume node not found in merged snapshot")
+	}
+	if volNode.Status != "created" {
+		t.Errorf("expected docker status 'created' to win, got %s", volNode.Status)
+	}
+	if volNode.Source != "compose.yaml" {
+		t.Errorf("expected compose source to be preserved, got %s", volNode.Source)
+	}
+}
+
 func TestSubscribe(t *testing.T) {
 	m := NewManager()
 	ch, unsub := m.Subscribe()

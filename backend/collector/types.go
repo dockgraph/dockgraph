@@ -21,7 +21,7 @@ type PortMapping struct {
 //
 //	"container" — Image, Status, Ports, Labels, NetworkID
 //	"network"   — Driver
-//	"volume"    — Driver
+//	"volume"    — Driver, Status
 type Node struct {
 	ID        string            `json:"id"`
 	Type      string            `json:"type"`

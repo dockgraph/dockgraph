@@ -26,12 +26,13 @@ func buildNetworkNode(name, driver string) Node {
 }
 
 // buildVolumeNode creates a volume-type graph node.
-func buildVolumeNode(name, driver string) Node {
+func buildVolumeNode(name, driver, status string) Node {
 	return Node{
 		ID:     "volume:" + name,
 		Type:   "volume",
 		Name:   name,
 		Driver: driver,
+		Status: status,
 	}
 }
 
