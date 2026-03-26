@@ -47,7 +47,8 @@ tmp/
 .github
 .gitignore
 .dockerignore
-docker-compose.yml
+compose.yml
+docker-compose.override.yml
 demo
 docs
 LICENSE

@@ -1,0 +1,13 @@
+name: dockgraph
+
+services:
+  dockgraph:
+    build: .
+    container_name: dockgraph
+    ports:
+      - "7800:7800"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./compose.yml:/app/compose/compose.yml:ro
+    labels:
+      dockgraph.self: "true" # hides this container from the graph
