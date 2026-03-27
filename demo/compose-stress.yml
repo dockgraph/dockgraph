@@ -1,0 +1,5129 @@
+name: stress-test
+
+networks:
+  frontend:
+  api:
+  workers:
+  data:
+  cache:
+  messaging:
+  monitoring:
+  auth:
+  search:
+  ml:
+
+volumes:
+  postgres-data:
+  redis-data:
+  elasticsearch-data:
+  mongo-data:
+  minio-data:
+
+services:
+
+  web-1:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3000:8080"
+  web-2:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - data
+  web-3:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - auth
+  web-4:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3003:80"
+  web-5:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-6:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - ml
+  web-7:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - messaging
+    ports:
+      - "3006:3000"
+  web-8:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-9:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - postgres-data:/data
+    depends_on:
+      web-8:
+        condition: service_started
+      web-4:
+        condition: service_started
+  web-10:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      web-9:
+        condition: service_started
+  web-11:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - api
+  web-12:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      web-4:
+        condition: service_started
+      web-6:
+        condition: service_started
+  web-13:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - monitoring
+    ports:
+      - "3012:3000"
+  web-14:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-15:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - elasticsearch-data:/data
+    depends_on:
+      web-1:
+        condition: service_started
+      web-2:
+        condition: service_started
+  web-16:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-17:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - redis-data:/data
+  web-18:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-19:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - cache
+  web-20:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - mongo-data:/data
+    depends_on:
+      web-8:
+        condition: service_started
+  web-21:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-22:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - messaging
+    volumes:
+      - elasticsearch-data:/data
+    ports:
+      - "3021:3000"
+  web-23:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-24:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      web-2:
+        condition: service_started
+  web-25:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      web-20:
+        condition: service_started
+      web-13:
+        condition: service_started
+  web-26:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-27:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-28:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-29:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - cache
+    depends_on:
+      web-16:
+        condition: service_started
+      web-23:
+        condition: service_started
+  web-30:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - mongo-data:/data
+  web-31:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3030:3000"
+  web-32:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - search
+  web-33:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - data
+    volumes:
+      - redis-data:/data
+    depends_on:
+      web-25:
+        condition: service_started
+  web-34:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      web-33:
+        condition: service_started
+    ports:
+      - "3033:8080"
+  web-35:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-36:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - data
+    depends_on:
+      web-17:
+        condition: service_started
+  web-37:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-38:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - messaging
+  web-39:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - mongo-data:/data
+    depends_on:
+      web-2:
+        condition: service_started
+  web-40:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-41:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - ml
+    ports:
+      - "3040:80"
+  web-42:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-43:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-44:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3043:80"
+  web-45:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      web-32:
+        condition: service_started
+    ports:
+      - "3044:3000"
+  web-46:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - redis-data:/data
+  web-47:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - ml
+    volumes:
+      - postgres-data:/data
+    ports:
+      - "3046:80"
+  web-48:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3047:8080"
+  web-49:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - data
+    depends_on:
+      web-8:
+        condition: service_started
+      web-22:
+        condition: service_started
+    ports:
+      - "3048:8080"
+  web-50:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - workers
+    depends_on:
+      web-23:
+        condition: service_started
+    ports:
+      - "3049:80"
+  web-51:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-52:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-53:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - api
+    depends_on:
+      web-30:
+        condition: service_started
+      web-44:
+        condition: service_started
+  web-54:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-55:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - ml
+    depends_on:
+      web-45:
+        condition: service_started
+  web-56:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - cache
+    volumes:
+      - redis-data:/data
+  web-57:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3056:80"
+  web-58:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - search
+    depends_on:
+      web-27:
+        condition: service_started
+      web-33:
+        condition: service_started
+  web-59:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - postgres-data:/data
+    ports:
+      - "3058:80"
+  web-60:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-61:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - messaging
+    volumes:
+      - redis-data:/data
+    depends_on:
+      web-22:
+        condition: service_started
+      web-35:
+        condition: service_started
+  web-62:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-63:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - redis-data:/data
+  web-64:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-65:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      web-8:
+        condition: service_started
+      web-23:
+        condition: service_started
+  web-66:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - monitoring
+    depends_on:
+      web-16:
+        condition: service_started
+  web-67:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3066:3000"
+  web-68:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - search
+  web-69:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  web-70:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - monitoring
+    ports:
+      - "3069:3000"
+  api-1:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-5:
+        condition: service_started
+  api-2:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - workers
+    ports:
+      - "3071:80"
+  api-3:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-4:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - messaging
+    depends_on:
+      web-21:
+        condition: service_started
+  api-5:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-6:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3075:80"
+  api-7:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    volumes:
+      - minio-data:/data
+  api-8:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-11:
+        condition: service_started
+  api-9:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    volumes:
+      - minio-data:/data
+    depends_on:
+      web-41:
+        condition: service_started
+  api-10:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - auth
+    depends_on:
+      web-46:
+        condition: service_started
+      web-7:
+        condition: service_started
+    ports:
+      - "3079:80"
+  api-11:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3080:80"
+  api-12:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - frontend
+    ports:
+      - "3081:8080"
+  api-13:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - monitoring
+    depends_on:
+      web-66:
+        condition: service_started
+      api-2:
+        condition: service_started
+  api-14:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-15:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-16:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3085:8080"
+  api-17:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    volumes:
+      - elasticsearch-data:/data
+  api-18:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-19:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3088:80"
+  api-20:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      api-16:
+        condition: service_started
+      api-19:
+        condition: service_started
+  api-21:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - messaging
+    volumes:
+      - elasticsearch-data:/data
+    depends_on:
+      web-21:
+        condition: service_started
+      web-12:
+        condition: service_started
+    ports:
+      - "3090:8080"
+  api-22:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-23:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-24:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-20:
+        condition: service_started
+      web-47:
+        condition: service_started
+  api-25:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-26:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-61:
+        condition: service_started
+    ports:
+      - "3095:3000"
+  api-27:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3096:3000"
+  api-28:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-13:
+        condition: service_started
+  api-29:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-30:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-52:
+        condition: service_started
+  api-31:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-32:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3101:3000"
+  api-33:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3102:3000"
+  api-34:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-35:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-36:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      api-30:
+        condition: service_started
+  api-37:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3106:3000"
+  api-38:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3107:3000"
+  api-39:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-40:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - monitoring
+    volumes:
+      - elasticsearch-data:/data
+  api-41:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-42:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-43:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      api-24:
+        condition: service_started
+      api-15:
+        condition: service_started
+    ports:
+      - "3112:8080"
+  api-44:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-45:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - messaging
+    volumes:
+      - elasticsearch-data:/data
+    ports:
+      - "3114:80"
+  api-46:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-47:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-17:
+        condition: service_started
+      web-5:
+        condition: service_started
+  api-48:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      api-23:
+        condition: service_started
+      api-12:
+        condition: service_started
+  api-49:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - monitoring
+  api-50:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - cache
+    depends_on:
+      api-3:
+        condition: service_started
+  api-51:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-52:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - data
+    ports:
+      - "3121:3000"
+  api-53:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-54:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    volumes:
+      - minio-data:/data
+    ports:
+      - "3123:8080"
+  api-55:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - ml
+    ports:
+      - "3124:3000"
+  api-56:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3125:8080"
+  api-57:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-58:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-59:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3128:3000"
+  api-60:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3129:80"
+  api-61:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - search
+    depends_on:
+      web-21:
+        condition: service_started
+      api-44:
+        condition: service_started
+  api-62:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      api-41:
+        condition: service_started
+  api-63:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    volumes:
+      - redis-data:/data
+  api-64:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - cache
+  api-65:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3134:8080"
+  api-66:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-67:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3136:80"
+  api-68:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-43:
+        condition: service_started
+  api-69:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-70:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-71:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-72:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    volumes:
+      - postgres-data:/data
+  api-73:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    volumes:
+      - redis-data:/data
+    ports:
+      - "3142:3000"
+  api-74:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - data
+  api-75:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - data
+    depends_on:
+      web-19:
+        condition: service_started
+  api-76:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+  api-77:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      api-42:
+        condition: service_started
+      web-16:
+        condition: service_started
+  api-78:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    volumes:
+      - elasticsearch-data:/data
+  api-79:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - cache
+  api-80:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+      - ml
+    volumes:
+      - elasticsearch-data:/data
+    ports:
+      - "3149:80"
+  api-81:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      api-75:
+        condition: service_started
+  api-82:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      api-4:
+        condition: service_started
+      api-68:
+        condition: service_started
+    ports:
+      - "3151:8080"
+  api-83:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-52:
+        condition: service_started
+      web-55:
+        condition: service_started
+  api-84:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    ports:
+      - "3153:3000"
+  api-85:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - api
+    depends_on:
+      web-28:
+        condition: service_started
+      api-51:
+        condition: service_started
+  worker-1:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-2:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - api
+    ports:
+      - "3156:3000"
+  worker-3:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - monitoring
+    volumes:
+      - elasticsearch-data:/data
+    depends_on:
+      web-38:
+        condition: service_started
+      web-24:
+        condition: service_started
+    ports:
+      - "3157:8080"
+  worker-4:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - data
+  worker-5:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      api-66:
+        condition: service_started
+      web-15:
+        condition: service_started
+  worker-6:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-7:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - cache
+    volumes:
+      - postgres-data:/data
+    depends_on:
+      web-2:
+        condition: service_started
+  worker-8:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-9:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-10:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - cache
+    ports:
+      - "3164:80"
+  worker-11:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - mongo-data:/data
+    depends_on:
+      web-61:
+        condition: service_started
+  worker-12:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - redis-data:/data
+    ports:
+      - "3166:80"
+  worker-13:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-14:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-15:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - data
+    volumes:
+      - elasticsearch-data:/data
+    depends_on:
+      web-46:
+        condition: service_started
+      web-45:
+        condition: service_started
+    ports:
+      - "3169:8080"
+  worker-16:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3170:3000"
+  worker-17:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      worker-9:
+        condition: service_started
+  worker-18:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      worker-3:
+        condition: service_started
+    ports:
+      - "3172:3000"
+  worker-19:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      api-19:
+        condition: service_started
+      api-54:
+        condition: service_started
+  worker-20:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - auth
+  worker-21:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3175:8080"
+  worker-22:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3176:3000"
+  worker-23:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      web-21:
+        condition: service_started
+      web-38:
+        condition: service_started
+    ports:
+      - "3177:8080"
+  worker-24:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-25:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - redis-data:/data
+    depends_on:
+      worker-6:
+        condition: service_started
+  worker-26:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-27:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - auth
+  worker-28:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      api-16:
+        condition: service_started
+      api-42:
+        condition: service_started
+    ports:
+      - "3182:3000"
+  worker-29:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-30:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-31:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - mongo-data:/data
+  worker-32:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-33:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - postgres-data:/data
+  worker-34:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3188:3000"
+  worker-35:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - redis-data:/data
+    ports:
+      - "3189:8080"
+  worker-36:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-37:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3191:3000"
+  worker-38:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      api-35:
+        condition: service_started
+      web-5:
+        condition: service_started
+  worker-39:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - messaging
+  worker-40:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-41:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      web-47:
+        condition: service_started
+  worker-42:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - redis-data:/data
+  worker-43:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3197:3000"
+  worker-44:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - ml
+  worker-45:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - minio-data:/data
+    ports:
+      - "3199:3000"
+  worker-46:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - ml
+    ports:
+      - "3200:3000"
+  worker-47:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3201:80"
+  worker-48:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-49:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - data
+    volumes:
+      - minio-data:/data
+    ports:
+      - "3203:8080"
+  worker-50:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      api-80:
+        condition: service_started
+    ports:
+      - "3204:8080"
+  worker-51:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - postgres-data:/data
+  worker-52:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-53:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3207:3000"
+  worker-54:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-55:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3209:8080"
+  worker-56:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3210:3000"
+  worker-57:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3211:80"
+  worker-58:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - redis-data:/data
+  worker-59:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      api-59:
+        condition: service_started
+      web-15:
+        condition: service_started
+    ports:
+      - "3213:8080"
+  worker-60:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - ml
+    ports:
+      - "3214:8080"
+  worker-61:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - minio-data:/data
+  worker-62:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - mongo-data:/data
+    depends_on:
+      worker-53:
+        condition: service_started
+      api-40:
+        condition: service_started
+    ports:
+      - "3216:3000"
+  worker-63:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - ml
+    depends_on:
+      web-39:
+        condition: service_started
+      web-14:
+        condition: service_started
+    ports:
+      - "3217:8080"
+  worker-64:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-65:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-66:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - data
+  worker-67:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3221:8080"
+  worker-68:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  worker-69:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - ml
+  worker-70:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  db-1:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    volumes:
+      - minio-data:/data
+  db-2:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-3:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      worker-21:
+        condition: service_started
+  db-4:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-5:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-6:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      web-60:
+        condition: service_started
+      worker-68:
+        condition: service_started
+    ports:
+      - "3230:3000"
+  db-7:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - auth
+    depends_on:
+      api-25:
+        condition: service_started
+      worker-23:
+        condition: service_started
+  db-8:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      worker-69:
+        condition: service_started
+      web-17:
+        condition: service_started
+  db-9:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      api-10:
+        condition: service_started
+  db-10:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-11:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      api-9:
+        condition: service_started
+    ports:
+      - "3235:3000"
+  db-12:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - search
+    ports:
+      - "3236:8080"
+  db-13:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - monitoring
+    ports:
+      - "3237:80"
+  db-14:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-15:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-16:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    volumes:
+      - redis-data:/data
+  db-17:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      api-72:
+        condition: service_started
+      worker-8:
+        condition: service_started
+  db-18:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    ports:
+      - "3242:80"
+  db-19:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      db-11:
+        condition: service_started
+      db-16:
+        condition: service_started
+  db-20:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      api-44:
+        condition: service_started
+      api-74:
+        condition: service_started
+    ports:
+      - "3244:3000"
+  db-21:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    ports:
+      - "3245:3000"
+  db-22:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-23:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-24:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      api-70:
+        condition: service_started
+      api-80:
+        condition: service_started
+  db-25:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      web-6:
+        condition: service_started
+  db-26:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    ports:
+      - "3250:3000"
+  db-27:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    volumes:
+      - redis-data:/data
+  db-28:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    volumes:
+      - postgres-data:/data
+  db-29:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-30:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  db-31:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      web-26:
+        condition: service_started
+      api-73:
+        condition: service_started
+  db-32:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    volumes:
+      - minio-data:/data
+    depends_on:
+      web-14:
+        condition: service_started
+      api-5:
+        condition: service_started
+  db-33:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    ports:
+      - "3257:3000"
+  db-34:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    ports:
+      - "3258:3000"
+  db-35:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  cache-1:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      api-63:
+        condition: service_started
+      worker-25:
+        condition: service_started
+    ports:
+      - "3260:8080"
+  cache-2:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      worker-60:
+        condition: service_started
+      api-47:
+        condition: service_started
+  cache-3:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      db-1:
+        condition: service_started
+    ports:
+      - "3262:80"
+  cache-4:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-5:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    volumes:
+      - mongo-data:/data
+    depends_on:
+      api-19:
+        condition: service_started
+  cache-6:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+      - workers
+    depends_on:
+      api-24:
+        condition: service_started
+      api-7:
+        condition: service_started
+  cache-7:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      api-29:
+        condition: service_started
+      web-56:
+        condition: service_started
+    ports:
+      - "3266:80"
+  cache-8:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-9:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+      - monitoring
+  cache-10:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      api-23:
+        condition: service_started
+  cache-11:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-12:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-13:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+      - frontend
+    depends_on:
+      api-65:
+        condition: service_started
+      worker-39:
+        condition: service_started
+  cache-14:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    volumes:
+      - postgres-data:/data
+    ports:
+      - "3273:80"
+  cache-15:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    volumes:
+      - redis-data:/data
+  cache-16:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    volumes:
+      - minio-data:/data
+    ports:
+      - "3275:8080"
+  cache-17:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+      - data
+    depends_on:
+      web-9:
+        condition: service_started
+    ports:
+      - "3276:3000"
+  cache-18:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    volumes:
+      - mongo-data:/data
+    depends_on:
+      api-30:
+        condition: service_started
+      web-34:
+        condition: service_started
+  cache-19:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    ports:
+      - "3278:80"
+  cache-20:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      web-21:
+        condition: service_started
+  cache-21:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+      - data
+    depends_on:
+      api-35:
+        condition: service_started
+      worker-34:
+        condition: service_started
+  cache-22:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    ports:
+      - "3281:8080"
+  cache-23:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-24:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-25:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    ports:
+      - "3284:3000"
+  cache-26:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-27:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+      - workers
+    depends_on:
+      db-20:
+        condition: service_started
+    ports:
+      - "3286:8080"
+  cache-28:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-29:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-30:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      worker-13:
+        condition: service_started
+      worker-23:
+        condition: service_started
+    ports:
+      - "3289:3000"
+  cache-31:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    volumes:
+      - elasticsearch-data:/data
+  cache-32:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-33:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    ports:
+      - "3292:80"
+  cache-34:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-35:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      web-48:
+        condition: service_started
+      worker-39:
+        condition: service_started
+    ports:
+      - "3294:8080"
+  cache-36:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-37:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-38:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      cache-33:
+        condition: service_started
+      api-42:
+        condition: service_started
+    ports:
+      - "3297:8080"
+  cache-39:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+      - frontend
+    ports:
+      - "3298:3000"
+  cache-40:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    ports:
+      - "3299:3000"
+  cache-41:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      web-34:
+        condition: service_started
+    ports:
+      - "3300:8080"
+  cache-42:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      api-46:
+        condition: service_started
+      cache-12:
+        condition: service_started
+  cache-43:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    ports:
+      - "3302:8080"
+  cache-44:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    volumes:
+      - mongo-data:/data
+    ports:
+      - "3303:3000"
+  cache-45:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    volumes:
+      - mongo-data:/data
+    ports:
+      - "3304:3000"
+  cache-46:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+      - auth
+    volumes:
+      - elasticsearch-data:/data
+  cache-47:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-48:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    volumes:
+      - redis-data:/data
+  cache-49:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    ports:
+      - "3308:8080"
+  cache-50:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-51:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-52:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+  cache-53:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    depends_on:
+      db-35:
+        condition: service_started
+      cache-22:
+        condition: service_started
+  cache-54:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+    ports:
+      - "3313:80"
+  cache-55:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - cache
+      - search
+    ports:
+      - "3314:3000"
+  queue-1:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-2:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-3:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-4:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3318:8080"
+  queue-5:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3319:80"
+  queue-6:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - auth
+    volumes:
+      - elasticsearch-data:/data
+  queue-7:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-8:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-9:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-10:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-11:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - data
+    ports:
+      - "3325:3000"
+  queue-12:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-13:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-14:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3328:8080"
+  queue-15:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-16:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - search
+    ports:
+      - "3330:80"
+  queue-17:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3331:8080"
+  queue-18:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      web-14:
+        condition: service_started
+      api-71:
+        condition: service_started
+    ports:
+      - "3332:8080"
+  queue-19:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - cache
+    depends_on:
+      cache-13:
+        condition: service_started
+      cache-19:
+        condition: service_started
+  queue-20:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - workers
+    depends_on:
+      cache-17:
+        condition: service_started
+  queue-21:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      web-26:
+        condition: service_started
+  queue-22:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3336:8080"
+  queue-23:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3337:80"
+  queue-24:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-25:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-26:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    volumes:
+      - minio-data:/data
+  queue-27:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - auth
+    volumes:
+      - mongo-data:/data
+    ports:
+      - "3341:3000"
+  queue-28:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - cache
+    ports:
+      - "3342:80"
+  queue-29:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-30:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      worker-69:
+        condition: service_started
+  queue-31:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - workers
+  queue-32:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-33:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-34:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3348:80"
+  queue-35:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - data
+  queue-36:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-37:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      api-75:
+        condition: service_started
+      worker-53:
+        condition: service_started
+  queue-38:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-39:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  queue-40:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - workers
+  monitor-1:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    volumes:
+      - redis-data:/data
+    depends_on:
+      cache-2:
+        condition: service_started
+      queue-19:
+        condition: service_started
+    ports:
+      - "3355:8080"
+  monitor-2:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - search
+    depends_on:
+      api-27:
+        condition: service_started
+      web-40:
+        condition: service_started
+  monitor-3:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    ports:
+      - "3357:3000"
+  monitor-4:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - ml
+  monitor-5:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-6:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - data
+    ports:
+      - "3360:80"
+  monitor-7:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-8:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - frontend
+    depends_on:
+      web-50:
+        condition: service_started
+      cache-11:
+        condition: service_started
+    ports:
+      - "3362:80"
+  monitor-9:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-10:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-11:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-12:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-13:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      api-9:
+        condition: service_started
+      db-19:
+        condition: service_started
+  monitor-14:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-15:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      worker-45:
+        condition: service_started
+    ports:
+      - "3369:80"
+  monitor-16:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-17:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - ml
+    depends_on:
+      monitor-12:
+        condition: service_started
+  monitor-18:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      api-4:
+        condition: service_started
+      worker-57:
+        condition: service_started
+  monitor-19:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - search
+  monitor-20:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-21:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-22:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-23:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-24:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-25:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    volumes:
+      - mongo-data:/data
+  monitor-26:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - frontend
+    volumes:
+      - redis-data:/data
+    depends_on:
+      worker-65:
+        condition: service_started
+      worker-7:
+        condition: service_started
+  monitor-27:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    ports:
+      - "3381:3000"
+  monitor-28:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-29:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - frontend
+    ports:
+      - "3383:3000"
+  monitor-30:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-31:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-32:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      web-9:
+        condition: service_started
+      db-3:
+        condition: service_started
+    ports:
+      - "3386:80"
+  monitor-33:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      monitor-23:
+        condition: service_started
+      api-38:
+        condition: service_started
+    ports:
+      - "3387:80"
+  monitor-34:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  monitor-35:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  auth-svc-1:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-2:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-3:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    ports:
+      - "3392:3000"
+  auth-svc-4:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    depends_on:
+      worker-41:
+        condition: service_started
+      worker-46:
+        condition: service_started
+    ports:
+      - "3393:8080"
+  auth-svc-5:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    volumes:
+      - postgres-data:/data
+    depends_on:
+      cache-18:
+        condition: service_started
+    ports:
+      - "3394:8080"
+  auth-svc-6:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    depends_on:
+      db-19:
+        condition: service_started
+  auth-svc-7:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    depends_on:
+      api-42:
+        condition: service_started
+      db-1:
+        condition: service_started
+  auth-svc-8:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-9:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - search
+    ports:
+      - "3398:3000"
+  auth-svc-10:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-11:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-12:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - search
+  auth-svc-13:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    volumes:
+      - minio-data:/data
+    ports:
+      - "3402:8080"
+  auth-svc-14:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    depends_on:
+      api-8:
+        condition: service_started
+  auth-svc-15:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - cache
+    depends_on:
+      db-34:
+        condition: service_started
+      api-21:
+        condition: service_started
+  auth-svc-16:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - messaging
+    volumes:
+      - elasticsearch-data:/data
+  auth-svc-17:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    ports:
+      - "3406:3000"
+  auth-svc-18:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    ports:
+      - "3407:80"
+  auth-svc-19:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    ports:
+      - "3408:80"
+  auth-svc-20:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-21:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    depends_on:
+      cache-15:
+        condition: service_started
+  auth-svc-22:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    ports:
+      - "3411:3000"
+  auth-svc-23:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    volumes:
+      - redis-data:/data
+    depends_on:
+      worker-21:
+        condition: service_started
+  auth-svc-24:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    volumes:
+      - postgres-data:/data
+  auth-svc-25:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - search
+    depends_on:
+      api-78:
+        condition: service_started
+      cache-25:
+        condition: service_started
+  auth-svc-26:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-27:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-28:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-29:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-30:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - api
+    depends_on:
+      queue-2:
+        condition: service_started
+  auth-svc-31:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - api
+    ports:
+      - "3420:8080"
+  auth-svc-32:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - ml
+    ports:
+      - "3421:3000"
+  auth-svc-33:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    ports:
+      - "3422:3000"
+  auth-svc-34:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - cache
+  auth-svc-35:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-36:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-37:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-38:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - frontend
+  auth-svc-39:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-40:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-41:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    depends_on:
+      web-17:
+        condition: service_started
+      cache-12:
+        condition: service_started
+  auth-svc-42:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-43:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    volumes:
+      - mongo-data:/data
+    ports:
+      - "3432:80"
+  auth-svc-44:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    depends_on:
+      cache-39:
+        condition: service_started
+  auth-svc-45:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    depends_on:
+      worker-62:
+        condition: service_started
+    ports:
+      - "3434:80"
+  auth-svc-46:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    depends_on:
+      queue-35:
+        condition: service_started
+      worker-5:
+        condition: service_started
+  auth-svc-47:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    volumes:
+      - redis-data:/data
+  auth-svc-48:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-49:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - workers
+  auth-svc-50:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-51:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-52:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    volumes:
+      - minio-data:/data
+    ports:
+      - "3441:80"
+  auth-svc-53:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+  auth-svc-54:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+      - data
+    depends_on:
+      db-28:
+        condition: service_started
+  auth-svc-55:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - auth
+    ports:
+      - "3444:8080"
+  search-1:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-2:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-3:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-4:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-5:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-6:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - api
+    volumes:
+      - redis-data:/data
+  search-7:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    volumes:
+      - redis-data:/data
+    depends_on:
+      queue-7:
+        condition: service_started
+      auth-svc-21:
+        condition: service_started
+    ports:
+      - "3451:8080"
+  search-8:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      api-18:
+        condition: service_started
+      api-15:
+        condition: service_started
+  search-9:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      queue-10:
+        condition: service_started
+    ports:
+      - "3453:8080"
+  search-10:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    volumes:
+      - mongo-data:/data
+  search-11:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - auth
+    depends_on:
+      db-27:
+        condition: service_started
+      api-22:
+        condition: service_started
+    ports:
+      - "3455:8080"
+  search-12:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - workers
+  search-13:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - ml
+  search-14:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-15:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-16:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - api
+    ports:
+      - "3460:80"
+  search-17:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    volumes:
+      - postgres-data:/data
+    ports:
+      - "3461:3000"
+  search-18:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - cache
+  search-19:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-20:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    ports:
+      - "3464:3000"
+  search-21:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      api-68:
+        condition: service_started
+      queue-33:
+        condition: service_started
+  search-22:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    ports:
+      - "3466:8080"
+  search-23:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - api
+    depends_on:
+      queue-2:
+        condition: service_started
+  search-24:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      queue-32:
+        condition: service_started
+  search-25:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - auth
+    ports:
+      - "3469:8080"
+  search-26:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    ports:
+      - "3470:3000"
+  search-27:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - auth
+    depends_on:
+      cache-14:
+        condition: service_started
+      worker-58:
+        condition: service_started
+  search-28:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - workers
+    depends_on:
+      db-18:
+        condition: service_started
+      cache-29:
+        condition: service_started
+    ports:
+      - "3472:3000"
+  search-29:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - workers
+    ports:
+      - "3473:80"
+  search-30:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-31:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - auth
+    volumes:
+      - redis-data:/data
+  search-32:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-33:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      queue-33:
+        condition: service_started
+      db-32:
+        condition: service_started
+  search-34:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  search-35:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    ports:
+      - "3479:80"
+  search-36:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    ports:
+      - "3480:80"
+  search-37:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - cache
+  search-38:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    volumes:
+      - postgres-data:/data
+  search-39:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      worker-70:
+        condition: service_started
+    ports:
+      - "3483:8080"
+  search-40:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - workers
+    volumes:
+      - postgres-data:/data
+    depends_on:
+      search-30:
+        condition: service_started
+      db-3:
+        condition: service_started
+  ml-svc-1:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-2:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-3:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    volumes:
+      - elasticsearch-data:/data
+  ml-svc-4:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - data
+  ml-svc-5:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-6:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    depends_on:
+      api-36:
+        condition: service_started
+  ml-svc-7:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-8:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    depends_on:
+      search-12:
+        condition: service_started
+      queue-6:
+        condition: service_started
+    ports:
+      - "3492:80"
+  ml-svc-9:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - data
+  ml-svc-10:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - messaging
+    ports:
+      - "3494:8080"
+  ml-svc-11:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    ports:
+      - "3495:80"
+  ml-svc-12:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - data
+    depends_on:
+      web-68:
+        condition: service_started
+  ml-svc-13:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - data
+  ml-svc-14:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - workers
+    ports:
+      - "3498:3000"
+  ml-svc-15:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-16:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    depends_on:
+      monitor-25:
+        condition: service_started
+      worker-15:
+        condition: service_started
+  ml-svc-17:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    ports:
+      - "3501:8080"
+  ml-svc-18:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    depends_on:
+      queue-31:
+        condition: service_started
+    ports:
+      - "3502:8080"
+  ml-svc-19:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - data
+  ml-svc-20:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - messaging
+    depends_on:
+      search-9:
+        condition: service_started
+  ml-svc-21:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - data
+    depends_on:
+      worker-18:
+        condition: service_started
+  ml-svc-22:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    ports:
+      - "3506:8080"
+  ml-svc-23:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-24:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-25:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    depends_on:
+      search-4:
+        condition: service_started
+      monitor-6:
+        condition: service_started
+  ml-svc-26:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - search
+    volumes:
+      - elasticsearch-data:/data
+  ml-svc-27:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-28:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - api
+  ml-svc-29:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-30:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    depends_on:
+      worker-34:
+        condition: service_started
+      ml-svc-8:
+        condition: service_started
+  ml-svc-31:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    depends_on:
+      api-50:
+        condition: service_started
+  ml-svc-32:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - messaging
+    depends_on:
+      worker-51:
+        condition: service_started
+  ml-svc-33:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+    volumes:
+      - redis-data:/data
+  ml-svc-34:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+  ml-svc-35:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - ml
+      - search
+    ports:
+      - "3519:8080"
+  gateway-1:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-2:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-3:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-4:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-5:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-6:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      auth-svc-21:
+        condition: service_started
+    ports:
+      - "3525:80"
+  gateway-7:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-8:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-9:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3528:8080"
+  gateway-10:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3529:3000"
+  gateway-11:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - data
+  gateway-12:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-13:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-14:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - monitoring
+    ports:
+      - "3533:80"
+  gateway-15:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3534:8080"
+  gateway-16:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-17:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-18:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - api
+    ports:
+      - "3537:3000"
+  gateway-19:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      db-31:
+        condition: service_started
+      web-17:
+        condition: service_started
+  gateway-20:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3539:8080"
+  gateway-21:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-22:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      auth-svc-9:
+        condition: service_started
+  gateway-23:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-24:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - minio-data:/data
+  gateway-25:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-26:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3545:3000"
+  gateway-27:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-28:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-29:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - cache
+    depends_on:
+      gateway-11:
+        condition: service_started
+  gateway-30:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-31:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  gateway-32:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - ml
+  gateway-33:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3552:3000"
+  gateway-34:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - cache
+  gateway-35:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3554:8080"
+  scheduler-1:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-2:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-3:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3557:3000"
+  scheduler-4:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-5:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-6:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-7:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - cache
+  scheduler-8:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-9:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-10:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-11:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    volumes:
+      - minio-data:/data
+    depends_on:
+      queue-35:
+        condition: service_started
+      monitor-11:
+        condition: service_started
+    ports:
+      - "3565:3000"
+  scheduler-12:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      cache-53:
+        condition: service_started
+  scheduler-13:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-14:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3568:8080"
+  scheduler-15:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - monitoring
+    depends_on:
+      web-56:
+        condition: service_started
+      auth-svc-29:
+        condition: service_started
+    ports:
+      - "3569:80"
+  scheduler-16:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-17:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-18:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3572:3000"
+  scheduler-19:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-20:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      api-33:
+        condition: service_started
+      api-78:
+        condition: service_started
+  scheduler-21:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      worker-62:
+        condition: service_started
+  scheduler-22:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-23:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    ports:
+      - "3577:3000"
+  scheduler-24:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - monitoring
+    depends_on:
+      db-9:
+        condition: service_started
+    ports:
+      - "3578:3000"
+  scheduler-25:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-26:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+      - api
+  scheduler-27:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+    depends_on:
+      scheduler-13:
+        condition: service_started
+  scheduler-28:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-29:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  scheduler-30:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - workers
+  mailer-1:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  mailer-2:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - data
+    ports:
+      - "3586:8080"
+  mailer-3:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    volumes:
+      - elasticsearch-data:/data
+    ports:
+      - "3587:3000"
+  mailer-4:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    volumes:
+      - redis-data:/data
+    ports:
+      - "3588:3000"
+  mailer-5:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  mailer-6:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3590:80"
+  mailer-7:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3591:3000"
+  mailer-8:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      api-4:
+        condition: service_started
+    ports:
+      - "3592:8080"
+  mailer-9:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      scheduler-13:
+        condition: service_started
+    ports:
+      - "3593:3000"
+  mailer-10:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3594:3000"
+  mailer-11:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      mailer-8:
+        condition: service_started
+  mailer-12:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      cache-49:
+        condition: service_started
+  mailer-13:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    ports:
+      - "3597:8080"
+  mailer-14:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - workers
+  mailer-15:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      auth-svc-42:
+        condition: service_started
+      monitor-8:
+        condition: service_started
+  mailer-16:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - monitoring
+  mailer-17:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+      - monitoring
+  mailer-18:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      auth-svc-53:
+        condition: service_started
+    ports:
+      - "3602:80"
+  mailer-19:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+  mailer-20:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - messaging
+    depends_on:
+      db-12:
+        condition: service_started
+    ports:
+      - "3604:8080"
+  logger-1:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - data
+    depends_on:
+      worker-52:
+        condition: service_started
+      auth-svc-25:
+        condition: service_started
+    ports:
+      - "3605:80"
+  logger-2:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      worker-23:
+        condition: service_started
+      ml-svc-14:
+        condition: service_started
+  logger-3:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      api-41:
+        condition: service_started
+    ports:
+      - "3607:80"
+  logger-4:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - workers
+  logger-5:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-6:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      monitor-5:
+        condition: service_started
+      gateway-32:
+        condition: service_started
+  logger-7:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-8:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    ports:
+      - "3612:8080"
+  logger-9:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-10:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      db-33:
+        condition: service_started
+  logger-11:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-12:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - search
+    depends_on:
+      queue-1:
+        condition: service_started
+      scheduler-4:
+        condition: service_started
+    ports:
+      - "3616:80"
+  logger-13:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-14:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-15:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-16:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - search
+    ports:
+      - "3620:3000"
+  logger-17:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - ml
+  logger-18:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - data
+  logger-19:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    ports:
+      - "3623:3000"
+  logger-20:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-21:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - frontend
+    ports:
+      - "3625:8080"
+  logger-22:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    ports:
+      - "3626:80"
+  logger-23:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-24:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+      - data
+    depends_on:
+      auth-svc-34:
+        condition: service_started
+  logger-25:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    depends_on:
+      web-55:
+        condition: service_started
+  logger-26:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  logger-27:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+    ports:
+      - "3631:8080"
+  logger-28:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - monitoring
+  backup-1:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - api
+  backup-2:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  backup-3:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    ports:
+      - "3635:8080"
+  backup-4:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - monitoring
+    depends_on:
+      cache-1:
+        condition: service_started
+      scheduler-3:
+        condition: service_started
+  backup-5:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      auth-svc-3:
+        condition: service_started
+  backup-6:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - auth
+  backup-7:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      api-22:
+        condition: service_started
+      auth-svc-27:
+        condition: service_started
+  backup-8:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - cache
+    depends_on:
+      auth-svc-55:
+        condition: service_started
+  backup-9:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - workers
+    depends_on:
+      ml-svc-31:
+        condition: service_started
+  backup-10:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    depends_on:
+      search-10:
+        condition: service_started
+      search-18:
+        condition: service_started
+  backup-11:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  backup-12:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - monitoring
+    depends_on:
+      cache-1:
+        condition: service_started
+      search-31:
+        condition: service_started
+  backup-13:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+      - ml
+    depends_on:
+      web-9:
+        condition: service_started
+  backup-14:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  backup-15:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    volumes:
+      - minio-data:/data
+    ports:
+      - "3647:3000"
+  backup-16:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  backup-17:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    ports:
+      - "3649:8080"
+  backup-18:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+    ports:
+      - "3650:3000"
+  backup-19:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  backup-20:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - data
+  proxy-1:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  proxy-2:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  proxy-3:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - search
+  proxy-4:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - search
+    ports:
+      - "3656:3000"
+  proxy-5:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3657:3000"
+  proxy-6:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  proxy-7:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - ml
+  proxy-8:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      mailer-11:
+        condition: service_started
+    ports:
+      - "3660:80"
+  proxy-9:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - monitoring
+  proxy-10:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - messaging
+    ports:
+      - "3662:8080"
+  proxy-11:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  proxy-12:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - ml
+    ports:
+      - "3664:80"
+  proxy-13:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    ports:
+      - "3665:80"
+  proxy-14:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      gateway-33:
+        condition: service_started
+  proxy-15:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - workers
+    depends_on:
+      db-32:
+        condition: service_started
+      scheduler-17:
+        condition: service_started
+  proxy-16:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - api
+    depends_on:
+      logger-20:
+        condition: service_started
+      ml-svc-4:
+        condition: service_started
+  proxy-17:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  proxy-18:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - search
+    volumes:
+      - elasticsearch-data:/data
+  proxy-19:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+      - auth
+    ports:
+      - "3671:3000"
+  proxy-20:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+  proxy-21:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    volumes:
+      - mongo-data:/data
+    depends_on:
+      web-70:
+        condition: service_started
+  proxy-22:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - frontend
+    depends_on:
+      mailer-7:
+        condition: service_started
+  indexer-1:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - data
+    depends_on:
+      db-6:
+        condition: service_started
+  indexer-2:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    volumes:
+      - elasticsearch-data:/data
+    depends_on:
+      web-42:
+        condition: service_started
+      auth-svc-24:
+        condition: service_started
+  indexer-3:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    volumes:
+      - postgres-data:/data
+  indexer-4:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  indexer-5:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    volumes:
+      - elasticsearch-data:/data
+  indexer-6:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  indexer-7:
+    image: nginx:alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    ports:
+      - "3681:80"
+  indexer-8:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      api-41:
+        condition: service_started
+  indexer-9:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      search-10:
+        condition: service_started
+    ports:
+      - "3683:3000"
+  indexer-10:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      search-13:
+        condition: service_started
+    ports:
+      - "3684:8080"
+  indexer-11:
+    image: busybox:latest
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - auth
+    depends_on:
+      logger-19:
+        condition: service_started
+  indexer-12:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  indexer-13:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    ports:
+      - "3687:8080"
+  indexer-14:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    ports:
+      - "3688:3000"
+  indexer-15:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      cache-31:
+        condition: service_started
+      search-15:
+        condition: service_started
+  indexer-16:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      logger-1:
+        condition: service_started
+    ports:
+      - "3690:80"
+  indexer-17:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  indexer-18:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - auth
+    depends_on:
+      worker-26:
+        condition: service_started
+      auth-svc-15:
+        condition: service_started
+  indexer-19:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      indexer-3:
+        condition: service_started
+  indexer-20:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  indexer-21:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  indexer-22:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+      - data
+    ports:
+      - "3696:80"
+  indexer-23:
+    image: alpine:3.21
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+  indexer-24:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search
+    depends_on:
+      logger-28:
+        condition: service_started
+      cache-13:
+        condition: service_started
+    ports:
+      - "3698:8080"
+  indexer-25:
+    image: node:22-alpine
+    command: ["sleep", "infinity"]
+    networks:
+      - search

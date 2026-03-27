@@ -23,3 +23,56 @@ export const INACTIVE_OPACITY = 0.5;
 
 /** Diameter of the status indicator dot on container nodes. */
 export const STATUS_DOT_SIZE = 6;
+
+/** Disable edge animations and enable lightweight rendering above this node count. */
+export const ANIMATION_NODE_LIMIT = 150;
+
+/** Zoom level below which nodes render as simplified colored blocks. */
+export const LOD_ZOOM_THRESHOLD = 0.35;
+
+/** Hit detection width (px) for canvas edge click targets. */
+export const CANVAS_EDGE_HIT_WIDTH = 12;
+
+// --- Edge animation parameters (shared by Canvas and SVG renderers) ---
+
+/** Dot travel speed along depends_on edges (px/s). */
+export const DOT_SPEED = 160;
+
+/** Minimum animation duration so short edges stay visible (seconds). */
+export const MIN_ANIMATION_DURATION = 1.5;
+
+/** Target spacing between animated dots (px). */
+export const DOT_SPACING = 150;
+
+/** Minimum number of animated dots per edge. */
+export const MIN_DOTS = 3;
+
+/** Maximum number of animated dots per edge. */
+export const MAX_DOTS = 8;
+
+/** Radius of animated dots (px). */
+export const DOT_RADIUS = 1.8;
+
+/** Opacity of animated dots. */
+export const DOT_OPACITY = 0.6;
+
+/** Radius of edge endpoint circles (px). */
+export const ENDPOINT_RADIUS = 2.5;
+
+/** Dash pattern for inactive edges (canvas array form). */
+export const DASH_PATTERN = [4, 3] as const;
+
+/** Dash pattern for inactive edges (SVG string form). */
+export const DASH_PATTERN_SVG = '4 3';
+
+/** Default edge stroke width. */
+export const DEFAULT_EDGE_STROKE_WIDTH = 1;
+
+/** Fallback edge stroke color when no theme color is provided. */
+export const DEFAULT_EDGE_STROKE = '#475569';
+
+/** Delay (ms) after the last viewport change before canvas edges redraw. */
+export const VIEWPORT_SETTLE_DELAY = 150;
+
+/** Stroke width for highlighted (selected/connected) edges. */
+export const HIGHLIGHT_EDGE_STROKE_WIDTH = 2.5;

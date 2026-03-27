@@ -13,6 +13,8 @@ function globalStyles(mode: 'dark' | 'light') {
 
   return `
 .react-flow__edges { z-index: 1000 !important; }
+.react-flow__edge path { shape-rendering: optimizeSpeed; }
+.react-flow__node { contain: layout style paint; }
 
 .react-flow__controls {
   background: ${bg} !important;
