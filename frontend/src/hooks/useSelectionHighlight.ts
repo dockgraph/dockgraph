@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
-import { FADE_OPACITY, EDGE_FADE_OPACITY } from '../utils/constants';
+import { useStore } from '@xyflow/react';
+import { FADE_OPACITY, EDGE_FADE_OPACITY, HIGHLIGHT_EDGE_STROKE_WIDTH, DEFAULT_EDGE_STROKE_WIDTH, LOD_ZOOM_THRESHOLD } from '../utils/constants';
 
 interface SelectionState {
   type: 'node' | 'edge';
@@ -10,6 +11,10 @@ interface SelectionState {
 interface HighlightResult {
   styledNodes: RFNode[];
   styledEdges: RFEdge[];
+  /** Edges to render on canvas (bulk, non-selected). Only populated when useCanvas is true. */
+  canvasEdges: RFEdge[];
+  /** Edges to render as SVG (selected + connected). Only populated when useCanvas is true. */
+  svgEdges: RFEdge[];
   onNodeClick: (_: React.MouseEvent, node: RFNode) => void;
   onEdgeClick: (_: React.MouseEvent, edge: RFEdge) => void;
   onPaneClick: () => void;
@@ -20,11 +25,21 @@ interface HighlightResult {
  * When a node or edge is selected, connected elements stay fully opaque
  * while unrelated elements fade to 20% opacity.
  */
-export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[]): HighlightResult {
-  const [selection, setSelection] = useState<SelectionState | null>(null);
+const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
 
-  const { styledNodes, styledEdges } = useMemo(() => {
-    if (!selection) return { styledNodes: nodes, styledEdges: edges };
+export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[], useCanvas = false): HighlightResult {
+  const [selection, setSelection] = useState<SelectionState | null>(null);
+  const isLowZoom = useStore(zoomSelector);
+
+  const { styledNodes, styledEdges, canvasEdges, svgEdges } = useMemo(() => {
+    if (!selection) {
+      return {
+        styledNodes: nodes,
+        styledEdges: edges,
+        canvasEdges: useCanvas ? edges : [],
+        svgEdges: useCanvas ? [] as RFEdge[] : [],
+      };
+    }
 
     // Three sets track what stays fully visible when something is selected:
     // edges directly involved, individual nodes, and their parent network groups.
@@ -88,6 +103,24 @@ export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[]): Highlig
       }
     }
 
+    const styledEdgeList = edges.map((e) => {
+      const highlighted = connectedEdgeIds.has(e.id);
+      return {
+        ...e,
+        style: {
+          ...e.style,
+          opacity: highlighted ? 1 : EDGE_FADE_OPACITY,
+          strokeWidth: highlighted && isLowZoom ? HIGHLIGHT_EDGE_STROKE_WIDTH : DEFAULT_EDGE_STROKE_WIDTH,
+        },
+      };
+    });
+
+    // When using canvas, all edges stay on canvas — selection highlighting
+    // is applied via opacity. No canvas→SVG transition needed since animations
+    // are disabled for large graphs anyway.
+    const canvas: RFEdge[] = useCanvas ? styledEdgeList : [];
+    const svg: RFEdge[] = [];
+
     return {
       styledNodes: nodes.map((n) => {
         const highlighted = n.type === 'networkGroup'
@@ -95,12 +128,11 @@ export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[]): Highlig
           : connectedNodeIds.has(n.id);
         return { ...n, style: { ...n.style, opacity: highlighted ? 1 : FADE_OPACITY } };
       }),
-      styledEdges: edges.map((e) => ({
-        ...e,
-        style: { ...e.style, opacity: connectedEdgeIds.has(e.id) ? 1 : EDGE_FADE_OPACITY },
-      })),
+      styledEdges: styledEdgeList,
+      canvasEdges: canvas,
+      svgEdges: svg,
     };
-  }, [selection, nodes, edges]);
+  }, [selection, nodes, edges, useCanvas, isLowZoom]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: RFNode) => {
     setSelection((prev) =>
@@ -126,5 +158,5 @@ export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[]): Highlig
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  return { styledNodes, styledEdges, onNodeClick, onEdgeClick, onPaneClick };
+  return { styledNodes, styledEdges, canvasEdges, svgEdges, onNodeClick, onEdgeClick, onPaneClick };
 }
