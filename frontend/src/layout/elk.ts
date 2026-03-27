@@ -11,6 +11,7 @@ const MIN_NODE_WIDTH = 140;
 const MAX_NODE_WIDTH = 250;
 const NODE_PADDING = 52; // icon + status dot + margins
 
+const MAX_LABEL_CACHE_SIZE = 1024;
 const labelWidthCache = new Map<string, number>();
 let sharedCanvas: CanvasRenderingContext2D | null = null;
 
@@ -39,6 +40,10 @@ function measureNodeWidth(nodes: RFNode[]): number {
       const isVolume = n.type === 'volumeNode';
       ctx.font = isVolume ? '600 11px sans-serif' : '600 12px sans-serif';
       textW = ctx.measureText(label).width;
+      if (labelWidthCache.size >= MAX_LABEL_CACHE_SIZE) {
+        const oldest = labelWidthCache.keys().next().value!;
+        labelWidthCache.delete(oldest);
+      }
       labelWidthCache.set(cacheKey, textW);
     }
     maxW = Math.max(maxW, textW + NODE_PADDING);

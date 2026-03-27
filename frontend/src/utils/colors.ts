@@ -9,11 +9,16 @@ const PALETTE = [
   '#f97316',
 ];
 
+const MAX_CACHE_SIZE = 256;
 const cache = new Map<string, string>();
 
 export function networkColor(networkName: string): string {
   if (cache.has(networkName)) {
     return cache.get(networkName)!;
+  }
+  if (cache.size >= MAX_CACHE_SIZE) {
+    const oldest = cache.keys().next().value!;
+    cache.delete(oldest);
   }
   const color = PALETTE[cache.size % PALETTE.length];
   cache.set(networkName, color);

@@ -15,6 +15,7 @@ export const NetworkGroup = memo(function NetworkGroup({ data }: NodeProps) {
       style={{
         width: '100%',
         height: '100%',
+        boxSizing: 'border-box',
         border: `1px solid ${color}${theme.groupBorderAlpha}`,
         borderRadius: 6,
         background: `${color}${theme.groupBgAlpha}`,
