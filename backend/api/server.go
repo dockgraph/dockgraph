@@ -17,6 +17,7 @@ func NewServer(hub *Hub, staticFS fs.FS, dockerCli client.APIClient) http.Handle
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, err := dockerCli.Ping(r.Context())
 		if err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -38,6 +39,7 @@ func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
 		next.ServeHTTP(w, r)
 	})
 }

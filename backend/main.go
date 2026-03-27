@@ -33,9 +33,13 @@ func main() {
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Get("http://localhost:" + cfg.Port + "/healthz")
-		if err != nil || resp.StatusCode != http.StatusOK {
+		httpClient := &http.Client{Timeout: 5 * time.Second}
+		resp, err := httpClient.Get("http://localhost:" + cfg.Port + "/healthz")
+		if err != nil {
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -78,12 +82,24 @@ func main() {
 		defer cc.Stop()
 	}
 
-	go pipeUpdates(ctx, mgr, dc, cc)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("pipeUpdates panic: %v", r)
+			}
+		}()
+		pipeUpdates(ctx, mgr, dc, cc)
+	}()
 
 	hub := api.NewHub()
 	sub, unsub := mgr.Subscribe()
 	go func() {
 		defer unsub()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("pipeToHub panic: %v", r)
+			}
+		}()
 		pipeToHub(ctx, sub, hub)
 	}()
 
@@ -93,12 +109,13 @@ func main() {
 	}
 
 	handler := api.NewServer(hub, staticFS, dockerCli)
-	addr := ":" + cfg.Port
+	addr := cfg.BindAddr + ":" + cfg.Port
 	server := &http.Server{
-		Addr:        addr,
-		Handler:     handler,
-		ReadTimeout: 15 * time.Second,
-		IdleTimeout: 120 * time.Second,
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	go func() {
