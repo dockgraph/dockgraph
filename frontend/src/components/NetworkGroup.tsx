@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { networkColor } from '../utils/colors';
 import { useTheme } from '../theme';
 import type { NetworkGroupData } from '../types';
 
-export function NetworkGroup({ data }: NodeProps) {
+export const NetworkGroup = memo(function NetworkGroup({ data }: NodeProps) {
   const { dgNode } = data as unknown as NetworkGroupData;
   const { theme } = useTheme();
   const color = networkColor(dgNode.name);
@@ -37,4 +38,4 @@ export function NetworkGroup({ data }: NodeProps) {
 
     </div>
   );
-}
+});

@@ -64,4 +64,6 @@ export interface ElkEdgeData {
   path?: string;
   edgeType?: string;
   active?: boolean;
+  animated?: boolean;
+  nodeCount?: number;
 }

@@ -11,21 +11,36 @@ const MIN_NODE_WIDTH = 140;
 const MAX_NODE_WIDTH = 250;
 const NODE_PADDING = 52; // icon + status dot + margins
 
+const labelWidthCache = new Map<string, number>();
+let sharedCanvas: CanvasRenderingContext2D | null = null;
+
+function getCanvasContext(): CanvasRenderingContext2D {
+  if (!sharedCanvas) {
+    sharedCanvas = document.createElement('canvas').getContext('2d')!;
+  }
+  return sharedCanvas;
+}
+
 /**
  * Measures the widest node label using an off-screen canvas, then clamps the
  * result so all nodes share a uniform width within [MIN_NODE_WIDTH, MAX_NODE_WIDTH].
+ * Individual label widths are cached to avoid redundant measurements.
  */
 function measureNodeWidth(nodes: RFNode[]): number {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d')!;
+  const ctx = getCanvasContext();
 
   let maxW = 0;
   for (const n of nodes) {
     if (n.type === 'networkGroup') continue;
     const label = (n.data as { dgNode: { name: string } }).dgNode.name;
-    const isVolume = n.type === 'volumeNode';
-    ctx.font = isVolume ? '600 11px sans-serif' : '600 12px sans-serif';
-    const textW = ctx.measureText(label).width;
+    const cacheKey = `${n.type}:${label}`;
+    let textW = labelWidthCache.get(cacheKey);
+    if (textW === undefined) {
+      const isVolume = n.type === 'volumeNode';
+      ctx.font = isVolume ? '600 11px sans-serif' : '600 12px sans-serif';
+      textW = ctx.measureText(label).width;
+      labelWidthCache.set(cacheKey, textW);
+    }
     maxW = Math.max(maxW, textW + NODE_PADDING);
   }
   return Math.max(MIN_NODE_WIDTH, Math.min(MAX_NODE_WIDTH, Math.ceil(maxW)));

@@ -1,14 +1,40 @@
+import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
+import { useStore } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { useTheme } from '../theme';
 import type { VolumeNodeData } from '../types';
-import { INACTIVE_OPACITY } from '../utils/constants';
+import { INACTIVE_OPACITY, LOD_ZOOM_THRESHOLD } from '../utils/constants';
 
-export function VolumeNode({ data }: NodeProps) {
+const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
+
+export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
   const { dgNode, nodeWidth } = data as unknown as VolumeNodeData;
   const w = (nodeWidth ?? 200) - 4;
   const { theme } = useTheme();
+  const isLowZoom = useStore(zoomSelector);
   const isGhost = dgNode.status === 'not_running';
+  const opacity = isGhost ? INACTIVE_OPACITY : 1;
+
+  if (isLowZoom) {
+    return (
+      <div
+        style={{
+          background: theme.nodeBg,
+          borderLeft: `3px solid ${theme.nodeSubtext}`,
+          borderRadius: 4,
+          width: w,
+          height: 40,
+          boxSizing: 'border-box',
+          opacity,
+          overflow: 'hidden',
+          padding: '5px 10px',
+        }}
+      >
+        <NodeHandles />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -26,7 +52,7 @@ export function VolumeNode({ data }: NodeProps) {
         width: w,
         height: 40,
         boxSizing: 'border-box',
-        opacity: isGhost ? INACTIVE_OPACITY : 1,
+        opacity,
       }}
     >
       <NodeHandles />
@@ -53,4 +79,4 @@ export function VolumeNode({ data }: NodeProps) {
 
     </div>
   );
-}
+});

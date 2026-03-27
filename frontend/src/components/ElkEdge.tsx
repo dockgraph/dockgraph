@@ -1,59 +1,74 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import type { EdgeProps } from '@xyflow/react';
+import { useStore } from '@xyflow/react';
 import type { ElkEdgeData } from '../types';
-
-// Animation parameters for the flowing dots on depends_on edges.
-// Dots travel along the SVG path to visualize active dependencies.
-const DOT_SPEED = 160;      // px per second
-const MIN_DUR = 1.5;        // seconds — floor so short edges stay visible
-const DOT_SPACING = 150;    // px between dots
-const MIN_DOTS = 3;
-const MAX_DOTS = 8;
-
-/** Estimates polyline length from an SVG path's coordinate pairs. */
-function estimatePathLength(d: string): number {
-  const coords = d.match(/-?[\d.]+/g)?.map(Number) ?? [];
-  let length = 0;
-  for (let i = 2; i < coords.length; i += 2) {
-    const dx = coords[i] - coords[i - 2];
-    const dy = coords[i + 1] - coords[i - 1];
-    length += Math.sqrt(dx * dx + dy * dy);
-  }
-  return length;
-}
+import { parsePolyline, polylineLength, polylineEndpoints } from '../utils/pathUtils';
+import {
+  ANIMATION_NODE_LIMIT,
+  LOD_ZOOM_THRESHOLD,
+  CANVAS_EDGE_HIT_WIDTH,
+  DOT_SPEED,
+  MIN_ANIMATION_DURATION,
+  DOT_SPACING,
+  MIN_DOTS,
+  MAX_DOTS,
+  DOT_RADIUS,
+  DOT_OPACITY,
+  ENDPOINT_RADIUS,
+  DASH_PATTERN_SVG,
+  DEFAULT_EDGE_STROKE_WIDTH,
+  DEFAULT_EDGE_STROKE,
+} from '../utils/constants';
 
 /**
  * Custom edge component that renders ELK-computed orthogonal paths.
  * Depends-on edges between running containers show animated dots
  * traveling along the path to indicate active connections.
  */
-export function ElkEdge({ data, style }: EdgeProps) {
+const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
+
+export const ElkEdge = memo(function ElkEdge({ data, style }: EdgeProps) {
   const edgeData = data as ElkEdgeData | undefined;
   const path = edgeData?.path;
   const active = edgeData?.active !== false;
-  const animated = edgeData?.edgeType === 'depends_on' && active;
+  const animated = edgeData?.edgeType === 'depends_on' && (edgeData?.animated ?? active);
+  const isLowZoom = useStore(zoomSelector);
+  const isSimplified = (edgeData?.nodeCount ?? 0) > ANIMATION_NODE_LIMIT;
 
   const { dur, dotCount } = useMemo(() => {
     if (!animated || !path) return { dur: 0, dotCount: 0 };
-    const length = estimatePathLength(path);
+    const length = polylineLength(parsePolyline(path));
     return {
-      dur: Math.max(MIN_DUR, length / DOT_SPEED),
+      dur: Math.max(MIN_ANIMATION_DURATION, length / DOT_SPEED),
       dotCount: Math.min(MAX_DOTS, Math.max(MIN_DOTS, Math.round(length / DOT_SPACING))),
     };
   }, [animated, path]);
 
   if (!path) return null;
 
-  const stroke = (style?.stroke as string) ?? '#475569';
-  const strokeWidth = (style?.strokeWidth as number) ?? 1;
-  const strokeDasharray = !active ? '4 3' : (style?.strokeDasharray as string | undefined);
+  // At low zoom on large graphs, edges are sub-pixel — skip rendering entirely.
+  if (isLowZoom && isSimplified) return null;
+
+  const stroke = (style?.stroke as string) ?? DEFAULT_EDGE_STROKE;
+  const strokeWidth = (style?.strokeWidth as number) ?? DEFAULT_EDGE_STROKE_WIDTH;
+  const strokeDasharray = !active ? DASH_PATTERN_SVG : (style?.strokeDasharray as string | undefined);
   const opacity = (style?.opacity as number) ?? 1;
 
-  const coords = path.match(/-?[\d.]+/g)?.map(Number) ?? [];
-  const startX = coords[0];
-  const startY = coords[1];
-  const endX = coords[coords.length - 2];
-  const endY = coords[coords.length - 1];
+  if (isSimplified) {
+    return (
+      <path
+        d={path}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeDasharray={strokeDasharray}
+        opacity={opacity}
+        style={{ cursor: 'pointer' }}
+      />
+    );
+  }
+
+  const ep = polylineEndpoints(parsePolyline(path));
 
   return (
     <g opacity={opacity} style={{ cursor: 'pointer' }}>
@@ -61,7 +76,7 @@ export function ElkEdge({ data, style }: EdgeProps) {
         d={path}
         fill="none"
         stroke="transparent"
-        strokeWidth={12}
+        strokeWidth={CANVAS_EDGE_HIT_WIDTH}
       />
       <path
         d={path}
@@ -70,16 +85,16 @@ export function ElkEdge({ data, style }: EdgeProps) {
         strokeWidth={strokeWidth}
         strokeDasharray={strokeDasharray}
       />
-      {startX != null && (
-        <circle cx={startX} cy={startY} r={2.5} fill={stroke} />
+      {ep && (
+        <circle cx={ep.sx} cy={ep.sy} r={ENDPOINT_RADIUS} fill={stroke} />
       )}
-      {endX != null && (
-        <circle cx={endX} cy={endY} r={2.5} fill={stroke} />
+      {ep && (
+        <circle cx={ep.ex} cy={ep.ey} r={ENDPOINT_RADIUS} fill={stroke} />
       )}
       {animated && Array.from({ length: dotCount }, (_, i) => {
         const offset = i / dotCount;
         return (
-          <circle key={i} r={1.8} fill={stroke} opacity={0.6}>
+          <circle key={i} r={DOT_RADIUS} fill={stroke} opacity={DOT_OPACITY}>
             <animateMotion
               dur={`${dur}s`}
               repeatCount="indefinite"
@@ -91,4 +106,4 @@ export function ElkEdge({ data, style }: EdgeProps) {
       })}
     </g>
   );
-}
+});

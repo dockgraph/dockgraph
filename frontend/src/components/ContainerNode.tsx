@@ -1,9 +1,13 @@
+import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
+import { useStore } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
-import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY } from '../utils/constants';
+import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY, LOD_ZOOM_THRESHOLD } from '../utils/constants';
 import type { ContainerNodeData } from '../types';
+
+const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
 
 const ellipsis: React.CSSProperties = {
   overflow: 'hidden',
@@ -11,15 +15,40 @@ const ellipsis: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-export function ContainerNode({ data }: NodeProps) {
+export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
   const { dgNode, nodeWidth } = data as unknown as ContainerNodeData;
-  const w = (nodeWidth ?? 200) - 4; // subtract border widths
+  const w = (nodeWidth ?? 200) - 4;
   const { theme } = useTheme();
+  const isLowZoom = useStore(zoomSelector);
   const statusColor = STATUS_COLORS[dgNode.status ?? 'exited'] ?? STATUS_COLORS.exited;
   const isGhost = dgNode.status === 'not_running';
   const isActive = dgNode.status === 'running' || dgNode.status === 'unhealthy';
   const isPaused = dgNode.status === 'paused';
   const opacity = isActive ? 1 : isPaused ? PAUSED_OPACITY : INACTIVE_OPACITY;
+
+  // Simplified render at low zoom — just a colored block with the name.
+  if (isLowZoom) {
+    return (
+      <div
+        style={{
+          background: theme.nodeBg,
+          borderLeft: `3px solid ${statusColor}`,
+          borderRadius: 4,
+          width: w,
+          height: CONTAINER_NODE_HEIGHT,
+          boxSizing: 'border-box',
+          opacity,
+          overflow: 'hidden',
+          padding: '6px 10px',
+        }}
+      >
+        <NodeHandles />
+        <span style={{ ...ellipsis, fontSize: 12, fontWeight: 600, color: theme.nodeText, display: 'block' }}>
+          {dgNode.name}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -85,7 +114,7 @@ export function ContainerNode({ data }: NodeProps) {
 
       {dgNode.ports && dgNode.ports.length > 0 && (
         <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {dgNode.ports.map((p) => (
+          {dgNode.ports.slice(0, 3).map((p) => (
             <span
               key={`${p.host}-${p.container}`}
               style={{
@@ -99,9 +128,17 @@ export function ContainerNode({ data }: NodeProps) {
               :{p.host} → {p.container}
             </span>
           ))}
+          {dgNode.ports.length > 3 && (
+            <span
+              title={dgNode.ports.slice(3).map((p) => `:${p.host} → ${p.container}`).join(', ')}
+              style={{ fontSize: 9, color: theme.nodeSubtext }}
+            >
+              +{dgNode.ports.length - 3}
+            </span>
+          )}
         </div>
       )}
 
     </div>
   );
-}
+});

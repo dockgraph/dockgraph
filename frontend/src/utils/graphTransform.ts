@@ -1,6 +1,7 @@
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import { networkColor } from './colors';
 import type { DGNode, DGEdge } from '../types';
+import { ANIMATION_NODE_LIMIT, DEFAULT_EDGE_STROKE_WIDTH } from './constants';
 
 const UNMANAGED_GROUP_ID = 'group:unmanaged';
 
@@ -160,14 +161,15 @@ export function toReactFlowEdges(dgEdges: DGEdge[], dgNodes: DGNode[], defaultSt
     const sourceNode = nodeMap.get(e.source);
     const targetNode = nodeMap.get(e.target);
     const active = isEndpointActive(sourceNode) && isEndpointActive(targetNode);
+    const animated = active && dgNodes.length <= ANIMATION_NODE_LIMIT;
 
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       type: 'elk',
-      data: { edgeType: e.type, active },
-      style: { stroke, strokeWidth: 1 },
+      data: { edgeType: e.type, active, animated, nodeCount: dgNodes.length },
+      style: { stroke, strokeWidth: DEFAULT_EDGE_STROKE_WIDTH },
     };
   });
 }
