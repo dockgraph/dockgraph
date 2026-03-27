@@ -67,6 +67,9 @@ type serviceKey struct {
 func resolveServiceNames(containers []containertypes.Summary) map[serviceKey]string {
 	m := make(map[serviceKey]string)
 	for _, c := range containers {
+		if len(c.Names) == 0 {
+			continue
+		}
 		project := c.Labels["com.docker.compose.project"]
 		service := c.Labels["com.docker.compose.service"]
 		if project != "" && service != "" {
@@ -170,6 +173,9 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 
 	for _, c := range res.containers {
 		if c.Labels[SelfExcludeLabel] == "true" {
+			continue
+		}
+		if len(c.Names) == 0 {
 			continue
 		}
 

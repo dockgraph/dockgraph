@@ -68,7 +68,9 @@ func (d *DockerCollector) Stop() error {
 }
 
 func (d *DockerCollector) poll(ctx context.Context) error {
-	snapshot, err := d.buildSnapshot(ctx)
+	pollCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	snapshot, err := d.buildSnapshot(pollCtx)
 	if err != nil {
 		return err
 	}
@@ -109,10 +111,12 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 
 	var debounceTimer *time.Timer
 	debounceCh := make(chan struct{}, 1)
+	reconnectBackoff := 2 * time.Second
 
 	for {
 		select {
 		case msg := <-msgCh:
+			reconnectBackoff = 2 * time.Second
 			if !isTopologyEvent(msg.Action) {
 				continue
 			}
@@ -136,8 +140,10 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 				return
 			}
 			log.Printf("docker events error: %v, reconnecting...", err)
-			// Brief backoff to avoid tight-loop reconnection when the daemon is temporarily unavailable.
-			time.Sleep(2 * time.Second)
+			// Exponential backoff to avoid tight-loop reconnection when the daemon is temporarily unavailable.
+			backoff := min(reconnectBackoff, 30*time.Second)
+			reconnectBackoff *= 2
+			time.Sleep(backoff)
 			msgCh, errCh = d.client.Events(ctx, events.ListOptions{Filters: eventFilter})
 		case <-d.stopCh:
 			return
