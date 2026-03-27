@@ -52,11 +52,15 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
     const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
     const rfEdges = toReactFlowEdges(dgEdges, dgNodes, theme.edgeStroke);
 
-    computeLayout(rfNodes, rfEdges).then((layout) => {
-      if (cancelled) return;
-      setNodes(layout.nodes);
-      setEdges(layout.edges);
-    });
+    computeLayout(rfNodes, rfEdges)
+      .then((layout) => {
+        if (cancelled) return;
+        setNodes(layout.nodes);
+        setEdges(layout.edges);
+      })
+      .catch((err) => {
+        console.error('layout computation failed:', err);
+      });
 
     return () => { cancelled = true; };
   }, [dgNodes, dgEdges, setNodes, setEdges, theme.edgeStroke]);
@@ -64,10 +68,32 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
   const { styledNodes, styledEdges, onNodeClick, onEdgeClick, onPaneClick } =
     useSelectionHighlight(nodes, edges);
 
+  const showEmptyState = dgNodes.length === 0;
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <StatusIndicator connected={connected} />
       <ThemeToggle />
+
+      {showEmptyState && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 5,
+            pointerEvents: 'none',
+          }}
+        >
+          <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
+            {connected
+              ? 'No containers detected. Start a container to visualize the graph.'
+              : 'Connecting to backend\u2026'}
+          </p>
+        </div>
+      )}
 
       <ReactFlow
         nodes={styledNodes}

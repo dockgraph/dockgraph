@@ -121,6 +121,7 @@ export function useDockGraph(): DockGraphState {
 
       if (unmountedRef.current) return;
 
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       const delay = Math.min(1000 * Math.pow(2, retryRef.current), maxRetryDelay);
       retryRef.current++;
       retryTimerRef.current = setTimeout(() => connectRef.current?.(), delay);
