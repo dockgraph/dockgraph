@@ -75,9 +75,9 @@ func TestHealthzDockerUnreachable(t *testing.T) {
 
 func TestSPAHandlerServesStaticFiles(t *testing.T) {
 	fs := fstest.MapFS{
-		"index.html":        {Data: []byte("<html>app</html>")},
-		"assets/style.css":  {Data: []byte("body{}")},
-		"assets/app.js":     {Data: []byte("console.log()")},
+		"index.html":       {Data: []byte("<html>app</html>")},
+		"assets/style.css": {Data: []byte("body{}")},
+		"assets/app.js":    {Data: []byte("console.log()")},
 	}
 
 	hub := NewHub()
@@ -169,7 +169,7 @@ func TestSecurityHeadersComplete(t *testing.T) {
 
 	headers := map[string]string{
 		"X-Content-Type-Options":  "nosniff",
-		"X-Frame-Options":        "DENY",
+		"X-Frame-Options":         "DENY",
 		"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'",
 	}
 	for header, want := range headers {

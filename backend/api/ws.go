@@ -18,7 +18,8 @@ const (
 )
 
 // checkOrigin validates WebSocket upgrade requests by comparing the Origin
-// header against the request Host. Empty origins (non-browser clients) are allowed.
+// header against the request Host. Only same-origin browser requests and
+// non-browser clients (which never send an Origin header) are accepted.
 func checkOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {

@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"strings"
 
@@ -20,8 +21,9 @@ func NewServer(hub *Hub, staticFS fs.FS, dockerCli client.APIClient) http.Handle
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, err := dockerCli.Ping(r.Context())
 		if err != nil {
+			log.Printf("healthcheck failed: %v", err)
 			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprintf(w, "docker unreachable: %v", err)
+			fmt.Fprint(w, "docker unreachable")
 			return
 		}
 		w.WriteHeader(http.StatusOK)
