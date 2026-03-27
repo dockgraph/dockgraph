@@ -4,6 +4,7 @@ services:
   dockgraph:
     build: .
     container_name: dockgraph
+    restart: unless-stopped
     ports:
       # Host Port : Container Port
       - "7800:7800"
@@ -14,5 +15,10 @@ services:
       DG_PORT: "7800"                                # HTTP listen port (must match container port)
       DG_POLL_INTERVAL: "30s"                        # Docker API polling interval
       DG_COMPOSE_PATH: "/app/demo/compose-small.yml" # Override: only scan this file
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
     labels:
       dockgraph.self: "true" # hides this container from the graph
