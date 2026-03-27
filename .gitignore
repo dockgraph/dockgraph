@@ -2,6 +2,7 @@
 
 # Go
 backend/dockgraph
+*.out
 
 # Node
 frontend/node_modules/
