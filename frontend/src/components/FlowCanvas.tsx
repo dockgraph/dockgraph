@@ -62,25 +62,28 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
   const topoKey = useMemo(() => topologyKey(dgNodes, dgEdges), [dgNodes, dgEdges]);
   const prevTopoKeyRef = useRef('');
   const [layoutBusy, setLayoutBusy] = useState(false);
+  const [layoutError, setLayoutError] = useState(false);
 
   // Full ELK layout — only when topology (node/edge set) changes.
   useEffect(() => {
     if (dgNodes.length === 0) return;
     let cancelled = false;
 
-    prevTopoKeyRef.current = topoKey;
     setLayoutBusy(true);
+    setLayoutError(false);
     const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
     const rfEdges = toReactFlowEdges(dgEdges, dgNodes, theme.edgeStroke);
 
     computeLayout(rfNodes, rfEdges)
       .then((layout) => {
         if (cancelled) return;
+        prevTopoKeyRef.current = topoKey;
         setNodes(layout.nodes);
         setEdges(layout.edges);
       })
       .catch((err) => {
         console.error('layout computation failed:', err);
+        if (!cancelled) setLayoutError(true);
       })
       .finally(() => {
         if (!cancelled) setLayoutBusy(false);
@@ -95,8 +98,9 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
     if (dgNodes.length === 0 || topoKey !== prevTopoKeyRef.current) return;
 
     const rfEdges = toReactFlowEdges(dgEdges, dgNodes, theme.edgeStroke);
+    const rfEdgeMap = new Map(rfEdges.map((e) => [e.id, e]));
     setEdges((prev) => prev.map((e) => {
-      const updated = rfEdges.find((u) => u.id === e.id);
+      const updated = rfEdgeMap.get(e.id);
       return updated ? { ...e, data: { ...e.data, ...updated.data }, style: updated.style } : e;
     }));
 
@@ -196,6 +200,24 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
         </div>
       )}
 
+      {layoutError && !showEmptyState && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 5,
+            pointerEvents: 'none',
+          }}
+        >
+          <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
+            Layout computation failed. Try reloading the page.
+          </p>
+        </div>
+      )}
+
       {largeGraph && (
         <CanvasEdgeLayer ref={canvasEdgeRef} edges={canvasEdges} />
       )}
@@ -216,7 +238,6 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
         fitView
         minZoom={0.05}
         maxZoom={2}
-        proOptions={{ hideAttribution: true }}
         style={{ background: theme.canvasBg }}
       >
         {!largeGraph && <Background variant={BackgroundVariant.Dots} color={theme.dotColor} gap={20} />}
