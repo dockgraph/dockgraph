@@ -17,7 +17,7 @@ export function VolumeNode({ data }: NodeProps) {
         borderTop: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
         borderRight: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
         borderBottom: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
-        borderLeft: '3px solid #94a3b8',
+        borderLeft: `3px solid ${theme.nodeSubtext}`,
         borderRadius: 4,
         padding: '5px 10px',
         display: 'flex',

@@ -1,6 +1,6 @@
 import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
-import { STATUS_COLORS } from '../utils/colors';
+import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
 import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY } from '../utils/constants';
 import type { ContainerNodeData } from '../types';
@@ -55,13 +55,16 @@ export function ContainerNode({ data }: NodeProps) {
           {dgNode.name}
         </span>
         <span
+          title={STATUS_LABELS[dgNode.status ?? 'exited'] ?? dgNode.status}
           style={{
             width: STATUS_DOT_SIZE,
             height: STATUS_DOT_SIZE,
             borderRadius: '50%',
-            background: statusColor,
+            background: isActive ? statusColor : 'transparent',
+            border: isActive ? 'none' : `1.5px solid ${statusColor}`,
             display: 'inline-block',
-            transition: 'background 0.3s',
+            boxSizing: 'border-box',
+            transition: 'background 0.3s, border-color 0.3s',
           }}
         />
       </div>

@@ -10,6 +10,9 @@ export function StatusIndicator({ connected }: StatusIndicatorProps) {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
+      aria-label={connected ? 'Backend connected' : 'Backend disconnected'}
       style={{
         position: 'absolute',
         top: 10,

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import { FADE_OPACITY, EDGE_FADE_OPACITY } from '../utils/constants';
 
@@ -116,6 +116,14 @@ export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[]): Highlig
 
   const onPaneClick = useCallback(() => {
     setSelection(null);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelection(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   return { styledNodes, styledEdges, onNodeClick, onEdgeClick, onPaneClick };

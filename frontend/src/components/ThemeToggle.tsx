@@ -8,6 +8,7 @@ export function ThemeToggle() {
     <button
       onClick={toggle}
       title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+      aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
       style={{
         position: 'absolute',
         top: 10,

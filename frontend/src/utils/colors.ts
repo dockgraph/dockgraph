@@ -29,3 +29,13 @@ export const STATUS_COLORS: Record<string, string> = {
   created: '#06b6d4',
   not_running: '#64748b',
 };
+
+export const STATUS_LABELS: Record<string, string> = {
+  running: 'Running',
+  unhealthy: 'Unhealthy',
+  paused: 'Paused',
+  exited: 'Exited',
+  dead: 'Dead',
+  created: 'Created',
+  not_running: 'Not running',
+};
