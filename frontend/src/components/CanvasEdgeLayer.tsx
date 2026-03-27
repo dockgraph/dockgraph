@@ -229,6 +229,7 @@ export const CanvasEdgeLayer = forwardRef<CanvasEdgeLayerHandle, CanvasEdgeLayer
     return (
       <canvas
         ref={canvasRef}
+        aria-hidden="true"
         style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}
       />
     );

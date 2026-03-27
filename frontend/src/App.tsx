@@ -40,6 +40,14 @@ function globalStyles(mode: 'dark' | 'light') {
 .react-flow__controls button svg {
   fill: ${text} !important;
 }
+
+.react-flow__attribution {
+  background: ${isDark ? '#0f172a' : '#f0ece6'} !important;
+  padding-right: 15px !important;
+}
+.react-flow__attribution a {
+  color: ${text} !important;
+}
 `;
 }
 

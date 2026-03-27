@@ -84,6 +84,8 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
           {dgNode.name}
         </span>
         <span
+          role="img"
+          aria-label={STATUS_LABELS[dgNode.status ?? 'exited'] ?? dgNode.status}
           title={STATUS_LABELS[dgNode.status ?? 'exited'] ?? dgNode.status}
           style={{
             width: STATUS_DOT_SIZE,
