@@ -8,6 +8,20 @@ We use [Semantic Versioning](https://semver.org/).
 |---------|-----------|
 | Latest  | Yes       |
 
+## Security Model
+
+DockGraph is a **read-only** monitoring tool with no built-in authentication or authorization. It reads the Docker daemon socket to observe infrastructure state and exposes a WebSocket API that streams topology updates to connected clients.
+
+**What DockGraph can see:** container names, images, status, network topology, volume mounts, port mappings, compose file structure.
+
+**What DockGraph cannot do:** start, stop, create, or modify any Docker resource. The socket is mounted read-only.
+
+**Deployment guidance:**
+
+- Bind to `127.0.0.1` (`DG_BIND_ADDR`) when running on shared or production hosts.
+- Place behind a reverse proxy with authentication (nginx, Caddy, Traefik) if exposing to a network.
+- The Docker socket grants read access to all Docker resources on the host — treat DockGraph's port with the same care as your Docker API.
+
 ## Reporting a Vulnerability
 
 **Do not open a public issue for security vulnerabilities.**

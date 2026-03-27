@@ -103,6 +103,19 @@ environment:
 | `DG_POLL_INTERVAL` | `30s`            | Docker API polling interval                                  |
 | `DG_COMPOSE_PATH`  | _(auto-detect)_  | Override: comma-separated list of compose files or directories to scan |
 
+## Security Considerations
+
+DockGraph requires access to the Docker daemon socket to read container, network, and volume state. Be aware of the following:
+
+- **No built-in authentication.** Anyone who can reach the DockGraph port can view your Docker topology (container names, images, network structure, volume mounts, port mappings). The API is read-only — DockGraph cannot start, stop, or modify containers.
+- **Bind to localhost** when running on a shared network or production host:
+  ```yaml
+  environment:
+    DG_BIND_ADDR: "127.0.0.1"
+  ```
+- **Use a reverse proxy** (nginx, Caddy, Traefik) with authentication if you need to expose DockGraph beyond localhost.
+- **Docker socket access** is read-only (`:ro`), but any process that can read the socket can inspect all Docker resources on the host. Run DockGraph in a network-isolated environment or behind a firewall.
+
 ## How It Works
 
 DockGraph runs two collectors concurrently:
