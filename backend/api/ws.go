@@ -188,12 +188,12 @@ func (h *Hub) Shutdown() {
 	h.mu.RUnlock()
 
 	for _, c := range clients {
-		c.conn.WriteControl(
+		_ = c.conn.WriteControl(
 			websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down"),
 			time.Now().Add(time.Second),
 		)
-		c.conn.Close()
+		_ = c.conn.Close()
 	}
 }
 
