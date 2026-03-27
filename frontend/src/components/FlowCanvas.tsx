@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -10,11 +10,13 @@ import {
   type Node as RFNode,
   type Edge as RFEdge,
 } from '@xyflow/react';
+import { ANIMATION_NODE_LIMIT } from '../utils/constants';
 
 import { ContainerNode } from './ContainerNode';
 import { NetworkGroup } from './NetworkGroup';
 import { VolumeNode } from './VolumeNode';
 import { ElkEdge } from './ElkEdge';
+import { CanvasEdgeLayer, type CanvasEdgeLayerHandle } from './CanvasEdgeLayer';
 import { ThemeToggle } from './ThemeToggle';
 import { StatusIndicator } from './StatusIndicator';
 import { computeLayout } from '../layout/elk';
@@ -40,15 +42,32 @@ interface FlowCanvasProps {
   connected: boolean;
 }
 
+/**
+ * Topology fingerprint — changes only when nodes or edges are added/removed.
+ * Status changes (running → exited) don't alter the fingerprint, so they
+ * skip the expensive ELK layout and only update node/edge data in place.
+ */
+function topologyKey(dgNodes: DGNode[], dgEdges: DGEdge[]): string {
+  const nk = dgNodes.map((n) => n.id).sort().join(',');
+  const ek = dgEdges.map((e) => e.id).sort().join(',');
+  return nk + '|' + ek;
+}
+
 export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
   const { theme } = useTheme();
+  const canvasEdgeRef = useRef<CanvasEdgeLayerHandle>(null);
 
+  const topoKey = useMemo(() => topologyKey(dgNodes, dgEdges), [dgNodes, dgEdges]);
+  const prevTopoKeyRef = useRef('');
+
+  // Full ELK layout — only when topology (node/edge set) changes.
   useEffect(() => {
     if (dgNodes.length === 0) return;
     let cancelled = false;
 
+    prevTopoKeyRef.current = topoKey;
     const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
     const rfEdges = toReactFlowEdges(dgEdges, dgNodes, theme.edgeStroke);
 
@@ -63,12 +82,71 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
       });
 
     return () => { cancelled = true; };
-  }, [dgNodes, dgEdges, setNodes, setEdges, theme.edgeStroke]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topoKey, setNodes, setEdges]);
 
-  const { styledNodes, styledEdges, onNodeClick, onEdgeClick, onPaneClick } =
-    useSelectionHighlight(nodes, edges);
+  // Lightweight update — apply status/style changes without relayout.
+  useEffect(() => {
+    if (dgNodes.length === 0 || topoKey !== prevTopoKeyRef.current) return;
+
+    const rfEdges = toReactFlowEdges(dgEdges, dgNodes, theme.edgeStroke);
+    setEdges((prev) => prev.map((e) => {
+      const updated = rfEdges.find((u) => u.id === e.id);
+      return updated ? { ...e, data: { ...e.data, ...updated.data }, style: updated.style } : e;
+    }));
+
+    const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
+    const rfNodeMap = new Map(rfNodes.map((n) => [n.id, n]));
+    setNodes((prev) => prev.map((n) => {
+      const updated = rfNodeMap.get(n.id);
+      return updated ? { ...n, data: updated.data } : n;
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dgNodes, dgEdges, theme.edgeStroke, setNodes, setEdges]);
 
   const showEmptyState = dgNodes.length === 0;
+  const largeGraph = dgNodes.length > ANIMATION_NODE_LIMIT;
+
+  const { styledNodes, styledEdges, canvasEdges, svgEdges, onNodeClick, onEdgeClick, onPaneClick } =
+    useSelectionHighlight(nodes, edges, largeGraph);
+
+  // Canvas edge hit-test helper — returns the edge if hit, null otherwise.
+  const canvasEdgeHit = useCallback(
+    (event: React.MouseEvent): RFEdge | null => {
+      if (!largeGraph || !canvasEdgeRef.current) return null;
+      const hitId = canvasEdgeRef.current.hitTest(event.clientX, event.clientY);
+      if (!hitId) return null;
+      return edges.find((e) => e.id === hitId) ?? null;
+    },
+    [largeGraph, edges],
+  );
+
+  // For large graphs, intercept node clicks to check if the click actually
+  // hit a canvas edge passing through the node area (common with group nodes).
+  const handleNodeClick = useCallback(
+    (event: React.MouseEvent, node: RFNode) => {
+      const edgeHit = canvasEdgeHit(event);
+      if (edgeHit) {
+        onEdgeClick(event, edgeHit);
+      } else {
+        onNodeClick(event, node);
+      }
+    },
+    [canvasEdgeHit, onEdgeClick, onNodeClick],
+  );
+
+  // Pane click handler: test canvas edges first, then clear selection.
+  const handlePaneClick = useCallback(
+    (event: React.MouseEvent) => {
+      const edgeHit = canvasEdgeHit(event);
+      if (edgeHit) {
+        onEdgeClick(event, edgeHit);
+      } else {
+        onPaneClick();
+      }
+    },
+    [canvasEdgeHit, onEdgeClick, onPaneClick],
+  );
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -95,42 +173,49 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
         </div>
       )}
 
+      {largeGraph && (
+        <CanvasEdgeLayer ref={canvasEdgeRef} edges={canvasEdges} />
+      )}
+
       <ReactFlow
         nodes={styledNodes}
-        edges={styledEdges}
+        edges={largeGraph ? svgEdges : styledEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}
+        onNodeClick={largeGraph ? handleNodeClick : onNodeClick}
         onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
+        onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         nodesDraggable={false}
         nodesConnectable={false}
+        onlyRenderVisibleElements
         fitView
         minZoom={0.05}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
         style={{ background: theme.canvasBg }}
       >
-        <Background variant={BackgroundVariant.Dots} color={theme.dotColor} gap={20} />
+        {!largeGraph && <Background variant={BackgroundVariant.Dots} color={theme.dotColor} gap={20} />}
         <Controls
           showInteractive={false}
           style={{ background: theme.panelBg, border: `1px solid ${theme.panelBorder}`, borderRadius: 6 }}
         />
-        <MiniMap
-          style={{ background: theme.minimapBg, border: `1px solid ${theme.panelBorder}` }}
-          maskColor={theme.minimapMask}
-          nodeColor={(node) => {
-            if (node.type === 'networkGroup') {
-              return networkColor((node.data as { dgNode: DGNode }).dgNode.name) + '40';
-            }
-            if (node.type === 'volumeNode') {
-              return '#f9731640';
-            }
-            return theme.nodeBorder;
-          }}
-        />
+        {!largeGraph && (
+          <MiniMap
+            style={{ background: theme.minimapBg, border: `1px solid ${theme.panelBorder}` }}
+            maskColor={theme.minimapMask}
+            nodeColor={(node) => {
+              if (node.type === 'networkGroup') {
+                return networkColor((node.data as { dgNode: DGNode }).dgNode.name) + '40';
+              }
+              if (node.type === 'volumeNode') {
+                return '#f9731640';
+              }
+              return theme.nodeBorder;
+            }}
+          />
+        )}
       </ReactFlow>
     </div>
   );
