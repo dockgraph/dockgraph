@@ -108,6 +108,7 @@ export function useDockGraph(): DockGraphState {
         console.warn('failed to parse WebSocket message', e);
         return;
       }
+      if (!msg || typeof msg.type !== 'string' || !msg.data) return;
       if (msg.type === 'snapshot') {
         applySnapshot(msg.data as GraphSnapshot);
       } else if (msg.type === 'delta') {

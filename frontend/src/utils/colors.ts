@@ -12,6 +12,14 @@ const PALETTE = [
 const MAX_CACHE_SIZE = 256;
 const cache = new Map<string, string>();
 
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
 export function networkColor(networkName: string): string {
   if (cache.has(networkName)) {
     return cache.get(networkName)!;
@@ -20,7 +28,7 @@ export function networkColor(networkName: string): string {
     const oldest = cache.keys().next().value!;
     cache.delete(oldest);
   }
-  const color = PALETTE[cache.size % PALETTE.length];
+  const color = PALETTE[hashString(networkName) % PALETTE.length];
   cache.set(networkName, color);
   return color;
 }
