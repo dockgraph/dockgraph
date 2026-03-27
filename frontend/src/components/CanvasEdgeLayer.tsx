@@ -9,193 +9,18 @@ import {
   DOT_SPACING,
   MIN_DOTS,
   MAX_DOTS,
-  DOT_RADIUS,
-  DOT_OPACITY,
-  ENDPOINT_RADIUS,
-  DASH_PATTERN,
-  DEFAULT_EDGE_STROKE_WIDTH,
-  DEFAULT_EDGE_STROKE,
   VIEWPORT_SETTLE_DELAY,
 } from '../utils/constants';
-import {
-  type BBox,
-  parsePolyline,
-  polylineLength,
-  polylineEndpoints,
-  polylineBBox,
-  polylinePointAt,
-} from '../utils/pathUtils';
+import { parsePolyline, polylineLength, polylineEndpoints, polylineBBox } from '../utils/pathUtils';
+import type { CanvasEdge, AnimatedEdge, CanvasEdgeLayerHandle } from '../canvas/canvasEdgeTypes';
+import { getPath2D, resolveEdgeStyle } from '../canvas/canvasEdgeUtils';
+import { renderFrame } from '../canvas/canvasRenderer';
 
-// ── Types ──────────────────────────────────────────────────────────
-
-/** Parsed edge ready for canvas rendering. */
-interface CanvasEdge {
-  id: string;
-  path: Path2D;
-  stroke: string;
-  lineWidth: number;
-  opacity: number;
-  dashed: boolean;
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-  bbox: BBox;
-}
-
-/** Precomputed data for animated dots traveling along an edge path. */
-interface AnimatedEdge {
-  stroke: string;
-  opacity: number;
-  points: { x: number; y: number }[];
-  totalLength: number;
-  duration: number;
-  dotCount: number;
-  bbox: BBox;
-}
-
-export interface CanvasEdgeLayerHandle {
-  hitTest: (screenX: number, screenY: number) => string | null;
-}
+export type { CanvasEdgeLayerHandle } from '../canvas/canvasEdgeTypes';
 
 interface CanvasEdgeLayerProps {
   edges: RFEdge[];
 }
-
-interface Viewport {
-  tx: number;
-  ty: number;
-  zoom: number;
-}
-
-interface ViewBounds {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}
-
-// ── Pure helpers ───────────────────────────────────────────────────
-
-const NO_DASH: number[] = [];
-const CULL_PAD = 20;
-
-function getPath2D(svgPath: string, cache: Map<string, Path2D>): Path2D {
-  let p = cache.get(svgPath);
-  if (!p) {
-    p = new Path2D(svgPath);
-    cache.set(svgPath, p);
-  }
-  return p;
-}
-
-function resolveEdgeStyle(style: Record<string, unknown> | undefined) {
-  return {
-    stroke: (style?.stroke as string) ?? DEFAULT_EDGE_STROKE,
-    lineWidth: (style?.strokeWidth as number) ?? DEFAULT_EDGE_STROKE_WIDTH,
-    opacity: (style?.opacity as number) ?? 1,
-  };
-}
-
-function viewBounds(vp: Viewport, w: number, h: number): ViewBounds {
-  return {
-    left: -vp.tx / vp.zoom - CULL_PAD,
-    top: -vp.ty / vp.zoom - CULL_PAD,
-    right: (w - vp.tx) / vp.zoom + CULL_PAD,
-    bottom: (h - vp.ty) / vp.zoom + CULL_PAD,
-  };
-}
-
-function isVisible(bbox: BBox, vb: ViewBounds): boolean {
-  return bbox.maxX >= vb.left && bbox.minX <= vb.right
-      && bbox.maxY >= vb.top  && bbox.minY <= vb.bottom;
-}
-
-// ── Drawing functions ──────────────────────────────────────────────
-
-function drawEdges(ctx: CanvasRenderingContext2D, edges: CanvasEdge[], vb: ViewBounds): void {
-  for (const edge of edges) {
-    if (!isVisible(edge.bbox, vb)) continue;
-
-    ctx.globalAlpha = edge.opacity;
-    ctx.strokeStyle = edge.stroke;
-    ctx.lineWidth = edge.lineWidth;
-    ctx.setLineDash(edge.dashed ? DASH_PATTERN : NO_DASH);
-    ctx.stroke(edge.path);
-
-    ctx.setLineDash(NO_DASH);
-    ctx.fillStyle = edge.stroke;
-    ctx.beginPath();
-    ctx.arc(edge.startX, edge.startY, ENDPOINT_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(edge.endX, edge.endY, ENDPOINT_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function drawAnimatedDots(ctx: CanvasRenderingContext2D, animated: AnimatedEdge[], vb: ViewBounds, timestamp: number): void {
-  if (animated.length === 0) return;
-  const timeSec = timestamp / 1000;
-
-  for (const anim of animated) {
-    if (!isVisible(anim.bbox, vb)) continue;
-
-    ctx.fillStyle = anim.stroke;
-    ctx.globalAlpha = anim.opacity * DOT_OPACITY;
-
-    for (let i = 0; i < anim.dotCount; i++) {
-      const offset = i / anim.dotCount;
-      const t = ((timeSec / anim.duration) + offset) % 1;
-      const pt = polylinePointAt(anim.points, t, anim.totalLength);
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, DOT_RADIUS, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-/** Sizes the canvas buffer to match its container, accounting for device pixel ratio. */
-function syncCanvasSize(canvas: HTMLCanvasElement, w: number, h: number): void {
-  const dpr = window.devicePixelRatio || 1;
-  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-  }
-}
-
-function renderFrame(
-  canvas: HTMLCanvasElement,
-  ctx: CanvasRenderingContext2D,
-  vp: Viewport,
-  edges: CanvasEdge[],
-  animated: AnimatedEdge[],
-  timestamp: number,
-): void {
-  const parent = canvas.parentElement;
-  if (!parent) return;
-
-  const w = parent.clientWidth;
-  const h = parent.clientHeight;
-  syncCanvasSize(canvas, w, h);
-
-  const dpr = window.devicePixelRatio || 1;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.save();
-  ctx.scale(dpr, dpr);
-  ctx.translate(vp.tx, vp.ty);
-  ctx.scale(vp.zoom, vp.zoom);
-
-  const vb = viewBounds(vp, w, h);
-  drawEdges(ctx, edges, vb);
-  drawAnimatedDots(ctx, animated, vb, timestamp);
-
-  ctx.restore();
-}
-
-// ── Component ──────────────────────────────────────────────────────
 
 /**
  * Renders bulk edges on a single <canvas> for high-performance rendering
@@ -237,10 +62,8 @@ export const CanvasEdgeLayer = forwardRef<CanvasEdgeLayerHandle, CanvasEdgeLayer
           path: getPath2D(svgPath, cache),
           ...style,
           dashed: !active,
-          startX: ep.sx,
-          startY: ep.sy,
-          endX: ep.ex,
-          endY: ep.ey,
+          startX: ep.sx, startY: ep.sy,
+          endX: ep.ex, endY: ep.ey,
           bbox,
         });
       }
@@ -317,7 +140,7 @@ export const CanvasEdgeLayer = forwardRef<CanvasEdgeLayerHandle, CanvasEdgeLayer
 
     // Viewport-aware rendering strategy:
     // - During pan/zoom: hide canvas via CSS (zero draw cost, 60fps guaranteed)
-    // - On settle (~80ms after last viewport change): full quality redraw
+    // - On settle: full quality redraw after VIEWPORT_SETTLE_DELAY
     // - When animations active: continuous rAF loop with viewport culling
     const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
