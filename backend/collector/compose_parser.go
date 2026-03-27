@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/compose-spec/compose-go/v2/loader"
 	composetypes "github.com/compose-spec/compose-go/v2/types"
@@ -136,13 +137,16 @@ func buildServiceEdges(svc composetypes.ServiceConfig, naming composeNaming, svc
 
 // parseComposeFile loads a Docker Compose file and converts it into a graph
 // snapshot containing all services, networks, volumes, and their relationships.
-func parseComposeFile(path, sourceName string) (GraphSnapshot, error) {
+func parseComposeFile(ctx context.Context, path, sourceName string) (GraphSnapshot, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return GraphSnapshot{}, err
 	}
 
-	project, err := loader.LoadWithContext(context.Background(), composetypes.ConfigDetails{
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	project, err := loader.LoadWithContext(ctx, composetypes.ConfigDetails{
 		ConfigFiles: []composetypes.ConfigFile{
 			{Filename: path, Content: data},
 		},

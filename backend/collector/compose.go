@@ -71,7 +71,7 @@ func (c *ComposeCollector) scan(ctx context.Context) error {
 
 	for _, f := range files {
 		sourceName := filepath.Base(f)
-		snap, err := parseComposeFile(f, sourceName)
+		snap, err := parseComposeFile(ctx, f, sourceName)
 		if err != nil {
 			log.Printf("warning: failed to parse %s: %v", sourceName, err)
 			continue

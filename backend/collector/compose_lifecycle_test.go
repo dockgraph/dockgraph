@@ -67,8 +67,8 @@ func TestResolveComposePathsMixed(t *testing.T) {
 
 func TestResolveComposePathsIgnoresNonYaml(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not yaml"), 0644)
-	os.WriteFile(filepath.Join(dir, "stack.yml"), []byte("name: test\nservices:\n  web:\n    image: nginx\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not yaml"), 0o644)
+	os.WriteFile(filepath.Join(dir, "stack.yml"), []byte("name: test\nservices:\n  web:\n    image: nginx\n"), 0o644)
 
 	files, err := resolveComposePaths([]string{dir})
 	if err != nil {
@@ -148,7 +148,7 @@ func TestComposeCollectorWatchDetectsChanges(t *testing.T) {
 
 	dir := t.TempDir()
 	composeFile := filepath.Join(dir, "compose.yml")
-	os.WriteFile(composeFile, []byte("name: test\nservices:\n  web:\n    image: nginx\n"), 0644)
+	os.WriteFile(composeFile, []byte("name: test\nservices:\n  web:\n    image: nginx\n"), 0o644)
 
 	cc := NewComposeCollector([]string{dir})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -166,7 +166,7 @@ func TestComposeCollectorWatchDetectsChanges(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Modify the file to trigger watcher
-	os.WriteFile(composeFile, []byte("name: test\nservices:\n  web:\n    image: nginx:latest\n  api:\n    image: node\n"), 0644)
+	os.WriteFile(composeFile, []byte("name: test\nservices:\n  web:\n    image: nginx:latest\n  api:\n    image: node\n"), 0o644)
 
 	select {
 	case update := <-cc.Updates():
@@ -181,7 +181,7 @@ func TestComposeCollectorWatchDetectsChanges(t *testing.T) {
 // --- parseComposeFile edge cases ---
 
 func TestParseComposeFileNotFound(t *testing.T) {
-	_, err := parseComposeFile("/nonexistent/compose.yml", "compose.yml")
+	_, err := parseComposeFile(context.Background(), "/nonexistent/compose.yml", "compose.yml")
 	if err == nil {
 		t.Fatal("expected error for nonexistent file")
 	}
@@ -190,9 +190,9 @@ func TestParseComposeFileNotFound(t *testing.T) {
 func TestParseComposeFileInvalid(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "bad.yml")
-	os.WriteFile(f, []byte("not: valid: compose: content:"), 0644)
+	os.WriteFile(f, []byte("not: valid: compose: content:"), 0o644)
 
-	_, err := parseComposeFile(f, "bad.yml")
+	_, err := parseComposeFile(context.Background(), f, "bad.yml")
 	if err == nil {
 		t.Fatal("expected error for invalid compose file")
 	}
@@ -210,9 +210,9 @@ services:
     labels:
       dockgraph.self: "true"
 `
-	os.WriteFile(f, []byte(content), 0644)
+	os.WriteFile(f, []byte(content), 0o644)
 
-	snap, err := parseComposeFile(f, "compose.yml")
+	snap, err := parseComposeFile(context.Background(), f, "compose.yml")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -12,7 +13,7 @@ func testdataDir() string {
 }
 
 func TestParseComposeFile(t *testing.T) {
-	snap, err := parseComposeFile(filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
+	snap, err := parseComposeFile(context.Background(), filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -39,7 +40,7 @@ func TestParseComposeFile(t *testing.T) {
 }
 
 func TestParseDependsOnEdges(t *testing.T) {
-	snap, err := parseComposeFile(filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
+	snap, err := parseComposeFile(context.Background(), filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -51,7 +52,7 @@ func TestParseDependsOnEdges(t *testing.T) {
 }
 
 func TestParseVolumeMountEdges(t *testing.T) {
-	snap, err := parseComposeFile(filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
+	snap, err := parseComposeFile(context.Background(), filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -66,7 +67,7 @@ func TestParseVolumeMountEdges(t *testing.T) {
 }
 
 func TestComposeVolumeStatus(t *testing.T) {
-	snap, err := parseComposeFile(filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
+	snap, err := parseComposeFile(context.Background(), filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
