@@ -54,6 +54,7 @@ func (m *Manager) Subscribe() (<-chan collector.StateMessage, func()) {
 		once.Do(func() {
 			m.mu.Lock()
 			delete(m.subscribers, id)
+			close(ch)
 			m.mu.Unlock()
 		})
 	}
@@ -91,10 +92,6 @@ func (m *Manager) HandleUpdate(name string, update collector.StateUpdate) {
 
 	m.merged = mergeSnapshots(composeSnaps, dockerSnaps)
 	snapshot := m.merged
-	subs := make([]chan collector.StateMessage, 0, len(m.subscribers))
-	for _, ch := range m.subscribers {
-		subs = append(subs, ch)
-	}
 
 	m.mu.Unlock()
 
@@ -102,12 +99,15 @@ func (m *Manager) HandleUpdate(name string, update collector.StateUpdate) {
 		Type:     "snapshot",
 		Snapshot: &snapshot,
 	}
-	for _, ch := range subs {
+
+	m.mu.RLock()
+	for _, ch := range m.subscribers {
 		select {
 		case ch <- msg:
 		default:
 		}
 	}
+	m.mu.RUnlock()
 }
 
 // mergeSnapshots combines Docker and Compose snapshots into a single graph.

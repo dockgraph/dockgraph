@@ -36,6 +36,7 @@ var upgrader = websocket.Upgrader{
 type wsClient struct {
 	conn   *websocket.Conn
 	sendCh chan collector.WireMessage
+	done   chan struct{}
 }
 
 // Hub manages WebSocket client connections and broadcasts state updates.
@@ -67,6 +68,7 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	c := &wsClient{
 		conn:   conn,
 		sendCh: make(chan collector.WireMessage, 32),
+		done:   make(chan struct{}),
 	}
 
 	h.mu.Lock()
@@ -90,22 +92,25 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 }
 
 // writePump sends queued state messages to the WebSocket connection
-// and issues periodic pings to detect stale connections.
+// and issues periodic pings to detect stale connections. Exits when
+// the done channel is closed by readPump.
 func (c *wsClient) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("writePump recovered: %v", r)
+		}
 		ticker.Stop()
 		c.conn.Close()
 	}()
 	for {
 		select {
-		case msg, ok := <-c.sendCh:
-			if !ok {
-				return
-			}
+		case msg := <-c.sendCh:
 			if err := c.conn.WriteJSON(msg); err != nil {
 				return
 			}
+		case <-c.done:
+			return
 		case <-ticker.C:
 			if err := c.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
 				return
@@ -116,13 +121,16 @@ func (c *wsClient) writePump() {
 
 // readPump keeps the connection alive by handling pong responses. When the
 // client disconnects (read error), it unregisters from the hub and closes
-// the send channel to shut down the writer.
+// the done channel to shut down the writer.
 func (c *wsClient) readPump(h *Hub) {
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("readPump recovered: %v", r)
+		}
 		h.mu.Lock()
 		delete(h.clients, c)
 		h.mu.Unlock()
-		close(c.sendCh)
+		close(c.done)
 	}()
 
 	c.conn.SetReadDeadline(time.Now().Add(pongTimeout))
@@ -166,6 +174,26 @@ func (h *Hub) Broadcast(msg collector.StateMessage) {
 		case client.sendCh <- wire:
 		default:
 		}
+	}
+}
+
+// Shutdown sends a close frame to all connected clients and closes their
+// connections so that the reader and writer goroutines exit cleanly.
+func (h *Hub) Shutdown() {
+	h.mu.RLock()
+	clients := make([]*wsClient, 0, len(h.clients))
+	for c := range h.clients {
+		clients = append(clients, c)
+	}
+	h.mu.RUnlock()
+
+	for _, c := range clients {
+		c.conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down"),
+			time.Now().Add(time.Second),
+		)
+		c.conn.Close()
 	}
 }
 
