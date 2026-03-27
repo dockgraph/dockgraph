@@ -1,5 +1,6 @@
 import { ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { FlowCanvas } from './components/FlowCanvas';
 import { useDockGraph } from './hooks/useDockGraph';
 import { ThemeProvider, useTheme } from './theme';
@@ -58,7 +59,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <ReactFlowProvider>
-        <AppContent />
+        <ErrorBoundary>
+          <AppContent />
+        </ErrorBoundary>
       </ReactFlowProvider>
     </ThemeProvider>
   );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -61,6 +61,7 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
 
   const topoKey = useMemo(() => topologyKey(dgNodes, dgEdges), [dgNodes, dgEdges]);
   const prevTopoKeyRef = useRef('');
+  const [layoutBusy, setLayoutBusy] = useState(false);
 
   // Full ELK layout — only when topology (node/edge set) changes.
   useEffect(() => {
@@ -68,6 +69,7 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
     let cancelled = false;
 
     prevTopoKeyRef.current = topoKey;
+    setLayoutBusy(true);
     const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
     const rfEdges = toReactFlowEdges(dgEdges, dgNodes, theme.edgeStroke);
 
@@ -79,6 +81,9 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
       })
       .catch((err) => {
         console.error('layout computation failed:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setLayoutBusy(false);
       });
 
     return () => { cancelled = true; };
@@ -169,6 +174,24 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
             {connected
               ? 'No containers detected. Start a container to visualize the graph.'
               : 'Connecting to backend\u2026'}
+          </p>
+        </div>
+      )}
+
+      {layoutBusy && !showEmptyState && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 5,
+            pointerEvents: 'none',
+          }}
+        >
+          <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
+            Computing layout for {dgNodes.length} containers\u2026
           </p>
         </div>
       )}
