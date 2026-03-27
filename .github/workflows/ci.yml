@@ -77,3 +77,16 @@ jobs:
       - name: Build
         run: npm run build
         working-directory: frontend
+
+  smoke:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run smoke test
+        run: bash test/smoke_test.sh

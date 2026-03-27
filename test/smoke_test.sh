@@ -1,56 +1,107 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+CONTAINER_NAME="dockgraph-test"
+HOST_PORT=7801
+BASE_URL="http://localhost:$HOST_PORT"
+
+# ── Helpers ───────────────────────────────────────────────────
+
+cleanup() {
+  echo "Cleaning up..."
+  docker stop "$CONTAINER_NAME" 2>/dev/null || true
+  docker rm "$CONTAINER_NAME" 2>/dev/null || true
+}
+
+# Assert that an HTTP request returns the expected status code.
+#   assert_http <label> <url> <expected_code> [extra_curl_args...]
+assert_http() {
+  local label="$1" url="$2" expected="$3"
+  shift 3
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" "$@" "$url")
+  if [ "$code" != "$expected" ]; then
+    echo "FAIL: $label — expected $expected, got $code"
+    exit 1
+  fi
+  echo "$label: OK ($code)"
+}
+
+# ── Socket detection ─────────────────────────────────────────
+
+# The Docker socket location varies by setup:
+#   - DOCKER_HOST env var (explicit override, e.g. "unix:///custom/path")
+#   - docker context (WSL2 rootless uses /mnt/wslg/runtime-dir/docker.sock)
+#   - /var/run/docker.sock (standard Linux/macOS default)
+# The ${var#unix://} syntax strips the "unix://" prefix to get a bare path.
+if [ -n "${DOCKER_HOST:-}" ]; then
+  DOCKER_SOCK="${DOCKER_HOST#unix://}"
+else
+  DOCKER_SOCK="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
+  DOCKER_SOCK="${DOCKER_SOCK#unix://}"
+fi
+DOCKER_SOCK="${DOCKER_SOCK:-/var/run/docker.sock}"
+
+# The production image runs as nonroot (UID 65532) which can't read the Docker
+# socket by default. Fix depends on Docker mode:
+#   - Standard Docker: --group-add gives the container process the socket's
+#     owning group (typically "docker"), granting read access.
+#   - Rootless Docker: GID remapping makes --group-add ineffective, so we
+#     fall back to --user 0 (root inside the container maps to the host user).
+EXTRA_FLAGS=()
+if [ -S "$DOCKER_SOCK" ]; then
+  SOCK_GID="$(stat -c '%g' "$DOCKER_SOCK")"
+  if docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless; then
+    EXTRA_FLAGS+=(--user 0)
+  else
+    EXTRA_FLAGS+=(--group-add "$SOCK_GID")
+  fi
+fi
+
+# ── Build & run ──────────────────────────────────────────────
+
 echo "=== DockGraph Smoke Test ==="
 
 echo "Building image..."
 docker build -t dockgraph:test .
 
-echo "Starting container..."
-docker run -d --name dockgraph-test \
-  -p 7801:7800 \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  dockgraph:test
-
-cleanup() {
-  echo "Cleaning up..."
-  docker stop dockgraph-test 2>/dev/null || true
-  docker rm dockgraph-test 2>/dev/null || true
-}
+# Set up cleanup before starting so a failed `docker run` still cleans up.
 trap cleanup EXIT
 
+echo "Starting container (socket: $DOCKER_SOCK)..."
+docker run -d --name "$CONTAINER_NAME" \
+  -p "$HOST_PORT":7800 \
+  -v "$DOCKER_SOCK":/var/run/docker.sock:ro \
+  "${EXTRA_FLAGS[@]}" \
+  dockgraph:test
+
+# ── Assertions ───────────────────────────────────────────────
+
+# Poll the health endpoint until the server is ready (up to 10 seconds).
+# The binary needs a moment to connect to the Docker daemon and start listening.
 echo "Waiting for startup..."
-for i in $(seq 1 10); do
-  if curl -s http://localhost:7801/healthz | grep -q ok; then
-    echo "Health check passed"
-    break
-  fi
-  if [ "$i" -eq 10 ]; then
-    echo "FAIL: health check did not pass"
-    docker logs dockgraph-test
+attempts=0
+until curl -s "$BASE_URL/healthz" | grep -q ok; do
+  attempts=$((attempts + 1))
+  if [ "$attempts" -ge 10 ]; then
+    echo "FAIL: health check did not pass after ${attempts}s"
+    docker logs "$CONTAINER_NAME"
     exit 1
   fi
   sleep 1
 done
+echo "Health check passed"
 
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:7801/)
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "FAIL: expected 200 for /, got $HTTP_CODE"
-  exit 1
-fi
-echo "Static file serving: OK ($HTTP_CODE)"
+assert_http "Static file serving" "$BASE_URL/" 200
 
-WS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+# Verify WebSocket upgrade with the required headers per RFC 6455.
+# The Sec-WebSocket-Key is a static base64 value — the server only checks
+# that the header is present, not its content.
+assert_http "WebSocket upgrade" "$BASE_URL/ws" 101 \
   -H "Upgrade: websocket" \
   -H "Connection: Upgrade" \
   -H "Sec-WebSocket-Version: 13" \
-  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  http://localhost:7801/ws)
-if [ "$WS_CODE" != "101" ]; then
-  echo "FAIL: expected 101 for /ws upgrade, got $WS_CODE"
-  exit 1
-fi
-echo "WebSocket upgrade: OK ($WS_CODE)"
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="
 
 echo ""
 echo "=== All smoke tests passed ==="
