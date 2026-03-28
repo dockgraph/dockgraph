@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	composetypes "github.com/compose-spec/compose-go/v2/types"
 )
 
 func testdataDir() string {
@@ -80,6 +82,38 @@ func TestComposeVolumeStatus(t *testing.T) {
 		if v.Status != "not_running" {
 			t.Errorf("expected compose volume %s to have status not_running, got %s", v.Name, v.Status)
 		}
+	}
+}
+
+func TestParseComposePortsSingle(t *testing.T) {
+	ports := parseComposePorts([]composetypes.ServicePortConfig{
+		{Published: "8080", Target: 80},
+	})
+	if len(ports) != 1 || ports[0].Host != 8080 || ports[0].Container != 80 {
+		t.Errorf("expected [{8080 80}], got %+v", ports)
+	}
+}
+
+func TestParseComposePortsRange(t *testing.T) {
+	ports := parseComposePorts([]composetypes.ServicePortConfig{
+		{Published: "9000-9002", Target: 9000},
+	})
+	if len(ports) != 3 {
+		t.Fatalf("expected 3 mappings, got %d", len(ports))
+	}
+	for i, want := range []int{9000, 9001, 9002} {
+		if ports[i].Host != want || ports[i].Container != want {
+			t.Errorf("mapping[%d] = %+v, want {%d %d}", i, ports[i], want, want)
+		}
+	}
+}
+
+func TestParseComposePortsUnpublishedSkipped(t *testing.T) {
+	ports := parseComposePorts([]composetypes.ServicePortConfig{
+		{Published: "", Target: 3000},
+	})
+	if len(ports) != 0 {
+		t.Errorf("expected no mappings for unpublished port, got %+v", ports)
 	}
 }
 

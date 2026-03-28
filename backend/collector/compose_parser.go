@@ -55,12 +55,26 @@ func buildComposeVolumeNodes(project *composetypes.Project, naming composeNaming
 }
 
 // parseComposePorts converts compose port configs into the common PortMapping format.
+// Port ranges (e.g. "8080-8090") are expanded into individual mappings.
 func parseComposePorts(ports []composetypes.ServicePortConfig) []PortMapping {
 	var result []PortMapping
 	for _, p := range ports {
-		if p.Published != "" {
+		if p.Published == "" {
+			continue
+		}
+
+		var startHost, endHost int
+		if n, _ := fmt.Sscanf(p.Published, "%d-%d", &startHost, &endHost); n == 2 && endHost >= startHost {
+			containerPort := int(p.Target)
+			for hp := startHost; hp <= endHost; hp++ {
+				result = append(result, PortMapping{
+					Host:      hp,
+					Container: containerPort + (hp - startHost),
+				})
+			}
+		} else {
 			var hostPort int
-			_, _ = fmt.Sscanf(p.Published, "%d", &hostPort)
+			fmt.Sscanf(p.Published, "%d", &hostPort)
 			result = append(result, PortMapping{
 				Host:      hostPort,
 				Container: int(p.Target),

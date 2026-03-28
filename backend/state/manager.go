@@ -44,9 +44,10 @@ func (m *Manager) Subscribe() (<-chan collector.StateMessage, func()) {
 	m.subscribers[id] = ch
 
 	if len(m.merged.Nodes) > 0 {
+		snap := m.merged
 		ch <- collector.StateMessage{
 			Type:     "snapshot",
-			Snapshot: &m.merged,
+			Snapshot: &snap,
 		}
 	}
 

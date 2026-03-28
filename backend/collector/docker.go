@@ -143,7 +143,13 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 			// Exponential backoff to avoid tight-loop reconnection when the daemon is temporarily unavailable.
 			backoff := min(reconnectBackoff, 30*time.Second)
 			reconnectBackoff *= 2
-			time.Sleep(backoff)
+			select {
+			case <-time.After(backoff):
+			case <-d.stopCh:
+				return
+			case <-ctx.Done():
+				return
+			}
 			msgCh, errCh = d.client.Events(ctx, events.ListOptions{Filters: eventFilter})
 		case <-d.stopCh:
 			return
