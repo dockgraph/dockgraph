@@ -32,7 +32,7 @@ export interface GraphSnapshot {
 export interface DeltaUpdate {
   nodesAdded?: DGNode[];
   nodesRemoved?: string[];
-  nodesUpdated?: Partial<DGNode>[];
+  nodesUpdated?: DGNode[];
   edgesAdded?: DGEdge[];
   edgesRemoved?: string[];
 }
