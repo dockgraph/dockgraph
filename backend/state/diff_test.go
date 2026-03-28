@@ -32,14 +32,14 @@ func TestDiffNodeAdded(t *testing.T) {
 			{ID: "container:web", Type: "container", Name: "web"},
 		},
 	}
-	new := &collector.GraphSnapshot{
+	curr := &collector.GraphSnapshot{
 		Nodes: []collector.Node{
 			{ID: "container:web", Type: "container", Name: "web"},
 			{ID: "container:db", Type: "container", Name: "db"},
 		},
 	}
 
-	delta, changed := diffSnapshots(old, new)
+	delta, changed := diffSnapshots(old, curr)
 	if !changed {
 		t.Fatal("expected change")
 	}
@@ -55,13 +55,13 @@ func TestDiffNodeRemoved(t *testing.T) {
 			{ID: "container:db", Type: "container", Name: "db"},
 		},
 	}
-	new := &collector.GraphSnapshot{
+	curr := &collector.GraphSnapshot{
 		Nodes: []collector.Node{
 			{ID: "container:web", Type: "container", Name: "web"},
 		},
 	}
 
-	delta, changed := diffSnapshots(old, new)
+	delta, changed := diffSnapshots(old, curr)
 	if !changed {
 		t.Fatal("expected change")
 	}
@@ -76,13 +76,13 @@ func TestDiffNodeUpdated(t *testing.T) {
 			{ID: "container:web", Type: "container", Name: "web", Status: "running"},
 		},
 	}
-	new := &collector.GraphSnapshot{
+	curr := &collector.GraphSnapshot{
 		Nodes: []collector.Node{
 			{ID: "container:web", Type: "container", Name: "web", Status: "exited"},
 		},
 	}
 
-	delta, changed := diffSnapshots(old, new)
+	delta, changed := diffSnapshots(old, curr)
 	if !changed {
 		t.Fatal("expected change")
 	}
@@ -95,13 +95,13 @@ func TestDiffEdgeAdded(t *testing.T) {
 	old := &collector.GraphSnapshot{
 		Edges: []collector.Edge{},
 	}
-	new := &collector.GraphSnapshot{
+	curr := &collector.GraphSnapshot{
 		Edges: []collector.Edge{
 			{ID: "e:dep:web:db", Type: "depends_on", Source: "container:web", Target: "container:db"},
 		},
 	}
 
-	delta, changed := diffSnapshots(old, new)
+	delta, changed := diffSnapshots(old, curr)
 	if !changed {
 		t.Fatal("expected change")
 	}
@@ -116,11 +116,11 @@ func TestDiffEdgeRemoved(t *testing.T) {
 			{ID: "e:dep:web:db", Type: "depends_on", Source: "container:web", Target: "container:db"},
 		},
 	}
-	new := &collector.GraphSnapshot{
+	curr := &collector.GraphSnapshot{
 		Edges: []collector.Edge{},
 	}
 
-	delta, changed := diffSnapshots(old, new)
+	delta, changed := diffSnapshots(old, curr)
 	if !changed {
 		t.Fatal("expected change")
 	}
@@ -139,7 +139,7 @@ func TestDiffMixed(t *testing.T) {
 			{ID: "e:dep:web:old", Type: "depends_on", Source: "container:web", Target: "container:old"},
 		},
 	}
-	new := &collector.GraphSnapshot{
+	curr := &collector.GraphSnapshot{
 		Nodes: []collector.Node{
 			{ID: "container:web", Type: "container", Name: "web", Status: "exited"},
 			{ID: "container:new", Type: "container", Name: "new"},
@@ -149,7 +149,7 @@ func TestDiffMixed(t *testing.T) {
 		},
 	}
 
-	delta, changed := diffSnapshots(old, new)
+	delta, changed := diffSnapshots(old, curr)
 	if !changed {
 		t.Fatal("expected change")
 	}
@@ -206,13 +206,13 @@ func TestDiffNodeWithLabelsChanged(t *testing.T) {
 			{ID: "container:web", Type: "container", Name: "web", Labels: map[string]string{"env": "dev"}},
 		},
 	}
-	new := &collector.GraphSnapshot{
+	curr := &collector.GraphSnapshot{
 		Nodes: []collector.Node{
 			{ID: "container:web", Type: "container", Name: "web", Labels: map[string]string{"env": "prod"}},
 		},
 	}
 
-	delta, changed := diffSnapshots(old, new)
+	delta, changed := diffSnapshots(old, curr)
 	if !changed {
 		t.Fatal("expected change when labels differ")
 	}

@@ -9,36 +9,36 @@ import (
 // diffSnapshots compares two graph snapshots and returns a DeltaUpdate
 // describing the differences. The changed return value is false when the
 // snapshots are identical, allowing callers to skip broadcasting entirely.
-func diffSnapshots(old, new *collector.GraphSnapshot) (collector.DeltaUpdate, bool) {
+func diffSnapshots(prev, curr *collector.GraphSnapshot) (collector.DeltaUpdate, bool) {
 	var delta collector.DeltaUpdate
 
-	oldNodes := indexNodes(old)
-	newNodes := indexNodes(new)
+	prevNodes := indexNodes(prev)
+	currNodes := indexNodes(curr)
 
-	for id, newNode := range newNodes {
-		oldNode, exists := oldNodes[id]
+	for id, currNode := range currNodes {
+		prevNode, exists := prevNodes[id]
 		if !exists {
-			delta.NodesAdded = append(delta.NodesAdded, newNode)
-		} else if !reflect.DeepEqual(oldNode, newNode) {
-			delta.NodesUpdated = append(delta.NodesUpdated, newNode)
+			delta.NodesAdded = append(delta.NodesAdded, currNode)
+		} else if !reflect.DeepEqual(prevNode, currNode) {
+			delta.NodesUpdated = append(delta.NodesUpdated, currNode)
 		}
 	}
-	for id := range oldNodes {
-		if _, exists := newNodes[id]; !exists {
+	for id := range prevNodes {
+		if _, exists := currNodes[id]; !exists {
 			delta.NodesRemoved = append(delta.NodesRemoved, id)
 		}
 	}
 
-	oldEdges := indexEdges(old)
-	newEdges := indexEdges(new)
+	prevEdges := indexEdges(prev)
+	currEdges := indexEdges(curr)
 
-	for id, newEdge := range newEdges {
-		if _, exists := oldEdges[id]; !exists {
-			delta.EdgesAdded = append(delta.EdgesAdded, newEdge)
+	for id, currEdge := range currEdges {
+		if _, exists := prevEdges[id]; !exists {
+			delta.EdgesAdded = append(delta.EdgesAdded, currEdge)
 		}
 	}
-	for id := range oldEdges {
-		if _, exists := newEdges[id]; !exists {
+	for id := range prevEdges {
+		if _, exists := currEdges[id]; !exists {
 			delta.EdgesRemoved = append(delta.EdgesRemoved, id)
 		}
 	}
