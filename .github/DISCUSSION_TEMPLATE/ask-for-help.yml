@@ -1,0 +1,72 @@
+title: "[Help] "
+labels: ["support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reaching out! The community and maintainers are happy to help.
+
+        **Before posting**, a quick check might save you time:
+        - [Existing discussions](https://github.com/dockgraph/dockgraph/discussions/categories/ask-for-help) — your question may already be answered
+        - [README](https://github.com/dockgraph/dockgraph#readme) — covers setup, configuration, and environment variables
+        - [Bug?](https://github.com/dockgraph/dockgraph/issues/new?template=bug_report.yml) — if something is clearly broken, open an issue instead
+
+  - type: checkboxes
+    id: prior-search
+    attributes:
+      label: I've looked around first
+      options:
+        - label: I searched existing discussions and didn't find an answer
+          required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      description: Describe what you're trying to achieve and where you got stuck.
+      placeholder: |
+        I'm trying to visualize multiple compose stacks running on different Docker hosts,
+        but DockGraph only shows the containers on the local daemon...
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried so far?
+      description: This helps us skip suggestions you've already ruled out.
+      placeholder: |
+        - Mounted both compose files as read-only volumes
+        - Set DG_COMPOSE_PATH to point to both files
+        - Checked container logs — no errors, but only local containers appear
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running DockGraph?
+      options:
+        - docker run
+        - Docker Compose
+        - Built from source
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: DockGraph version
+      description: "Run `docker inspect dockgraph | grep Image` or check the release tag. Don't write \"latest\"."
+      placeholder: "e.g., v0.1.0"
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant details
+      description: Compose files, container logs (`docker logs dockgraph`), screenshots, browser console errors — anything that paints the full picture. Drag and drop images or paste them directly.
+    validations:
+      required: false

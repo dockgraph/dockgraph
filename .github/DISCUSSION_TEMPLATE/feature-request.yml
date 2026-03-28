@@ -1,0 +1,77 @@
+title: "[Feature] "
+labels: ["feature request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea for DockGraph? We'd love to hear it.
+
+        **Before posting**, a quick check might save you time:
+        - [Existing feature discussions](https://github.com/dockgraph/dockgraph/discussions/categories/feature-requests) — someone may have proposed it already
+        - [Enhancement issues](https://github.com/dockgraph/dockgraph/issues?q=is%3Aissue+label%3Aenhancement) — it might already be planned
+
+        Good feature requests explain the *problem* first — the solution often emerges from the discussion.
+
+  - type: checkboxes
+    id: prior-search
+    attributes:
+      label: I've looked around first
+      options:
+        - label: I searched existing discussions and issues and didn't find a match
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the pain point, workflow gap, or limitation you're running into. Focus on the "why" — what's frustrating, slow, or missing today?
+      placeholder: |
+        When I have 20+ containers across multiple compose stacks, the graph becomes
+        hard to read. I can't quickly tell which services belong to which stack, and
+        the layout overlaps heavily.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to see?
+      description: Describe the feature or behavior you're imagining. Mockups, sketches, or references to other tools are welcome.
+      placeholder: |
+        A way to collapse/expand compose stacks as groups, so I can focus on one
+        stack at a time. Maybe clicking a stack header toggles its containers.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: What area does this touch?
+      description: Best guess is fine — this helps us route the discussion.
+      options:
+        - Graph visualization / layout
+        - Container / network / volume data
+        - Compose file parsing
+        - UI / UX
+        - Performance
+        - Configuration / environment variables
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Workarounds you've tried, other tools that handle this well, or reasons other approaches don't quite fit.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, links, diagrams, or anything else that helps illustrate the idea. Drag and drop images directly.
+    validations:
+      required: false
