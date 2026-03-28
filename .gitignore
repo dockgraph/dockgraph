@@ -41,3 +41,9 @@ docker-compose.override.yml
 
 # Temporary
 tmp/
+
+# Worktrees
+.worktrees/
+
+# Design docs
+docs/superpowers/
