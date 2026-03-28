@@ -47,7 +47,8 @@ backend/
 │   ├── compose_parser.go    # Parses compose YAML into graph nodes and edges
 │   └── mounts.go            # Auto-detects compose paths from container bind mounts
 ├── state/
-│   └── manager.go           # Merges Docker + Compose snapshots, notifies subscribers
+│   ├── manager.go           # Merges Docker + Compose snapshots, notifies subscribers
+│   └── diff.go              # Snapshot diffing for incremental delta updates
 └── frontend/
     └── embed.go             # Embeds built frontend assets into the binary
 ```
