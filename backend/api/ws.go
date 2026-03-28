@@ -158,6 +158,11 @@ func (h *Hub) Broadcast(msg collector.StateMessage) {
 		h.mu.Unlock()
 	case msg.Type == "delta" && msg.Delta != nil:
 		wire = collector.NewDeltaMessage(*msg.Delta)
+		if msg.Snapshot != nil {
+			h.mu.Lock()
+			h.current = msg.Snapshot
+			h.mu.Unlock()
+		}
 	default:
 		return
 	}

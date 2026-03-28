@@ -208,6 +208,48 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
+func TestBroadcastDeltaUpdatesCurrentSnapshot(t *testing.T) {
+	hub := NewHub()
+
+	initial := &collector.GraphSnapshot{
+		Nodes: []collector.Node{
+			{ID: "container:web", Type: "container", Name: "web", Status: "running"},
+		},
+	}
+	hub.Broadcast(collector.StateMessage{
+		Type:     "snapshot",
+		Snapshot: initial,
+	})
+
+	hub.mu.RLock()
+	if hub.current == nil || len(hub.current.Nodes) != 1 {
+		hub.mu.RUnlock()
+		t.Fatal("expected current to be set after snapshot broadcast")
+	}
+	hub.mu.RUnlock()
+
+	// Delta message with snapshot attached should update h.current
+	updated := &collector.GraphSnapshot{
+		Nodes: []collector.Node{
+			{ID: "container:web", Type: "container", Name: "web", Status: "exited"},
+		},
+	}
+	hub.Broadcast(collector.StateMessage{
+		Type:     "delta",
+		Delta:    &collector.DeltaUpdate{NodesUpdated: []collector.Node{{ID: "container:web", Type: "container", Name: "web", Status: "exited"}}},
+		Snapshot: updated,
+	})
+
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
+	if hub.current == nil {
+		t.Fatal("expected current to be updated after delta")
+	}
+	if hub.current.Nodes[0].Status != "exited" {
+		t.Errorf("expected current to reflect delta, got status=%s", hub.current.Nodes[0].Status)
+	}
+}
+
 func TestHubRejectsOverLimit(t *testing.T) {
 	hub := NewHub()
 	hub.MaxClients = 2
