@@ -1,5 +1,5 @@
 <div align="center" width="100%">
-    <img src="https://github.com/user-attachments/assets/7a3dfe49-8317-40e9-afe9-3a198dac0938" width="128" alt="DockGraph" />
+    <img src="https://raw.githubusercontent.com/dockgraph/dockgraph/main/.github/assets/logo.svg" width="128" alt="DockGraph" />
 </div>
 
 # DockGraph
@@ -13,7 +13,7 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 [![GitHub last commit (branch)](https://img.shields.io/github/last-commit/dockgraph/dockgraph/main?logo=github)](https://github.com/dockgraph/dockgraph/commits/main/)
 
 <div align="center" width="100%">
-    <img src="https://github.com/user-attachments/assets/91f9ce7d-23da-45ca-963b-437106c14ddc" width="1280" alt="DockGraph screenshot" />
+    <img src="https://raw.githubusercontent.com/dockgraph/dockgraph/main/.github/assets/screenshot.png" width="1280" alt="DockGraph screenshot" />
 </div>
 
 ## Features

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="12 12 104 104">
+  <defs>
+    <linearGradient id="blueNode" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4a9ede"/>
+      <stop offset="100%" stop-color="#2d6fa0"/>
+    </linearGradient>
+    <linearGradient id="grayNode" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#506178"/>
+      <stop offset="100%" stop-color="#3f5068"/>
+    </linearGradient>
+    <linearGradient id="greenNode" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22a86a"/>
+      <stop offset="100%" stop-color="#178a52"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Nodes -->
+  <rect x="56" y="28" width="42" height="20" rx="5" fill="url(#blueNode)" opacity="0.9"/>
+  <rect x="56" y="28" width="42" height="10" rx="5" fill="rgba(255,255,255,0.1)"/>
+  <rect x="18" y="52" width="42" height="20" rx="5" fill="url(#grayNode)" opacity="0.9"/>
+  <rect x="58" y="82" width="38" height="20" rx="5" fill="url(#greenNode)" opacity="0.9"/>
+  <rect x="58" y="82" width="38" height="10" rx="5" fill="rgba(255,255,255,0.08)"/>
+
+  <!-- Blue lines -->
+  <line x1="77" y1="48" x2="77" y2="62" stroke="#3b82f6" stroke-width="1.5"/>
+  <line x1="77" y1="62" x2="60" y2="62" stroke="#3b82f6" stroke-width="1.5"/>
+  <line x1="77" y1="62" x2="77" y2="82" stroke="#3b82f6" stroke-width="1.5"/>
+
+  <!-- Orange line -->
+  <path d="M39,72 L39,88 Q39,92 43,92 L58,92" fill="none" stroke="#d4891a" stroke-width="1.5"/>
+
+  <!-- Blue dots -->
+  <circle cx="77" cy="62" r="2.5" fill="#3b82f6" filter="url(#glow)"/>
+  <circle cx="77" cy="48" r="2" fill="#3b82f6"/>
+  <circle cx="77" cy="82" r="2" fill="#3b82f6"/>
+  <circle cx="60" cy="62" r="2" fill="#3b82f6"/>
+
+  <!-- Orange dots -->
+  <circle cx="39" cy="72" r="2" fill="#d4891a"/>
+  <circle cx="58" cy="92" r="2" fill="#d4891a"/>
+
+  <!-- Green status dot -->
+  <circle cx="26" cy="62" r="3" fill="#22c55e" filter="url(#glow)"/>
+</svg>
