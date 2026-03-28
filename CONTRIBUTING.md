@@ -30,8 +30,8 @@ See the [Development section in README.md](README.md#development) for prerequisi
 
 ## Code Style
 
-- **Go**: Follow standard `gofmt` conventions. Run `go vet ./...` before committing.
-- **TypeScript/React**: Follow ESLint config. Run `npm run lint` before committing.
+- **Go**: Follow standard `gofmt` conventions. Run `make lint-backend` before committing.
+- **TypeScript/React**: Follow ESLint config. Run `make lint-frontend` before committing.
 - **Commits**: Use [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `refactor:`, `docs:`, etc.
 
 ## Pull Requests
