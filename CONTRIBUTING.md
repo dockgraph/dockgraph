@@ -4,7 +4,9 @@ Thanks for your interest in contributing! This document covers how to get starte
 
 ## Before You Start
 
-Please open an issue to discuss your change before submitting a large pull request. This saves everyone's time.
+- **Questions or ideas?** Start a [Discussion](https://github.com/dockgraph/dockgraph/discussions) — it's the best place for open-ended conversations, feature proposals, and help.
+- **Found a bug?** Open an [issue](https://github.com/dockgraph/dockgraph/issues/new?template=bug_report.yml).
+- **Planning a large change?** Please discuss it first (issue or discussion) before submitting a PR. This saves everyone's time.
 
 ### Accepted without prior discussion
 
