@@ -17,6 +17,7 @@ type Manager struct {
 	mu          sync.RWMutex
 	snapshots   map[string]*collector.GraphSnapshot
 	merged      collector.GraphSnapshot
+	hasState    bool
 	subscribers map[subID]chan collector.StateMessage
 	nextID      subID
 }
@@ -70,7 +71,9 @@ func (m *Manager) Current() collector.GraphSnapshot {
 }
 
 // HandleUpdate stores a new snapshot from a named collector, re-merges all
-// snapshots, and broadcasts the result to subscribers.
+// snapshots, and broadcasts the result to subscribers. The first update always
+// produces a full snapshot. Subsequent updates emit a delta when the graph
+// changed, or skip the broadcast entirely when nothing changed.
 func (m *Manager) HandleUpdate(name string, update collector.StateUpdate) {
 	m.mu.Lock()
 
@@ -90,14 +93,30 @@ func (m *Manager) HandleUpdate(name string, update collector.StateUpdate) {
 		}
 	}
 
+	prev := m.merged
+	hadState := m.hasState
 	m.merged = mergeSnapshots(composeSnaps, dockerSnaps)
+	m.hasState = true
 	snapshot := m.merged
 
 	m.mu.Unlock()
 
-	msg := collector.StateMessage{
-		Type:     "snapshot",
-		Snapshot: &snapshot,
+	var msg collector.StateMessage
+	if !hadState {
+		msg = collector.StateMessage{
+			Type:     "snapshot",
+			Snapshot: &snapshot,
+		}
+	} else {
+		delta, changed := diffSnapshots(&prev, &snapshot)
+		if !changed {
+			return
+		}
+		msg = collector.StateMessage{
+			Type:     "delta",
+			Delta:    &delta,
+			Snapshot: &snapshot,
+		}
 	}
 
 	m.mu.RLock()

@@ -430,3 +430,108 @@ done:
 		t.Error("expected at least some messages delivered")
 	}
 }
+
+func TestHandleUpdateEmitsDelta(t *testing.T) {
+	m := NewManager()
+
+	// First update: always a snapshot
+	m.HandleUpdate("docker", collector.StateUpdate{
+		Snapshot: &collector.GraphSnapshot{
+			Nodes: []collector.Node{
+				{ID: "container:web", Type: "container", Name: "web", Status: "running"},
+			},
+		},
+	})
+
+	ch, unsub := m.Subscribe()
+	defer unsub()
+
+	// Drain the initial snapshot from Subscribe
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for initial snapshot")
+	}
+
+	// Second update: status change should produce a delta
+	m.HandleUpdate("docker", collector.StateUpdate{
+		Snapshot: &collector.GraphSnapshot{
+			Nodes: []collector.Node{
+				{ID: "container:web", Type: "container", Name: "web", Status: "exited"},
+			},
+		},
+	})
+
+	select {
+	case msg := <-ch:
+		if msg.Type != "delta" {
+			t.Errorf("expected delta, got %s", msg.Type)
+		}
+		if msg.Delta == nil {
+			t.Fatal("expected delta payload")
+		}
+		if len(msg.Delta.NodesUpdated) != 1 {
+			t.Errorf("expected 1 updated node, got %d", len(msg.Delta.NodesUpdated))
+		}
+		if msg.Snapshot == nil {
+			t.Error("expected snapshot attached for hub bookkeeping")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for delta message")
+	}
+}
+
+func TestHandleUpdateSkipsWhenUnchanged(t *testing.T) {
+	m := NewManager()
+
+	snap := &collector.GraphSnapshot{
+		Nodes: []collector.Node{
+			{ID: "container:web", Type: "container", Name: "web", Status: "running"},
+		},
+	}
+
+	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: snap})
+
+	ch, unsub := m.Subscribe()
+	defer unsub()
+
+	// Drain initial snapshot
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for initial snapshot")
+	}
+
+	// Same data again — should not produce any message
+	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: snap})
+
+	select {
+	case msg := <-ch:
+		t.Errorf("expected no message for unchanged state, got type=%s", msg.Type)
+	case <-time.After(200 * time.Millisecond):
+		// success — no message
+	}
+}
+
+func TestFirstUpdateIsSnapshot(t *testing.T) {
+	m := NewManager()
+	ch, unsub := m.Subscribe()
+	defer unsub()
+
+	m.HandleUpdate("docker", collector.StateUpdate{
+		Snapshot: &collector.GraphSnapshot{
+			Nodes: []collector.Node{
+				{ID: "container:web", Type: "container", Name: "web"},
+			},
+		},
+	})
+
+	select {
+	case msg := <-ch:
+		if msg.Type != "snapshot" {
+			t.Errorf("first update should be snapshot, got %s", msg.Type)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for first snapshot")
+	}
+}
