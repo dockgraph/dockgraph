@@ -1,58 +1,17 @@
-# Should be identical to .gitignore
+# Deny-by-default: only allow files needed for the Docker build.
+*
 
-# Go
-backend/dockgraph
+# Backend
+!backend/**/*.go
+backend/**/*_test.go
+!backend/go.mod
+!backend/go.sum
 
-# Node
-frontend/node_modules/
-frontend/dist/
-frontend/dist-ssr/
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# IDE
-.idea/
-.vscode/*
-!.vscode/extensions.json
-*.swp
-*.sw?
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.local
-
-# OS
-.DS_Store
-
-# Local overrides
-docker-compose.override.yml
-
-# Environment
-.env
-.env.*
-
-# Temporary
-tmp/
-
-
-# Docker extra
-.git
-.github
-.gitignore
-.dockerignore
-compose.yml
-docker-compose.override.yml
-demo
-docs
-LICENSE
-CONTRIBUTING.md
-**/*.md
-!frontend/README.md
-!backend/README.md
+# Frontend
+!frontend/src/
+!frontend/public/
+!frontend/index.html
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig*.json
+!frontend/vite.config.ts
