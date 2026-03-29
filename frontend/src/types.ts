@@ -37,11 +37,9 @@ export interface DeltaUpdate {
   edgesRemoved?: string[];
 }
 
-export interface WireMessage {
-  type: 'snapshot' | 'delta';
-  version: number;
-  data: GraphSnapshot | DeltaUpdate;
-}
+export type WireMessage =
+  | { type: 'snapshot'; version: number; data: GraphSnapshot }
+  | { type: 'delta'; version: number; data: DeltaUpdate };
 
 // Node data types used by React Flow custom components
 

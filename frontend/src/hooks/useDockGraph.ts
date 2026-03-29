@@ -1,25 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DGNode, DGEdge, GraphSnapshot, DeltaUpdate, WireMessage } from '../types';
+import type { DGNode, DGEdge, GraphSnapshot, WireMessage } from '../types';
 import { RECONNECT_MAX_DELAY } from '../utils/constants';
+import { snapshotFingerprint, applyDelta as applyDeltaFn } from './deltaUtils';
 
 interface DockGraphState {
   nodes: DGNode[];
   edges: DGEdge[];
   connected: boolean;
-}
-
-/**
- * Produces a lightweight fingerprint of the current graph state.
- * Prevents redundant re-renders when the WebSocket pushes a snapshot
- * that is structurally identical to what we already have (same node IDs,
- * same statuses, same edge set).
- */
-function snapshotFingerprint(nodes: DGNode[], edges: DGEdge[]): string {
-  const nk = (nodes ?? []).map((n) =>
-    `${n.id}:${n.status ?? ''}:${n.image ?? ''}:${n.networkId ?? ''}:${(n.ports ?? []).map((p) => `${p.host}-${p.container}`).join(';')}`,
-  ).join(',');
-  const ek = (edges ?? []).map((e) => e.id).join(',');
-  return nk + '|' + ek;
 }
 
 /**
@@ -54,40 +41,8 @@ export function useDockGraph(): DockGraphState {
     setState((prev) => ({ ...prev, nodes, edges }));
   }, []);
 
-  const applyDelta = useCallback((delta: DeltaUpdate) => {
-    setState((prev) => {
-      let nodes = [...prev.nodes];
-      let edges = [...prev.edges];
-
-      if (delta.nodesRemoved) {
-        const removed = new Set(delta.nodesRemoved);
-        nodes = nodes.filter((n) => !removed.has(n.id));
-      }
-
-      if (delta.nodesAdded) {
-        nodes = [...nodes, ...delta.nodesAdded];
-      }
-
-      if (delta.nodesUpdated) {
-        for (const update of delta.nodesUpdated) {
-          const idx = nodes.findIndex((n) => n.id === update.id);
-          if (idx !== -1) {
-            nodes[idx] = { ...nodes[idx], ...update } as DGNode;
-          }
-        }
-      }
-
-      if (delta.edgesRemoved) {
-        const removed = new Set(delta.edgesRemoved);
-        edges = edges.filter((e) => !removed.has(e.id));
-      }
-
-      if (delta.edgesAdded) {
-        edges = [...edges, ...delta.edgesAdded];
-      }
-
-      return { ...prev, nodes, edges };
-    });
+  const applyDelta = useCallback((delta: Parameters<typeof applyDeltaFn>[1]) => {
+    setState((prev) => ({ ...prev, ...applyDeltaFn(prev, delta) }));
   }, []);
 
   const connect = useCallback(() => {
@@ -111,10 +66,13 @@ export function useDockGraph(): DockGraphState {
         return;
       }
       if (!msg || typeof msg.type !== 'string' || !msg.data) return;
+      if (typeof msg.version !== 'number') return;
       if (msg.type === 'snapshot') {
-        applySnapshot(msg.data as GraphSnapshot);
+        const d = msg.data;
+        if (!Array.isArray(d.nodes) || !Array.isArray(d.edges)) return;
+        applySnapshot(d);
       } else if (msg.type === 'delta') {
-        applyDelta(msg.data as DeltaUpdate);
+        applyDelta(msg.data);
       }
     };
 

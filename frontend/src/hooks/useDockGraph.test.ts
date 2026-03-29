@@ -1,56 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { DGNode, DGEdge, DeltaUpdate } from '../types';
-
-/**
- * These tests cover the delta application logic from useDockGraph.
- * The functions are extracted here to match the exact logic in the hook's
- * applyDelta callback, ensuring the core state transformation is correct.
- */
-
-function applyDelta(
-  prev: { nodes: DGNode[]; edges: DGEdge[] },
-  delta: DeltaUpdate,
-): { nodes: DGNode[]; edges: DGEdge[] } {
-  let nodes = [...prev.nodes];
-  let edges = [...prev.edges];
-
-  if (delta.nodesRemoved) {
-    const removed = new Set(delta.nodesRemoved);
-    nodes = nodes.filter((n) => !removed.has(n.id));
-  }
-
-  if (delta.nodesAdded) {
-    nodes = [...nodes, ...delta.nodesAdded];
-  }
-
-  if (delta.nodesUpdated) {
-    for (const update of delta.nodesUpdated) {
-      const idx = nodes.findIndex((n) => n.id === update.id);
-      if (idx !== -1) {
-        nodes[idx] = { ...nodes[idx], ...update } as DGNode;
-      }
-    }
-  }
-
-  if (delta.edgesRemoved) {
-    const removed = new Set(delta.edgesRemoved);
-    edges = edges.filter((e) => !removed.has(e.id));
-  }
-
-  if (delta.edgesAdded) {
-    edges = [...edges, ...delta.edgesAdded];
-  }
-
-  return { nodes, edges };
-}
-
-function snapshotFingerprint(nodes: DGNode[], edges: DGEdge[]): string {
-  const nk = (nodes ?? []).map((n) =>
-    `${n.id}:${n.status ?? ''}:${n.image ?? ''}:${n.networkId ?? ''}:${(n.ports ?? []).map((p) => `${p.host}-${p.container}`).join(';')}`,
-  ).join(',');
-  const ek = (edges ?? []).map((e) => e.id).join(',');
-  return nk + '|' + ek;
-}
+import type { DGNode, DGEdge } from '../types';
+import { applyDelta, snapshotFingerprint } from './deltaUtils';
 
 const web: DGNode = { id: 'container:web', type: 'container', name: 'web', status: 'running' };
 const db: DGNode = { id: 'container:db', type: 'container', name: 'db', status: 'running' };
