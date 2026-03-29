@@ -126,6 +126,12 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 		select {
 		case event := <-watcher.Events:
 			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove) != 0 {
+				// Watch newly created subdirectories so files added later are detected.
+				if event.Op&fsnotify.Create != 0 {
+					if info, statErr := os.Stat(event.Name); statErr == nil && info.IsDir() {
+						_ = watcher.Add(event.Name)
+					}
+				}
 				if debounceTimer != nil {
 					debounceTimer.Stop()
 				}
@@ -155,6 +161,14 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 // Each path can be a .yml/.yaml file or a directory (scanned recursively).
 func resolveComposePaths(paths []string) ([]string, error) {
 	var files []string
+	seen := make(map[string]bool)
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			files = append(files, p)
+		}
+	}
+
 	for _, p := range paths {
 		info, err := os.Stat(p)
 		if err != nil {
@@ -164,7 +178,7 @@ func resolveComposePaths(paths []string) ([]string, error) {
 			return nil, err
 		}
 		if !info.IsDir() {
-			files = append(files, p)
+			add(p)
 			continue
 		}
 		err = filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
@@ -173,7 +187,7 @@ func resolveComposePaths(paths []string) ([]string, error) {
 			}
 			ext := filepath.Ext(d.Name())
 			if ext == ".yaml" || ext == ".yml" {
-				files = append(files, path)
+				add(path)
 			}
 			return nil
 		})

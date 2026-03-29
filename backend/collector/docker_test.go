@@ -16,7 +16,6 @@ func TestBuildNodeFromContainer(t *testing.T) {
 		"my-api",
 		"python:3.12",
 		"running",
-		nil,
 		[]PortMapping{{Host: 8000, Container: 8000}},
 	)
 

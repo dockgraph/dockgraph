@@ -192,7 +192,7 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		ports := extractPorts(c.Ports)
 
 		primary, _ := classifyContainerNetworks(c, networkIDToName)
-		node := buildContainerNode(name, c.Image, status, nil, ports)
+		node := buildContainerNode(name, c.Image, status, ports)
 		if primary != "" {
 			node.NetworkID = "network:" + primary
 		}

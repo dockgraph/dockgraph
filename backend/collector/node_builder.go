@@ -3,14 +3,13 @@ package collector
 import "sort"
 
 // buildContainerNode creates a container-type graph node with the given attributes.
-func buildContainerNode(name, image, status string, labels map[string]string, ports []PortMapping) Node {
+func buildContainerNode(name, image, status string, ports []PortMapping) Node {
 	return Node{
 		ID:     "container:" + name,
 		Type:   "container",
 		Name:   name,
 		Image:  image,
 		Status: status,
-		Labels: labels,
 		Ports:  ports,
 	}
 }
