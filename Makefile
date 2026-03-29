@@ -15,7 +15,8 @@ build-frontend: ## Build React frontend
 	cd frontend && npm ci --legacy-peer-deps && npm run build
 
 test: ## Run all tests
-	cd backend && go test ./...
+	cd backend && go test -race ./...
+	cd frontend && npm test
 
 lint: lint-backend lint-frontend ## Run all linters
 

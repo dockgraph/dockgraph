@@ -45,9 +45,29 @@ jobs:
           git diff --exit-code go.mod go.sum
         working-directory: backend
 
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
       - name: Test
-        run: go test ./...
+        run: gotestsum --junitfile=junit.xml -- -race -coverprofile=coverage.out ./...
         working-directory: backend
+
+      - name: Upload coverage
+        if: always()
+        uses: codecov/codecov-action@v6
+        with:
+          files: backend/coverage.out
+          flags: backend
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v6
+        with:
+          files: backend/junit.xml
+          flags: backend
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report-type: test_results
 
   frontend:
     name: Frontend
@@ -74,9 +94,32 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
+      - name: Test
+        run: npx vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text --reporter=default --reporter=junit --outputFile.junit=junit.xml
+        working-directory: frontend
+
+      - name: Upload coverage
+        if: always()
+        uses: codecov/codecov-action@v6
+        with:
+          files: frontend/coverage/lcov.info
+          flags: frontend
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v6
+        with:
+          files: frontend/junit.xml
+          flags: frontend
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report-type: test_results
+
       - name: Build
         run: npm run build
         working-directory: frontend
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   smoke:
     name: Smoke Test
