@@ -107,8 +107,9 @@ func (m *Manager) HandleUpdate(name string, runtime bool, update collector.State
 	m.hasState = true
 	snapshot := m.merged
 
-	m.mu.Unlock()
-
+	// Build and broadcast the message under the same lock to prevent a new
+	// subscriber (via Subscribe) from receiving a stale snapshot and then
+	// also catching the broadcast — which would duplicate the initial state.
 	var msg collector.StateMessage
 	if !hadState {
 		msg = collector.StateMessage{
@@ -118,6 +119,7 @@ func (m *Manager) HandleUpdate(name string, runtime bool, update collector.State
 	} else {
 		delta, changed := diffSnapshots(&prev, &snapshot)
 		if !changed {
+			m.mu.Unlock()
 			return
 		}
 		msg = collector.StateMessage{
@@ -127,14 +129,13 @@ func (m *Manager) HandleUpdate(name string, runtime bool, update collector.State
 		}
 	}
 
-	m.mu.RLock()
 	for _, ch := range m.subscribers {
 		select {
 		case ch <- msg:
 		default:
 		}
 	}
-	m.mu.RUnlock()
+	m.mu.Unlock()
 }
 
 // mergeSnapshots combines runtime and declarative snapshots into a single graph.

@@ -44,6 +44,7 @@ type Hub struct {
 	mu         sync.RWMutex
 	clients    map[*wsClient]bool
 	current    *collector.GraphSnapshot
+	closed     bool
 	MaxClients int
 }
 
@@ -72,6 +73,11 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		conn.Close()
+		return
+	}
 	if h.MaxClients > 0 && len(h.clients) >= h.MaxClients {
 		h.mu.Unlock()
 		conn.WriteMessage(websocket.CloseMessage,
@@ -153,26 +159,24 @@ func (h *Hub) Broadcast(msg collector.StateMessage) {
 	switch {
 	case msg.Type == "snapshot" && msg.Snapshot != nil:
 		wire = collector.NewSnapshotMessage(*msg.Snapshot)
-		h.mu.Lock()
-		h.current = msg.Snapshot
-		h.mu.Unlock()
 	case msg.Type == "delta" && msg.Delta != nil:
 		wire = collector.NewDeltaMessage(*msg.Delta)
-		if msg.Snapshot != nil {
-			h.mu.Lock()
-			h.current = msg.Snapshot
-			h.mu.Unlock()
-		}
 	default:
 		return
 	}
 
-	h.mu.RLock()
+	// Update stored snapshot and copy client list under a single lock to
+	// prevent a new client from seeing a stale snapshot between the update
+	// and the broadcast.
+	h.mu.Lock()
+	if msg.Snapshot != nil {
+		h.current = msg.Snapshot
+	}
 	clients := make([]*wsClient, 0, len(h.clients))
 	for c := range h.clients {
 		clients = append(clients, c)
 	}
-	h.mu.RUnlock()
+	h.mu.Unlock()
 
 	for _, client := range clients {
 		select {
@@ -184,13 +188,15 @@ func (h *Hub) Broadcast(msg collector.StateMessage) {
 
 // Shutdown sends a close frame to all connected clients and closes their
 // connections so that the reader and writer goroutines exit cleanly.
+// After Shutdown, the hub rejects new connections.
 func (h *Hub) Shutdown() {
-	h.mu.RLock()
+	h.mu.Lock()
+	h.closed = true
 	clients := make([]*wsClient, 0, len(h.clients))
 	for c := range h.clients {
 		clients = append(clients, c)
 	}
-	h.mu.RUnlock()
+	h.mu.Unlock()
 
 	for _, c := range clients {
 		_ = c.conn.WriteControl(

@@ -166,7 +166,7 @@ func TestSecurityHeadersComplete(t *testing.T) {
 	headers := map[string]string{
 		"X-Content-Type-Options":  "nosniff",
 		"X-Frame-Options":         "DENY",
-		"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'",
+		"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:",
 		"Referrer-Policy":         "strict-origin-when-cross-origin",
 		"Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
 		"X-XSS-Protection":        "0",
