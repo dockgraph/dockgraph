@@ -47,7 +47,11 @@ func LoadConfig() Config {
 		}
 	}
 	if v := os.Getenv("DG_COMPOSE_PATH"); v != "" {
-		cfg.ComposePaths = strings.Split(v, ",")
+		parts := strings.Split(v, ",")
+		for i, p := range parts {
+			parts[i] = strings.TrimSpace(p)
+		}
+		cfg.ComposePaths = parts
 	}
 
 	return cfg

@@ -117,6 +117,15 @@ func TestParseComposePortsUnpublishedSkipped(t *testing.T) {
 	}
 }
 
+func TestParseComposePortsInvalidSkipped(t *testing.T) {
+	ports := parseComposePorts([]composetypes.ServicePortConfig{
+		{Published: "notanumber", Target: 80},
+	})
+	if len(ports) != 0 {
+		t.Errorf("expected no mappings for unparseable port, got %+v", ports)
+	}
+}
+
 func filterNodes(nodes []Node, nodeType string) []Node {
 	var filtered []Node
 	for _, n := range nodes {

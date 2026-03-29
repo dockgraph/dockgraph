@@ -74,7 +74,9 @@ func parseComposePorts(ports []composetypes.ServicePortConfig) []PortMapping {
 			}
 		} else {
 			var hostPort int
-			_, _ = fmt.Sscanf(p.Published, "%d", &hostPort)
+			if n, _ := fmt.Sscanf(p.Published, "%d", &hostPort); n < 1 {
+				continue
+			}
 			result = append(result, PortMapping{
 				Host:      hostPort,
 				Container: int(p.Target),

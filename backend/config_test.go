@@ -109,6 +109,7 @@ func TestLoadConfigComposePaths(t *testing.T) {
 	}{
 		{"single", "/path/to/compose.yml", 1},
 		{"multiple", "/a.yml,/b.yml,/c.yml", 3},
+		{"whitespace_trimmed", " /a.yml , /b.yml ", 2},
 		{"empty_default", "", 0},
 	}
 
@@ -131,5 +132,22 @@ func TestLoadConfigComposePaths(t *testing.T) {
 				t.Errorf("expected %d paths, got %d", tt.want, len(cfg.ComposePaths))
 			}
 		})
+	}
+}
+
+func TestLoadConfigComposePathsTrimmed(t *testing.T) {
+	t.Setenv("DG_COMPOSE_PATH", " /a.yml , /b.yml ")
+	os.Unsetenv("DG_PORT")
+	os.Unsetenv("DG_POLL_INTERVAL")
+
+	cfg := LoadConfig()
+	if len(cfg.ComposePaths) != 2 {
+		t.Fatalf("expected 2 paths, got %d", len(cfg.ComposePaths))
+	}
+	if cfg.ComposePaths[0] != "/a.yml" {
+		t.Errorf("expected '/a.yml', got %q", cfg.ComposePaths[0])
+	}
+	if cfg.ComposePaths[1] != "/b.yml" {
+		t.Errorf("expected '/b.yml', got %q", cfg.ComposePaths[1])
 	}
 }
