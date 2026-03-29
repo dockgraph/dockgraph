@@ -110,6 +110,7 @@ export async function computeLayout(
     return e;
   });
 
+  // Nodes are freshly created by classifyNodes — mutation is safe here.
   const allNodes = [...groups, ...children, ...freeNodes];
   for (const n of allNodes) {
     if (n.type !== 'networkGroup') {

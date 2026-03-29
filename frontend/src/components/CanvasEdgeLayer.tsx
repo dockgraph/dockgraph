@@ -142,6 +142,9 @@ export const CanvasEdgeLayer = forwardRef<CanvasEdgeLayerHandle, CanvasEdgeLayer
     // - During pan/zoom: hide canvas via CSS (zero draw cost, 60fps guaranteed)
     // - On settle: full quality redraw after VIEWPORT_SETTLE_DELAY
     // - When animations active: continuous rAF loop with viewport culling
+    //
+    // The settle watcher and animation loop share scope so the settle callback
+    // can restart the rAF loop after a pan/zoom pause.
     const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
@@ -164,9 +167,37 @@ export const CanvasEdgeLayer = forwardRef<CanvasEdgeLayerHandle, CanvasEdgeLayer
         drawnZoom = zoom;
       }
 
+      function animTick(timestamp: number) {
+        const data = edgeDataRef.current;
+        if (data.animatedEdges.length === 0) {
+          rafRef.current = 0;
+          return;
+        }
+        // Skip rendering while the canvas is hidden during pan/zoom, and
+        // stop the loop to avoid wasted rAF callbacks. The settle callback
+        // restarts it after the viewport stops moving.
+        if (canvas!.style.visibility === 'hidden') {
+          rafRef.current = 0;
+          return;
+        }
+        const [tx, ty, zoom] = storeApi.getState().transform;
+        renderFrame(canvas!, ctx!, { tx, ty, zoom }, data.canvasEdges, data.animatedEdges, timestamp);
+        rafRef.current = requestAnimationFrame(animTick);
+      }
+
+      function startAnimLoop() {
+        if (rafRef.current) return;
+        if (edgeDataRef.current.animatedEdges.length > 0) {
+          rafRef.current = requestAnimationFrame(animTick);
+        }
+      }
+
       function scheduleSettle() {
         if (settleTimerRef.current != null) clearTimeout(settleTimerRef.current);
-        settleTimerRef.current = setTimeout(() => fullRedraw(performance.now()), VIEWPORT_SETTLE_DELAY);
+        settleTimerRef.current = setTimeout(() => {
+          fullRedraw(performance.now());
+          startAnimLoop();
+        }, VIEWPORT_SETTLE_DELAY);
       }
 
       // Hide canvas during interaction, redraw on settle.
@@ -178,34 +209,14 @@ export const CanvasEdgeLayer = forwardRef<CanvasEdgeLayerHandle, CanvasEdgeLayer
       });
 
       fullRedraw(performance.now());
+      startAnimLoop();
 
       return () => {
         unsub();
         if (settleTimerRef.current != null) clearTimeout(settleTimerRef.current);
         if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
       };
-    }, [storeApi]);
-
-    // Animation loop — only runs when animated edges exist.
-    useEffect(() => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      if (animatedEdges.length === 0) return;
-
-      function animTick(timestamp: number) {
-        const [tx, ty, zoom] = storeApi.getState().transform;
-        const data = edgeDataRef.current;
-        if (data.animatedEdges.length === 0) return;
-        if (canvas!.style.visibility !== 'hidden') {
-          renderFrame(canvas!, ctx!, { tx, ty, zoom }, data.canvasEdges, data.animatedEdges, timestamp);
-        }
-        rafRef.current = requestAnimationFrame(animTick);
-      }
-
-      rafRef.current = requestAnimationFrame(animTick);
-      return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
     }, [animatedEdges, storeApi]);
 
     // Redraw on container resize to maintain sharp rendering.

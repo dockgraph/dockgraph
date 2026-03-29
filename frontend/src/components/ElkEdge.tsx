@@ -28,14 +28,17 @@ export const ElkEdge = memo(function ElkEdge({ data, style }: EdgeProps) {
   const isLowZoom = useStore(zoomSelector);
   const isSimplified = (edgeData?.nodeCount ?? 0) > ANIMATION_NODE_LIMIT;
 
+  const points = useMemo(() => (path ? parsePolyline(path) : []), [path]);
+  const ep = useMemo(() => polylineEndpoints(points), [points]);
+
   const { dur, dotCount } = useMemo(() => {
     if (!animated || !path) return { dur: 0, dotCount: 0 };
-    const length = polylineLength(parsePolyline(path));
+    const length = polylineLength(points);
     return {
       dur: Math.max(MIN_ANIMATION_DURATION, length / DOT_SPEED),
       dotCount: Math.min(MAX_DOTS, Math.max(MIN_DOTS, Math.round(length / DOT_SPACING))),
     };
-  }, [animated, path]);
+  }, [animated, path, points]);
 
   if (!path) return null;
 
@@ -60,8 +63,6 @@ export const ElkEdge = memo(function ElkEdge({ data, style }: EdgeProps) {
       />
     );
   }
-
-  const ep = polylineEndpoints(parsePolyline(path));
 
   return (
     <g opacity={opacity} style={{ cursor: 'pointer' }}>

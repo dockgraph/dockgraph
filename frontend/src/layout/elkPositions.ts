@@ -20,6 +20,7 @@ export function applyElkPositions(
       const rfNode = nodeMap.get(elkNode.id);
       if (!rfNode) continue;
 
+      // Positions are assigned during the layout pass. Nodes are consumed immediately after.
       rfNode.position = {
         x: (elkNode.x ?? 0) + offsetX,
         y: (elkNode.y ?? 0) + offsetY,

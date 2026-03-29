@@ -48,6 +48,7 @@ export function useGraphLayout(
 
   const topoKey = useMemo(() => topologyKey(dgNodes, dgEdges), [dgNodes, dgEdges]);
   const prevTopoKeyRef = useRef('');
+  const layoutInFlightRef = useRef(false);
   const [layoutBusy, setLayoutBusy] = useState(false);
   const [layoutError, setLayoutError] = useState(false);
 
@@ -55,6 +56,7 @@ export function useGraphLayout(
   useEffect(() => {
     if (dgNodes.length === 0) return;
     let cancelled = false;
+    layoutInFlightRef.current = true;
 
     setLayoutBusy(true);
     setLayoutError(false);
@@ -73,10 +75,16 @@ export function useGraphLayout(
         if (!cancelled) setLayoutError(true);
       })
       .finally(() => {
-        if (!cancelled) setLayoutBusy(false);
+        if (!cancelled) {
+          setLayoutBusy(false);
+          layoutInFlightRef.current = false;
+        }
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      layoutInFlightRef.current = false;
+    };
   // topoKey captures the identity of dgNodes/dgEdges — when it changes, the
   // full layout runs. edgeStroke is excluded because color-only changes are
   // handled by the lightweight update below.
@@ -86,6 +94,7 @@ export function useGraphLayout(
   // Lightweight update — apply status/style changes without relayout.
   useEffect(() => {
     if (dgNodes.length === 0 || topoKey !== prevTopoKeyRef.current) return;
+    if (layoutInFlightRef.current) return;
 
     const rfEdges = toReactFlowEdges(dgEdges, dgNodes, edgeStroke);
     const rfEdgeMap = new Map(rfEdges.map((e) => [e.id, e]));

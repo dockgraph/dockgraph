@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -54,10 +55,11 @@ function globalStyles(mode: 'dark' | 'light') {
 function AppContent() {
   const { nodes, edges, connected } = useDockGraph();
   const { theme } = useTheme();
+  const css = useMemo(() => globalStyles(theme.mode), [theme.mode]);
 
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      <style>{globalStyles(theme.mode)}</style>
+      <style>{css}</style>
       <FlowCanvas dgNodes={nodes} dgEdges={edges} connected={connected} />
     </div>
   );
