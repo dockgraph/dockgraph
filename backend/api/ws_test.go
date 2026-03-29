@@ -12,6 +12,22 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// waitFor polls until condition returns true or the timeout expires.
+func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
+	t.Helper()
+	deadline := time.After(timeout)
+	for {
+		if condition() {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for condition")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
 func dialHub(t *testing.T, hub *Hub) (*httptest.Server, *websocket.Conn) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -23,7 +39,7 @@ func dialHub(t *testing.T, hub *Hub) (*httptest.Server, *websocket.Conn) {
 		server.Close()
 		t.Fatalf("dial error: %v", err)
 	}
-	time.Sleep(50 * time.Millisecond) // let the hub register the client
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() >= 1 })
 	return server, ws
 }
 
@@ -148,7 +164,7 @@ func TestClientCount(t *testing.T) {
 	}
 
 	ws.Close()
-	time.Sleep(100 * time.Millisecond) // let readPump detect disconnect
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() == 0 })
 
 	if hub.ClientCount() != 0 {
 		t.Errorf("expected 0 clients after disconnect, got %d", hub.ClientCount())
@@ -185,7 +201,7 @@ func TestCheckOrigin(t *testing.T) {
 
 func TestSecurityHeaders(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, nil)
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -273,7 +289,7 @@ func TestHubRejectsOverLimit(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() >= 2 })
 
 	// Third connection upgrades but is immediately closed with CloseTryAgainLater
 	ws3, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
