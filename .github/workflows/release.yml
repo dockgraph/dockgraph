@@ -69,14 +69,6 @@ jobs:
           provenance: true
           sbom: true
 
-      - name: Update Docker Hub description
-        uses: peter-evans/dockerhub-description@v5
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: dockgraph/dockgraph
-          short-description: "Real-time Docker infrastructure visualizer — containers, networks, and volumes as a live graph"
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
