@@ -1,25 +1,29 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"strings"
-
-	"github.com/docker/docker/client"
 )
+
+// HealthChecker tests whether the backing service is reachable.
+type HealthChecker interface {
+	HealthCheck(ctx context.Context) error
+}
 
 // NewServer sets up the HTTP routes for the application:
 //   - GET /healthz — checks Docker daemon connectivity
 //   - GET /ws      — upgrades to WebSocket for live graph updates
 //   - /*           — serves the embedded frontend SPA
-func NewServer(hub *Hub, staticFS fs.FS, dockerCli client.APIClient) http.Handler {
+func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, err := dockerCli.Ping(r.Context())
+		err := health.HealthCheck(r.Context())
 		if err != nil {
 			log.Printf("healthcheck failed: %v", err)
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -41,7 +45,10 @@ func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("X-XSS-Protection", "0")
 		next.ServeHTTP(w, r)
 	})
 }

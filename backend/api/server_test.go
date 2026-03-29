@@ -8,24 +8,20 @@ import (
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
-
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
 )
 
-// stubPinger implements just the Ping method for health check tests.
-type stubPinger struct {
-	client.APIClient
+// stubHealth implements HealthChecker for tests.
+type stubHealth struct {
 	err error
 }
 
-func (s *stubPinger) Ping(_ context.Context) (types.Ping, error) {
-	return types.Ping{}, s.err
+func (s *stubHealth) HealthCheck(_ context.Context) error {
+	return s.err
 }
 
 func TestHealthzOK(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubPinger{})
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -52,7 +48,7 @@ func TestHealthzOK(t *testing.T) {
 
 func TestHealthzDockerUnreachable(t *testing.T) {
 	hub := NewHub()
-	pinger := &stubPinger{err: fmt.Errorf("connection refused")}
+	pinger := &stubHealth{err: fmt.Errorf("connection refused")}
 	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, pinger)
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -81,7 +77,7 @@ func TestSPAHandlerServesStaticFiles(t *testing.T) {
 	}
 
 	hub := NewHub()
-	handler := NewServer(hub, fs, &stubPinger{})
+	handler := NewServer(hub, fs, &stubHealth{})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -120,7 +116,7 @@ func TestSPAHandlerFallbackToIndex(t *testing.T) {
 	}
 
 	hub := NewHub()
-	handler := NewServer(hub, fs, &stubPinger{})
+	handler := NewServer(hub, fs, &stubHealth{})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -139,7 +135,7 @@ func TestSPAHandlerFallbackToIndex(t *testing.T) {
 
 func TestCSPHeader(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubPinger{})
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -157,7 +153,7 @@ func TestCSPHeader(t *testing.T) {
 
 func TestSecurityHeadersComplete(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubPinger{})
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -170,7 +166,10 @@ func TestSecurityHeadersComplete(t *testing.T) {
 	headers := map[string]string{
 		"X-Content-Type-Options":  "nosniff",
 		"X-Frame-Options":         "DENY",
-		"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'",
+		"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'",
+		"Referrer-Policy":         "strict-origin-when-cross-origin",
+		"Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
+		"X-XSS-Protection":        "0",
 	}
 	for header, want := range headers {
 		if got := resp.Header.Get(header); got != want {
