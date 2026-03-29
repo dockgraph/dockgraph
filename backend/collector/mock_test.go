@@ -8,15 +8,10 @@ import (
 	"github.com/docker/docker/api/types/events"
 	networktypes "github.com/docker/docker/api/types/network"
 	volumetypes "github.com/docker/docker/api/types/volume"
-	"github.com/docker/docker/client"
 )
 
-// stubDockerClient implements the subset of client.APIClient used by the
-// collector package. Unimplemented methods panic, surfacing unexpected calls
-// immediately during tests.
+// stubDockerClient implements DockerClient for testing.
 type stubDockerClient struct {
-	client.APIClient // embedded to satisfy the full interface
-
 	containers []containertypes.Summary
 	networks   []networktypes.Summary
 	volumes    []*volumetypes.Volume

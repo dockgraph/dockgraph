@@ -8,7 +8,7 @@ import (
 	containertypes "github.com/docker/docker/api/types/container"
 	networktypes "github.com/docker/docker/api/types/network"
 	volumetypes "github.com/docker/docker/api/types/volume"
-	"github.com/docker/docker/client"
+	"golang.org/x/sync/errgroup"
 )
 
 // dockerResources holds the raw API responses from Docker,
@@ -19,28 +19,36 @@ type dockerResources struct {
 	volumes    []*volumetypes.Volume
 }
 
-// fetchResources queries the Docker daemon for all containers, networks, and volumes.
-func fetchResources(ctx context.Context, cli client.APIClient) (dockerResources, error) {
-	containers, err := cli.ContainerList(ctx, containertypes.ListOptions{All: true})
-	if err != nil {
+// fetchResources queries the Docker daemon for all containers, networks, and
+// volumes concurrently. If any call fails, the context is cancelled and the
+// first error is returned.
+func fetchResources(ctx context.Context, cli DockerClient) (dockerResources, error) {
+	var res dockerResources
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		var err error
+		res.containers, err = cli.ContainerList(ctx, containertypes.ListOptions{All: true})
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		res.networks, err = cli.NetworkList(ctx, networktypes.ListOptions{})
+		return err
+	})
+	g.Go(func() error {
+		volResp, err := cli.VolumeList(ctx, volumetypes.ListOptions{})
+		if err != nil {
+			return err
+		}
+		res.volumes = volResp.Volumes
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
 		return dockerResources{}, err
 	}
-
-	networks, err := cli.NetworkList(ctx, networktypes.ListOptions{})
-	if err != nil {
-		return dockerResources{}, err
-	}
-
-	volResp, err := cli.VolumeList(ctx, volumetypes.ListOptions{})
-	if err != nil {
-		return dockerResources{}, err
-	}
-
-	return dockerResources{
-		containers: containers,
-		networks:   networks,
-		volumes:    volResp.Volumes,
-	}, nil
+	return res, nil
 }
 
 // resolveNetworkNames maps Docker's internal network hex IDs to human-readable names,

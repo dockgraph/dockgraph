@@ -8,7 +8,14 @@
 //	Edges: "e:dep:{source}:{target}", "e:net:{source}:{target}", "e:vol:{source}:{target}"
 package collector
 
-import "context"
+import (
+	"context"
+
+	containertypes "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
+	networktypes "github.com/docker/docker/api/types/network"
+	volumetypes "github.com/docker/docker/api/types/volume"
+)
 
 // PortMapping represents a host-to-container port binding.
 type PortMapping struct {
@@ -89,6 +96,17 @@ type StateMessage struct {
 // StateUpdate is emitted by collectors whenever they detect a topology change.
 type StateUpdate struct {
 	Snapshot *GraphSnapshot
+}
+
+// DockerClient is the subset of the Docker API used by the collector package.
+// Defined here (at the consumer) rather than depending on the full client.APIClient
+// so the dependency surface is explicit and test stubs are minimal.
+type DockerClient interface {
+	ContainerList(ctx context.Context, options containertypes.ListOptions) ([]containertypes.Summary, error)
+	NetworkList(ctx context.Context, options networktypes.ListOptions) ([]networktypes.Summary, error)
+	VolumeList(ctx context.Context, options volumetypes.ListOptions) (volumetypes.ListResponse, error)
+	Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error)
+	Close() error
 }
 
 // Collector defines the interface for infrastructure data sources.

@@ -8,13 +8,12 @@ import (
 
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
 )
 
 // DockerCollector monitors the local Docker daemon for container, network,
 // and volume changes, producing graph snapshots on each topology change.
 type DockerCollector struct {
-	client       client.APIClient
+	client       DockerClient
 	pollInterval time.Duration
 	updates      chan StateUpdate
 	stopCh       chan struct{}
@@ -23,7 +22,7 @@ type DockerCollector struct {
 
 // NewDockerCollector creates a collector that polls the Docker daemon at the
 // given interval and also reacts to real-time Docker events.
-func NewDockerCollector(cli client.APIClient, pollInterval time.Duration) *DockerCollector {
+func NewDockerCollector(cli DockerClient, pollInterval time.Duration) *DockerCollector {
 	return &DockerCollector{
 		client:       cli,
 		pollInterval: pollInterval,
@@ -140,6 +139,11 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 				return
 			}
 			log.Printf("docker events error: %v, reconnecting...", err)
+			// Cancel any pending debounce from the old event stream before reconnecting.
+			if debounceTimer != nil {
+				debounceTimer.Stop()
+				debounceTimer = nil
+			}
 			// Exponential backoff to avoid tight-loop reconnection when the daemon is temporarily unavailable.
 			backoff := min(reconnectBackoff, 30*time.Second)
 			reconnectBackoff *= 2

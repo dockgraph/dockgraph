@@ -7,14 +7,13 @@ import (
 
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
 )
 
 // DetectComposePaths inspects the dockgraph container's own bind mounts
 // to discover directories and files the user has mounted for compose scanning.
 // The Docker socket mount is excluded automatically. Uses All:true because
 // at startup the container may not yet report as "running".
-func DetectComposePaths(ctx context.Context, cli client.APIClient) ([]string, error) {
+func DetectComposePaths(ctx context.Context, cli DockerClient) ([]string, error) {
 	containers, err := cli.ContainerList(ctx, containertypes.ListOptions{
 		All:     true,
 		Filters: filters.NewArgs(filters.Arg("label", SelfExcludeLabel+"=true")),

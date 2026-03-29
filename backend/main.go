@@ -24,13 +24,36 @@ import (
 // Version is set at build time via -ldflags.
 var Version = "dev"
 
-func main() {
-	cfg := LoadConfig()
+// dockerHealth adapts a Docker client to the api.HealthChecker interface.
+type dockerHealth struct {
+	cli *client.Client
+}
 
+func (d *dockerHealth) HealthCheck(ctx context.Context) error {
+	_, err := d.cli.Ping(ctx)
+	return err
+}
+
+func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println("dockgraph", Version)
 		os.Exit(0)
 	}
+
+	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
+		fmt.Println("Usage: dockgraph [--version | --help | --healthcheck]")
+		fmt.Println()
+		fmt.Println("Real-time Docker infrastructure topology visualizer.")
+		fmt.Println()
+		fmt.Println("Environment variables:")
+		fmt.Println("  DG_BIND_ADDR       Listen address (default: 0.0.0.0)")
+		fmt.Println("  DG_PORT            HTTP port (default: 7800)")
+		fmt.Println("  DG_POLL_INTERVAL   Docker API poll interval (default: 30s)")
+		fmt.Println("  DG_COMPOSE_PATH    Comma-separated compose file paths (default: auto-detect)")
+		os.Exit(0)
+	}
+
+	cfg := LoadConfig()
 
 	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {
 		httpClient := &http.Client{Timeout: 5 * time.Second}
@@ -108,7 +131,7 @@ func main() {
 		log.Fatalf("failed to load embedded frontend: %v", err)
 	}
 
-	handler := api.NewServer(hub, staticFS, dockerCli)
+	handler := api.NewServer(hub, staticFS, &dockerHealth{cli: dockerCli})
 	addr := cfg.BindAddr + ":" + cfg.Port
 	server := &http.Server{
 		Addr:         addr,
@@ -137,9 +160,9 @@ func pipeUpdates(ctx context.Context, mgr *state.Manager, dc *collector.DockerCo
 	for {
 		select {
 		case update := <-dc.Updates():
-			mgr.HandleUpdate("docker", update)
+			mgr.HandleUpdate("docker", true, update)
 		case update := <-cc.Updates():
-			mgr.HandleUpdate("compose", update)
+			mgr.HandleUpdate("compose", false, update)
 		case <-ctx.Done():
 			return
 		}
