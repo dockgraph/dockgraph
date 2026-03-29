@@ -67,7 +67,7 @@ jobs:
           files: backend/junit.xml
           flags: backend
           token: ${{ secrets.CODECOV_TOKEN }}
-          report-type: test_results
+          report_type: test_results
 
   frontend:
     name: Frontend
@@ -113,7 +113,7 @@ jobs:
           files: frontend/junit.xml
           flags: frontend
           token: ${{ secrets.CODECOV_TOKEN }}
-          report-type: test_results
+          report_type: test_results
 
       - name: Build
         run: npm run build
