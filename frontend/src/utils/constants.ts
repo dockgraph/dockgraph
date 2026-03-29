@@ -30,6 +30,9 @@ export const ANIMATION_NODE_LIMIT = 150;
 /** Zoom level below which nodes render as simplified colored blocks. */
 export const LOD_ZOOM_THRESHOLD = 0.35;
 
+/** React Flow store selector — true when zoom is below the LOD threshold. */
+export const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
+
 /** Hit detection width (px) for canvas edge click targets. */
 export const CANVAS_EDGE_HIT_WIDTH = 12;
 

@@ -5,7 +5,6 @@ import type { ElkEdgeData } from '../types';
 import { parsePolyline, polylineLength, polylineEndpoints } from '../utils/pathUtils';
 import {
   ANIMATION_NODE_LIMIT,
-  LOD_ZOOM_THRESHOLD,
   CANVAS_EDGE_HIT_WIDTH,
   DOT_SPEED,
   MIN_ANIMATION_DURATION,
@@ -18,14 +17,8 @@ import {
   DASH_PATTERN_SVG,
   DEFAULT_EDGE_STROKE_WIDTH,
   DEFAULT_EDGE_STROKE,
+  zoomSelector,
 } from '../utils/constants';
-
-/**
- * Custom edge component that renders ELK-computed orthogonal paths.
- * Depends-on edges between running containers show animated dots
- * traveling along the path to indicate active connections.
- */
-const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
 
 export const ElkEdge = memo(function ElkEdge({ data, style }: EdgeProps) {
   const edgeData = data as ElkEdgeData | undefined;

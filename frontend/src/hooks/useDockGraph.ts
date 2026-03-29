@@ -15,7 +15,9 @@ interface DockGraphState {
  * same statuses, same edge set).
  */
 function snapshotFingerprint(nodes: DGNode[], edges: DGEdge[]): string {
-  const nk = (nodes ?? []).map((n) => `${n.id}:${n.status ?? ''}`).join(',');
+  const nk = (nodes ?? []).map((n) =>
+    `${n.id}:${n.status ?? ''}:${n.image ?? ''}:${n.networkId ?? ''}:${(n.ports ?? []).map((p) => `${p.host}-${p.container}`).join(';')}`,
+  ).join(',');
   const ek = (edges ?? []).map((e) => e.id).join(',');
   return nk + '|' + ek;
 }

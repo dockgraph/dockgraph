@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   ReactFlow,
   MiniMap,
   Controls,
   Background,
   BackgroundVariant,
-  useNodesState,
-  useEdgesState,
   type Node as RFNode,
   type Edge as RFEdge,
 } from '@xyflow/react';
@@ -19,12 +17,30 @@ import { ElkEdge } from './ElkEdge';
 import { CanvasEdgeLayer, type CanvasEdgeLayerHandle } from './CanvasEdgeLayer';
 import { ThemeToggle } from './ThemeToggle';
 import { StatusIndicator } from './StatusIndicator';
-import { computeLayout } from '../layout/elk';
-import { toReactFlowNodes, toReactFlowEdges } from '../utils/graphTransform';
+import { useGraphLayout } from '../hooks/useGraphLayout';
 import { useSelectionHighlight } from '../hooks/useSelectionHighlight';
 import { networkColor } from '../utils/colors';
 import { useTheme } from '../theme';
 import type { DGNode, DGEdge } from '../types';
+import type { ReactNode } from 'react';
+
+function Overlay({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 5,
+        pointerEvents: 'none',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 const nodeTypes = {
   containerNode: ContainerNode,
@@ -42,76 +58,12 @@ interface FlowCanvasProps {
   connected: boolean;
 }
 
-/**
- * Topology fingerprint — changes only when nodes or edges are added/removed.
- * Status changes (running → exited) don't alter the fingerprint, so they
- * skip the expensive ELK layout and only update node/edge data in place.
- */
-function topologyKey(dgNodes: DGNode[], dgEdges: DGEdge[]): string {
-  const nk = dgNodes.map((n) => n.id).sort().join(',');
-  const ek = dgEdges.map((e) => e.id).sort().join(',');
-  return nk + '|' + ek;
-}
-
 export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
   const { theme } = useTheme();
   const canvasEdgeRef = useRef<CanvasEdgeLayerHandle>(null);
 
-  const topoKey = useMemo(() => topologyKey(dgNodes, dgEdges), [dgNodes, dgEdges]);
-  const prevTopoKeyRef = useRef('');
-  const [layoutBusy, setLayoutBusy] = useState(false);
-  const [layoutError, setLayoutError] = useState(false);
-
-  // Full ELK layout — only when topology (node/edge set) changes.
-  useEffect(() => {
-    if (dgNodes.length === 0) return;
-    let cancelled = false;
-
-    setLayoutBusy(true);
-    setLayoutError(false);
-    const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
-    const rfEdges = toReactFlowEdges(dgEdges, dgNodes, theme.edgeStroke);
-
-    computeLayout(rfNodes, rfEdges)
-      .then((layout) => {
-        if (cancelled) return;
-        prevTopoKeyRef.current = topoKey;
-        setNodes(layout.nodes);
-        setEdges(layout.edges);
-      })
-      .catch((err) => {
-        console.error('layout computation failed:', err);
-        if (!cancelled) setLayoutError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLayoutBusy(false);
-      });
-
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topoKey, setNodes, setEdges]);
-
-  // Lightweight update — apply status/style changes without relayout.
-  useEffect(() => {
-    if (dgNodes.length === 0 || topoKey !== prevTopoKeyRef.current) return;
-
-    const rfEdges = toReactFlowEdges(dgEdges, dgNodes, theme.edgeStroke);
-    const rfEdgeMap = new Map(rfEdges.map((e) => [e.id, e]));
-    setEdges((prev) => prev.map((e) => {
-      const updated = rfEdgeMap.get(e.id);
-      return updated ? { ...e, data: { ...e.data, ...updated.data }, style: updated.style } : e;
-    }));
-
-    const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
-    const rfNodeMap = new Map(rfNodes.map((n) => [n.id, n]));
-    setNodes((prev) => prev.map((n) => {
-      const updated = rfNodeMap.get(n.id);
-      return updated ? { ...n, data: updated.data } : n;
-    }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dgNodes, dgEdges, theme.edgeStroke, setNodes, setEdges]);
+  const { nodes, edges, onNodesChange, onEdgesChange, layoutBusy, layoutError } =
+    useGraphLayout(dgNodes, dgEdges, theme.edgeStroke);
 
   const showEmptyState = dgNodes.length === 0;
   const largeGraph = dgNodes.length > ANIMATION_NODE_LIMIT;
@@ -163,59 +115,29 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
       <ThemeToggle />
 
       {showEmptyState && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 5,
-            pointerEvents: 'none',
-          }}
-        >
+        <Overlay>
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
             {connected
               ? 'No containers detected. Start a container to visualize the graph.'
               : 'Connecting to backend\u2026'}
           </p>
-        </div>
+        </Overlay>
       )}
 
       {layoutBusy && !showEmptyState && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 5,
-            pointerEvents: 'none',
-          }}
-        >
+        <Overlay>
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
             Computing layout for {dgNodes.length} containers\u2026
           </p>
-        </div>
+        </Overlay>
       )}
 
       {layoutError && !showEmptyState && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 5,
-            pointerEvents: 'none',
-          }}
-        >
+        <Overlay>
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
             Layout computation failed. Try reloading the page.
           </p>
-        </div>
+        </Overlay>
       )}
 
       {largeGraph && (

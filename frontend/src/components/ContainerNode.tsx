@@ -4,10 +4,8 @@ import { useStore } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
-import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY, LOD_ZOOM_THRESHOLD } from '../utils/constants';
+import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY, zoomSelector } from '../utils/constants';
 import type { ContainerNodeData } from '../types';
-
-const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
 
 const ellipsis: React.CSSProperties = {
   overflow: 'hidden',
@@ -54,9 +52,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
     <div
       style={{
         background: theme.nodeBg,
-        borderTop: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
-        borderRight: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
-        borderBottom: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
+        border: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
         borderLeft: `3px solid ${statusColor}`,
         borderRadius: 4,
         padding: '6px 10px',

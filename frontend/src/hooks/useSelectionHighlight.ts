@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import { useStore } from '@xyflow/react';
-import { LOD_ZOOM_THRESHOLD } from '../utils/constants';
+import { zoomSelector } from '../utils/constants';
 import {
   type SelectionState,
   resolveConnectedElements,
@@ -18,8 +18,6 @@ interface HighlightResult {
   onEdgeClick: (_: React.MouseEvent, edge: RFEdge) => void;
   onPaneClick: () => void;
 }
-
-const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
 
 /**
  * Manages click-to-highlight behavior for graph elements.

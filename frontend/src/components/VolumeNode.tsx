@@ -4,9 +4,7 @@ import { useStore } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { useTheme } from '../theme';
 import type { VolumeNodeData } from '../types';
-import { INACTIVE_OPACITY, LOD_ZOOM_THRESHOLD } from '../utils/constants';
-
-const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
+import { INACTIVE_OPACITY, zoomSelector } from '../utils/constants';
 
 export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
   const { dgNode, nodeWidth } = data as unknown as VolumeNodeData;
@@ -40,9 +38,7 @@ export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
     <div
       style={{
         background: theme.nodeBg,
-        borderTop: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
-        borderRight: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
-        borderBottom: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
+        border: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
         borderLeft: `3px solid ${theme.nodeSubtext}`,
         borderRadius: 4,
         padding: '5px 10px',
