@@ -42,22 +42,6 @@ else
 fi
 DOCKER_SOCK="${DOCKER_SOCK:-/var/run/docker.sock}"
 
-# The production image runs as nonroot (UID 65532) which can't read the Docker
-# socket by default. Fix depends on Docker mode:
-#   - Standard Docker: --group-add gives the container process the socket's
-#     owning group (typically "docker"), granting read access.
-#   - Rootless Docker: GID remapping makes --group-add ineffective, so we
-#     fall back to --user 0 (root inside the container maps to the host user).
-EXTRA_FLAGS=()
-if [ -S "$DOCKER_SOCK" ]; then
-  SOCK_GID="$(stat -c '%g' "$DOCKER_SOCK")"
-  if docker info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless; then
-    EXTRA_FLAGS+=(--user 0)
-  else
-    EXTRA_FLAGS+=(--group-add "$SOCK_GID")
-  fi
-fi
-
 # ── Build & run ──────────────────────────────────────────────
 
 echo "=== DockGraph Smoke Test ==="
@@ -72,7 +56,6 @@ echo "Starting container (socket: $DOCKER_SOCK)..."
 docker run -d --name "$CONTAINER_NAME" \
   -p "$HOST_PORT":7800 \
   -v "$DOCKER_SOCK":/var/run/docker.sock:ro \
-  "${EXTRA_FLAGS[@]}" \
   dockgraph:test
 
 # ── Assertions ───────────────────────────────────────────────
