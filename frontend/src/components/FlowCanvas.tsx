@@ -27,6 +27,8 @@ import type { ReactNode } from 'react';
 function Overlay({ children }: { children: ReactNode }) {
   return (
     <div
+      role="status"
+      aria-live="polite"
       style={{
         position: 'absolute',
         inset: 0,
@@ -119,7 +121,7 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
             {connected
               ? 'No containers detected. Start a container to visualize the graph.'
-              : 'Connecting to backend\u2026'}
+              : 'Connecting to backend…'}
           </p>
         </Overlay>
       )}
@@ -127,7 +129,7 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
       {layoutBusy && !showEmptyState && (
         <Overlay>
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
-            Computing layout for {dgNodes.length} containers\u2026
+            Computing layout for {dgNodes.length} nodes…
           </p>
         </Overlay>
       )}

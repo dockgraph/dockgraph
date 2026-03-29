@@ -19,6 +19,9 @@ export interface BBox {
 export function parsePolyline(d: string): Point[] {
   const nums = d.match(/-?[\d.]+/g)?.map(Number);
   if (!nums || nums.length < 2) return [];
+  if (nums.length % 2 !== 0) {
+    console.warn('parsePolyline: odd coordinate count, last value dropped');
+  }
   const points: Point[] = [];
   for (let i = 0; i < nums.length - 1; i += 2) {
     points.push({ x: nums[i], y: nums[i + 1] });

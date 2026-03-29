@@ -112,9 +112,9 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
 
       {dgNode.ports && dgNode.ports.length > 0 && (
         <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {dgNode.ports.slice(0, 3).map((p) => (
+          {dgNode.ports.slice(0, 3).map((p, i) => (
             <span
-              key={`${p.host}-${p.container}`}
+              key={`${i}-${p.host}-${p.container}`}
               style={{
                 fontSize: 9,
                 color: theme.portText,

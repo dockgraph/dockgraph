@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
             justifyContent: 'center',
             height: '100%',
             gap: 12,
-            color: '#94a3b8',
+            color: 'GrayText',
             fontFamily: 'system-ui, sans-serif',
           }}
         >
@@ -49,9 +49,9 @@ export class ErrorBoundary extends Component<Props, State> {
               padding: '6px 16px',
               fontSize: 13,
               borderRadius: 4,
-              border: '1px solid #475569',
+              border: '1px solid ButtonBorder',
               background: 'transparent',
-              color: '#94a3b8',
+              color: 'GrayText',
               cursor: 'pointer',
             }}
           >
