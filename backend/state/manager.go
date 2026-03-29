@@ -14,19 +14,21 @@ type subID int
 // Manager receives graph snapshots from Docker and Compose collectors,
 // merges them into a single topology, and broadcasts updates to WebSocket subscribers.
 type Manager struct {
-	mu          sync.RWMutex
-	snapshots   map[string]*collector.GraphSnapshot
-	merged      collector.GraphSnapshot
-	hasState    bool
-	subscribers map[subID]chan collector.StateMessage
-	nextID      subID
+	mu             sync.RWMutex
+	snapshots      map[string]*collector.GraphSnapshot
+	runtimeSources map[string]bool // true if the source provides runtime state
+	merged         collector.GraphSnapshot
+	hasState       bool
+	subscribers    map[subID]chan collector.StateMessage
+	nextID         subID
 }
 
 // NewManager creates an empty state manager ready to accept collector updates.
 func NewManager() *Manager {
 	return &Manager{
-		snapshots:   make(map[string]*collector.GraphSnapshot),
-		subscribers: make(map[subID]chan collector.StateMessage),
+		snapshots:      make(map[string]*collector.GraphSnapshot),
+		runtimeSources: make(map[string]bool),
+		subscribers:    make(map[subID]chan collector.StateMessage),
 	}
 }
 
@@ -72,31 +74,36 @@ func (m *Manager) Current() collector.GraphSnapshot {
 }
 
 // HandleUpdate stores a new snapshot from a named collector, re-merges all
-// snapshots, and broadcasts the result to subscribers. The first update always
-// produces a full snapshot. Subsequent updates emit a delta when the graph
-// changed, or skip the broadcast entirely when nothing changed.
-func (m *Manager) HandleUpdate(name string, update collector.StateUpdate) {
+// snapshots, and broadcasts the result to subscribers. The runtime flag
+// indicates whether this source provides live state (e.g. Docker daemon) or
+// declarative definitions (e.g. compose files). Runtime sources take precedence
+// during merges. The first update always produces a full snapshot. Subsequent
+// updates emit a delta when the graph changed, or skip the broadcast entirely
+// when nothing changed.
+func (m *Manager) HandleUpdate(name string, runtime bool, update collector.StateUpdate) {
 	m.mu.Lock()
 
 	if update.Snapshot != nil {
 		m.snapshots[name] = update.Snapshot
+		m.runtimeSources[name] = runtime
 	}
 
-	// Separate by source so docker snapshots get merge precedence for runtime state
-	// (actual container status, ports, etc.) while compose-only nodes are preserved.
-	composeSnaps := make(map[string]*collector.GraphSnapshot)
-	dockerSnaps := make(map[string]*collector.GraphSnapshot)
+	// Separate by source type so runtime snapshots get merge precedence for
+	// actual state (container status, ports, etc.) while declarative-only
+	// nodes are preserved.
+	declarativeSnaps := make(map[string]*collector.GraphSnapshot)
+	runtimeSnaps := make(map[string]*collector.GraphSnapshot)
 	for k, v := range m.snapshots {
-		if k == "docker" {
-			dockerSnaps[k] = v
+		if m.runtimeSources[k] {
+			runtimeSnaps[k] = v
 		} else {
-			composeSnaps[k] = v
+			declarativeSnaps[k] = v
 		}
 	}
 
 	prev := m.merged
 	hadState := m.hasState
-	m.merged = mergeSnapshots(composeSnaps, dockerSnaps)
+	m.merged = mergeSnapshots(declarativeSnaps, runtimeSnaps)
 	m.hasState = true
 	snapshot := m.merged
 
@@ -130,15 +137,16 @@ func (m *Manager) HandleUpdate(name string, update collector.StateUpdate) {
 	m.mu.RUnlock()
 }
 
-// mergeSnapshots combines Docker and Compose snapshots into a single graph.
+// mergeSnapshots combines runtime and declarative snapshots into a single graph.
 //
-// Merge strategy: Docker data takes precedence for nodes that exist in both
-// sources (since Docker has the actual runtime state), but compose-only metadata
-// like Source and NetworkID is preserved when Docker doesn't provide it.
-// Nodes that only exist in compose files (not yet running) are included as-is.
-func mergeSnapshots(composeSnaps, dockerSnaps map[string]*collector.GraphSnapshot) collector.GraphSnapshot {
-	composeNodes, composeEdges := flattenSnapshots(composeSnaps)
-	dockerNodes, dockerEdges := flattenSnapshots(dockerSnaps)
+// Merge strategy: runtime data takes precedence for nodes that exist in both
+// source types (since it reflects the actual state), but declarative-only
+// metadata like Source and NetworkID is preserved when the runtime source
+// doesn't provide it. Nodes that only exist in declarative sources are
+// included as-is.
+func mergeSnapshots(declarativeSnaps, runtimeSnaps map[string]*collector.GraphSnapshot) collector.GraphSnapshot {
+	composeNodes, composeEdges := flattenSnapshots(declarativeSnaps)
+	dockerNodes, dockerEdges := flattenSnapshots(runtimeSnaps)
 
 	nodes := mergeNodes(dockerNodes, composeNodes)
 	edges := mergeEdges(dockerEdges, composeEdges, nodes)

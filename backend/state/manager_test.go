@@ -24,8 +24,8 @@ func TestMergeSnapshots(t *testing.T) {
 		},
 	}
 
-	m.HandleUpdate("compose", collector.StateUpdate{Snapshot: &composeSnap})
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: &dockerSnap})
+	m.HandleUpdate("compose", false, collector.StateUpdate{Snapshot: &composeSnap})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: &dockerSnap})
 
 	merged := m.Current()
 
@@ -60,8 +60,8 @@ func TestMergeVolumeStatus(t *testing.T) {
 		},
 	}
 
-	m.HandleUpdate("compose", collector.StateUpdate{Snapshot: &composeSnap})
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: &dockerSnap})
+	m.HandleUpdate("compose", false, collector.StateUpdate{Snapshot: &composeSnap})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: &dockerSnap})
 
 	merged := m.Current()
 
@@ -90,7 +90,7 @@ func TestSubscribe(t *testing.T) {
 	defer unsub()
 
 	go func() {
-		m.HandleUpdate("test", collector.StateUpdate{
+		m.HandleUpdate("test", true, collector.StateUpdate{
 			Snapshot: &collector.GraphSnapshot{
 				Nodes: []collector.Node{
 					{ID: "container:x", Type: "container", Name: "x"},
@@ -156,7 +156,7 @@ func TestDoubleUnsubscribe(t *testing.T) {
 func TestSubscribeReceivesExistingState(t *testing.T) {
 	m := NewManager()
 
-	m.HandleUpdate("docker", collector.StateUpdate{
+	m.HandleUpdate("docker", true, collector.StateUpdate{
 		Snapshot: &collector.GraphSnapshot{
 			Nodes: []collector.Node{
 				{ID: "container:web", Type: "container", Name: "web"},
@@ -184,7 +184,7 @@ func TestSubscribeReceivesExistingState(t *testing.T) {
 func TestHandleUpdateNilSnapshot(t *testing.T) {
 	m := NewManager()
 	// Should not panic
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: nil})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: nil})
 
 	merged := m.Current()
 	if len(merged.Nodes) != 0 {
@@ -200,7 +200,7 @@ func TestCurrent(t *testing.T) {
 		t.Errorf("expected empty current, got %d nodes", len(empty.Nodes))
 	}
 
-	m.HandleUpdate("docker", collector.StateUpdate{
+	m.HandleUpdate("docker", true, collector.StateUpdate{
 		Snapshot: &collector.GraphSnapshot{
 			Nodes: []collector.Node{
 				{ID: "container:x", Type: "container", Name: "x"},
@@ -228,7 +228,7 @@ func TestMergeEdgesDeduplicate(t *testing.T) {
 		},
 	}
 
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: &snap})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: &snap})
 	merged := m.Current()
 
 	if len(merged.Edges) != 1 {
@@ -248,7 +248,7 @@ func TestMergeEdgesDanglingFiltered(t *testing.T) {
 		},
 	}
 
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: &snap})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: &snap})
 	merged := m.Current()
 
 	if len(merged.Edges) != 0 {
@@ -279,8 +279,8 @@ func TestMergeEdgesDockerPrecedence(t *testing.T) {
 		},
 	}
 
-	m.HandleUpdate("compose", collector.StateUpdate{Snapshot: &composeSnap})
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: &dockerSnap})
+	m.HandleUpdate("compose", false, collector.StateUpdate{Snapshot: &composeSnap})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: &dockerSnap})
 
 	merged := m.Current()
 	if len(merged.Edges) != 1 {
@@ -303,8 +303,8 @@ func TestMergeNodesComposeOnlyPreserved(t *testing.T) {
 		},
 	}
 
-	m.HandleUpdate("compose", collector.StateUpdate{Snapshot: &composeSnap})
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: &dockerSnap})
+	m.HandleUpdate("compose", false, collector.StateUpdate{Snapshot: &composeSnap})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: &dockerSnap})
 
 	merged := m.Current()
 	if len(merged.Nodes) != 2 {
@@ -340,8 +340,8 @@ func TestMergeNodesDockerBackfillsNetworkID(t *testing.T) {
 		},
 	}
 
-	m.HandleUpdate("compose", collector.StateUpdate{Snapshot: &composeSnap})
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: &dockerSnap})
+	m.HandleUpdate("compose", false, collector.StateUpdate{Snapshot: &composeSnap})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: &dockerSnap})
 
 	merged := m.Current()
 	var api *collector.Node
@@ -366,7 +366,7 @@ func TestMergeNodesDockerBackfillsNetworkID(t *testing.T) {
 
 func TestMergeEmptySnapshots(t *testing.T) {
 	m := NewManager()
-	m.HandleUpdate("docker", collector.StateUpdate{
+	m.HandleUpdate("docker", true, collector.StateUpdate{
 		Snapshot: &collector.GraphSnapshot{},
 	})
 	merged := m.Current()
@@ -381,7 +381,7 @@ func TestMergeEmptySnapshots(t *testing.T) {
 func TestMergeSnapshotsDeterministicOrder(t *testing.T) {
 	m := NewManager()
 
-	m.HandleUpdate("docker", collector.StateUpdate{
+	m.HandleUpdate("docker", true, collector.StateUpdate{
 		Snapshot: &collector.GraphSnapshot{
 			Nodes: []collector.Node{
 				{ID: "container:z", Type: "container", Name: "z"},
@@ -406,7 +406,7 @@ func TestSlowSubscriberDoesNotBlock(t *testing.T) {
 
 	// Fill the subscriber channel (capacity 16)
 	for i := 0; i < 20; i++ {
-		m.HandleUpdate("docker", collector.StateUpdate{
+		m.HandleUpdate("docker", true, collector.StateUpdate{
 			Snapshot: &collector.GraphSnapshot{
 				Nodes: []collector.Node{
 					{ID: "container:x", Type: "container", Name: "x"},
@@ -435,7 +435,7 @@ func TestHandleUpdateEmitsDelta(t *testing.T) {
 	m := NewManager()
 
 	// First update: always a snapshot
-	m.HandleUpdate("docker", collector.StateUpdate{
+	m.HandleUpdate("docker", true, collector.StateUpdate{
 		Snapshot: &collector.GraphSnapshot{
 			Nodes: []collector.Node{
 				{ID: "container:web", Type: "container", Name: "web", Status: "running"},
@@ -454,7 +454,7 @@ func TestHandleUpdateEmitsDelta(t *testing.T) {
 	}
 
 	// Second update: status change should produce a delta
-	m.HandleUpdate("docker", collector.StateUpdate{
+	m.HandleUpdate("docker", true, collector.StateUpdate{
 		Snapshot: &collector.GraphSnapshot{
 			Nodes: []collector.Node{
 				{ID: "container:web", Type: "container", Name: "web", Status: "exited"},
@@ -490,7 +490,7 @@ func TestHandleUpdateSkipsWhenUnchanged(t *testing.T) {
 		},
 	}
 
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: snap})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: snap})
 
 	ch, unsub := m.Subscribe()
 	defer unsub()
@@ -503,7 +503,7 @@ func TestHandleUpdateSkipsWhenUnchanged(t *testing.T) {
 	}
 
 	// Same data again — should not produce any message
-	m.HandleUpdate("docker", collector.StateUpdate{Snapshot: snap})
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: snap})
 
 	select {
 	case msg := <-ch:
@@ -518,7 +518,7 @@ func TestFirstUpdateIsSnapshot(t *testing.T) {
 	ch, unsub := m.Subscribe()
 	defer unsub()
 
-	m.HandleUpdate("docker", collector.StateUpdate{
+	m.HandleUpdate("docker", true, collector.StateUpdate{
 		Snapshot: &collector.GraphSnapshot{
 			Nodes: []collector.Node{
 				{ID: "container:web", Type: "container", Name: "web"},

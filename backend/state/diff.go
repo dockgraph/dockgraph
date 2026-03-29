@@ -1,8 +1,6 @@
 package state
 
 import (
-	"reflect"
-
 	"github.com/dockgraph/dockgraph/collector"
 )
 
@@ -19,7 +17,7 @@ func diffSnapshots(prev, curr *collector.GraphSnapshot) (collector.DeltaUpdate, 
 		prevNode, exists := prevNodes[id]
 		if !exists {
 			delta.NodesAdded = append(delta.NodesAdded, currNode)
-		} else if !reflect.DeepEqual(prevNode, currNode) {
+		} else if !nodeEqual(prevNode, currNode) {
 			delta.NodesUpdated = append(delta.NodesUpdated, currNode)
 		}
 	}
@@ -50,6 +48,33 @@ func diffSnapshots(prev, curr *collector.GraphSnapshot) (collector.DeltaUpdate, 
 		len(delta.EdgesRemoved) > 0
 
 	return delta, changed
+}
+
+// nodeEqual performs a field-by-field comparison of two nodes, avoiding
+// the overhead of reflect.DeepEqual on the hot diff path.
+func nodeEqual(a, b collector.Node) bool {
+	if a.ID != b.ID || a.Type != b.Type || a.Name != b.Name ||
+		a.Image != b.Image || a.Status != b.Status ||
+		a.NetworkID != b.NetworkID || a.Driver != b.Driver || a.Source != b.Source {
+		return false
+	}
+	if len(a.Ports) != len(b.Ports) {
+		return false
+	}
+	for i := range a.Ports {
+		if a.Ports[i] != b.Ports[i] {
+			return false
+		}
+	}
+	if len(a.Labels) != len(b.Labels) {
+		return false
+	}
+	for k, v := range a.Labels {
+		if b.Labels[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 func indexNodes(snap *collector.GraphSnapshot) map[string]collector.Node {
