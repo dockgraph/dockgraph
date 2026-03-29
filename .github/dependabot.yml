@@ -9,6 +9,14 @@ updates:
       actions:
         patterns: ["*"]
 
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns: ["*"]
+
   - package-ecosystem: gomod
     directory: /backend
     schedule:

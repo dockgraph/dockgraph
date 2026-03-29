@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend
@@ -53,7 +57,7 @@ jobs:
         working-directory: backend
 
       - name: Upload coverage
-        if: always()
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v6
         with:
           files: backend/coverage.out
@@ -99,7 +103,7 @@ jobs:
         working-directory: frontend
 
       - name: Upload coverage
-        if: always()
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v6
         with:
           files: frontend/coverage/lcov.info
