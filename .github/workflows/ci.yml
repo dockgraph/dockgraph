@@ -56,6 +56,15 @@ jobs:
         run: gotestsum --junitfile=junit.xml -- -race -coverprofile=coverage.out ./...
         working-directory: backend
 
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo '## Backend Coverage' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.out | tail -15 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        working-directory: backend
+
       - name: Upload coverage
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v6
@@ -99,8 +108,25 @@ jobs:
         working-directory: frontend
 
       - name: Test
-        run: npx vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text --reporter=default --reporter=junit --outputFile.junit=junit.xml
+        run: npx vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text --coverage.reporter=html --reporter=default --reporter=junit --outputFile.junit=junit.xml 2>&1 | tee test-output.txt
         working-directory: frontend
+
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo '## Frontend Coverage' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -A 100 '% Stmts' test-output.txt | head -40 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        working-directory: frontend
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-report
+          path: frontend/coverage/
+          retention-days: 14
 
       - name: Upload coverage
         if: ${{ !cancelled() }}
