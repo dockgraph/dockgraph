@@ -15,7 +15,7 @@ const ellipsis: React.CSSProperties = {
 
 export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
   const { dgNode, nodeWidth } = data as unknown as ContainerNodeData;
-  const w = (nodeWidth ?? 200) - 4;
+  const w = nodeWidth ?? 200;
   const { theme } = useTheme();
   const isLowZoom = useStore(zoomSelector);
   const statusColor = STATUS_COLORS[dgNode.status ?? 'exited'] ?? STATUS_COLORS.exited;
@@ -41,7 +41,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
         }}
       >
         <NodeHandles />
-        <span style={{ ...ellipsis, fontSize: 12, fontWeight: 600, color: theme.nodeText, display: 'block' }}>
+        <span style={{ ...ellipsis, fontSize: 12, fontWeight: 600, fontFamily: 'sans-serif', color: theme.nodeText, display: 'block' }}>
           {dgNode.name}
         </span>
       </div>
@@ -71,6 +71,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
             ...ellipsis,
             fontSize: 12,
             fontWeight: 600,
+            fontFamily: 'sans-serif',
             color: theme.nodeText,
             maxWidth: 'calc(100% - 16px)',
             display: 'inline-block',

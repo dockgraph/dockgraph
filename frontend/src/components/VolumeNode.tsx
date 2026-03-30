@@ -8,7 +8,7 @@ import { INACTIVE_OPACITY, zoomSelector } from '../utils/constants';
 
 export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
   const { dgNode, nodeWidth } = data as unknown as VolumeNodeData;
-  const w = (nodeWidth ?? 200) - 4;
+  const w = nodeWidth ?? 200;
   const { theme } = useTheme();
   const isLowZoom = useStore(zoomSelector);
   const isGhost = dgNode.status === 'not_running';
@@ -59,6 +59,7 @@ export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
           style={{
             fontSize: 11,
             fontWeight: 600,
+            fontFamily: 'sans-serif',
             color: theme.nodeText,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
