@@ -28,7 +28,7 @@ export const STATUS_DOT_SIZE = 6;
 export const ANIMATION_NODE_LIMIT = 150;
 
 /** Zoom level below which nodes render as simplified colored blocks. */
-export const LOD_ZOOM_THRESHOLD = 0.35;
+export const LOD_ZOOM_THRESHOLD = 0.25;
 
 /** React Flow store selector — true when zoom is below the LOD threshold. */
 export const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < LOD_ZOOM_THRESHOLD;
