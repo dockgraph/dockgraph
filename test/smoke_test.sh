@@ -19,7 +19,7 @@ assert_http() {
   local label="$1" url="$2" expected="$3"
   shift 3
   local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" "$@" "$url")
+  code=$(curl -s -o /dev/null -w "%{http_code}" "$@" "$url" || true)
   if [ "$code" != "$expected" ]; then
     echo "FAIL: $label — expected $expected, got $code"
     exit 1
@@ -44,10 +44,17 @@ DOCKER_SOCK="${DOCKER_SOCK:-/var/run/docker.sock}"
 
 # ── Build & run ──────────────────────────────────────────────
 
+SKIP_BUILD=false
+if [ "${1:-}" = "--skip-build" ]; then
+  SKIP_BUILD=true
+fi
+
 echo "=== DockGraph Smoke Test ==="
 
-echo "Building image..."
-docker build -t dockgraph:test .
+if [ "$SKIP_BUILD" = false ]; then
+  echo "Building image..."
+  docker build -t dockgraph:test .
+fi
 
 # Set up cleanup before starting so a failed `docker run` still cleans up.
 trap cleanup EXIT
@@ -80,7 +87,12 @@ assert_http "Static file serving" "$BASE_URL/" 200
 # Verify WebSocket upgrade with the required headers per RFC 6455.
 # The Sec-WebSocket-Key is a static base64 value — the server only checks
 # that the header is present, not its content.
+# --max-time 5: after the 101 upgrade, the connection stays open (it's a
+# WebSocket). curl doesn't speak WebSocket framing, so it hangs reading
+# binary data. The 101 status is captured from headers immediately;
+# --max-time just caps how long curl sits on the open connection.
 assert_http "WebSocket upgrade" "$BASE_URL/ws" 101 \
+  --max-time 5 \
   -H "Upgrade: websocket" \
   -H "Connection: Upgrade" \
   -H "Sec-WebSocket-Version: 13" \

@@ -180,5 +180,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: dockgraph:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Run smoke test
-        run: bash test/smoke_test.sh
+        run: bash test/smoke_test.sh --skip-build
