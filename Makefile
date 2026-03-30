@@ -1,4 +1,4 @@
-.PHONY: all build build-backend build-frontend test lint lint-backend lint-frontend vet fmt dev docker docker-up docker-down ci clean help \
+.PHONY: all build build-backend build-frontend test test-coverage lint lint-backend lint-frontend vet fmt dev docker docker-up docker-down ci clean help \
 	demo demo-down demo-small demo-small-down demo-medium demo-medium-down demo-large demo-large-down
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null)
@@ -17,6 +17,10 @@ build-frontend: ## Build React frontend
 test: ## Run all tests
 	cd backend && go test -race ./...
 	cd frontend && npm test
+
+test-coverage: ## Run tests with coverage (enforces thresholds)
+	cd backend && go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out
+	cd frontend && npx vitest run --coverage
 
 lint: lint-backend lint-frontend ## Run all linters
 

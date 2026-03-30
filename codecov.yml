@@ -1,0 +1,18 @@
+coverage:
+  status:
+    project:
+      backend:
+        target: 75%
+        flags: [backend]
+      frontend:
+        target: 60%
+        flags: [frontend]
+    patch:
+      default:
+        target: 60%
+        threshold: 1%
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: true

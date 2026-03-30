@@ -40,6 +40,15 @@ describe('parsePolyline', () => {
   it('returns empty for single coordinate', () => {
     expect(parsePolyline('M 5')).toEqual([]);
   });
+
+  it('drops trailing odd coordinate and warns', () => {
+    // 5 numbers → odd count, last value should be dropped
+    const points = parsePolyline('M 1 2 L 3 4 5');
+    expect(points).toEqual([
+      { x: 1, y: 2 },
+      { x: 3, y: 4 },
+    ]);
+  });
 });
 
 describe('polylineLength', () => {
@@ -136,5 +145,12 @@ describe('polylinePointAt', () => {
     const pt = polylinePointAt(multiPoints, 0.75, len);
     expect(pt.x).toBe(10);
     expect(pt.y).toBe(5);
+  });
+
+  it('returns last point when totalLen overstates actual polyline length', () => {
+    // totalLen = 20, but actual length = 5 — loop exhausts without matching
+    const pts = [{ x: 0, y: 0 }, { x: 5, y: 0 }];
+    const pt = polylinePointAt(pts, 0.5, 20);
+    expect(pt).toEqual({ x: 5, y: 0 });
   });
 });
