@@ -170,6 +170,13 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 1
+
   smoke:
     name: Smoke Test
     runs-on: ubuntu-latest
@@ -180,17 +187,27 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - name: Download frontend dist
+        uses: actions/download-artifact@v8
+        with:
+          name: frontend-dist
+          path: backend/frontend/dist
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build binary
+        run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o dockgraph .
+        working-directory: backend
 
       - name: Build image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          load: true
-          tags: dockgraph:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          BASE=$(grep 'FROM gcr.io/distroless' Dockerfile | awk '{print $2}')
+          printf 'FROM %s\nCOPY dockgraph /dockgraph\nEXPOSE 7800\nENTRYPOINT ["/dockgraph"]\n' "$BASE" | \
+            docker build -t dockgraph:test -f - backend/
 
       - name: Run smoke test
         run: bash test/smoke_test.sh --skip-build
