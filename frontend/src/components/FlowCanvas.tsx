@@ -68,7 +68,8 @@ export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasPro
   const { nodes, edges, onNodesChange, onEdgesChange, layoutBusy, layoutError } =
     useGraphLayout(dgNodes, dgEdges, theme.edgeStroke);
 
-  const showEmptyState = !ready || dgNodes.length === 0;
+  const hasVisibleNodes = dgNodes.some((n) => n.type === 'container' || n.type === 'volume');
+  const showEmptyState = !ready || !hasVisibleNodes;
   const largeGraph = dgNodes.length > ANIMATION_NODE_LIMIT;
 
   const { styledNodes, styledEdges, canvasEdges, svgEdges, onNodeClick, onEdgeClick, onPaneClick } =
@@ -159,6 +160,7 @@ export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasPro
         edgeTypes={edgeTypes}
         nodesDraggable={false}
         nodesConnectable={false}
+        elevateNodesOnSelect={false}
         onlyRenderVisibleElements
         fitView
         minZoom={0.05}
