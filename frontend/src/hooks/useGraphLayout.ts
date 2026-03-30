@@ -107,7 +107,7 @@ export function useGraphLayout(
     const rfNodeMap = new Map(rfNodes.map((n) => [n.id, n]));
     setNodes((prev) => prev.map((n) => {
       const updated = rfNodeMap.get(n.id);
-      return updated ? { ...n, data: updated.data } : n;
+      return updated ? { ...n, data: { ...n.data, ...updated.data } } : n;
     }));
   // dgNodes/dgEdges trigger this on every data change. When the topology
   // also changed, the guard (topoKey !== prevTopoKeyRef) skips this effect
