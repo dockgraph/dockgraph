@@ -115,5 +115,10 @@ export function useGraphLayout(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dgNodes, dgEdges, edgeStroke, setNodes, setEdges]);
 
-  return { nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, layoutBusy, layoutError };
+  // Cover the render gap between "input nodes arrived" and "effect sets
+  // layoutBusy=true": if we have input but no positioned output yet and
+  // no error, the layout is effectively pending.
+  const effectiveBusy = layoutBusy || (dgNodes.length > 0 && nodes.length === 0 && !layoutError);
+
+  return { nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, layoutBusy: effectiveBusy, layoutError };
 }

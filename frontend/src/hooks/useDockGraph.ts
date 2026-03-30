@@ -7,6 +7,7 @@ interface DockGraphState {
   nodes: DGNode[];
   edges: DGEdge[];
   connected: boolean;
+  ready: boolean;
 }
 
 /**
@@ -22,6 +23,7 @@ export function useDockGraph(): DockGraphState {
     nodes: [],
     edges: [],
     connected: false,
+    ready: false,
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -38,11 +40,11 @@ export function useDockGraph(): DockGraphState {
     const fp = snapshotFingerprint(nodes, edges);
     if (fp === fingerprintRef.current) return;
     fingerprintRef.current = fp;
-    setState((prev) => ({ ...prev, nodes, edges }));
+    setState((prev) => ({ ...prev, nodes, edges, ready: true }));
   }, []);
 
   const applyDelta = useCallback((delta: Parameters<typeof applyDeltaFn>[1]) => {
-    setState((prev) => ({ ...prev, ...applyDeltaFn(prev, delta) }));
+    setState((prev) => ({ ...prev, ...applyDeltaFn(prev, delta), ready: true }));
   }, []);
 
   const connect = useCallback(() => {

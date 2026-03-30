@@ -58,16 +58,17 @@ interface FlowCanvasProps {
   dgNodes: DGNode[];
   dgEdges: DGEdge[];
   connected: boolean;
+  ready: boolean;
 }
 
-export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
+export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasProps) {
   const { theme } = useTheme();
   const canvasEdgeRef = useRef<CanvasEdgeLayerHandle>(null);
 
   const { nodes, edges, onNodesChange, onEdgesChange, layoutBusy, layoutError } =
     useGraphLayout(dgNodes, dgEdges, theme.edgeStroke);
 
-  const showEmptyState = dgNodes.length === 0;
+  const showEmptyState = !ready || dgNodes.length === 0;
   const largeGraph = dgNodes.length > ANIMATION_NODE_LIMIT;
 
   const { styledNodes, styledEdges, canvasEdges, svgEdges, onNodeClick, onEdgeClick, onPaneClick } =
@@ -119,9 +120,9 @@ export function FlowCanvas({ dgNodes, dgEdges, connected }: FlowCanvasProps) {
       {showEmptyState && (
         <Overlay>
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
-            {connected
-              ? 'No containers detected. Start a container to visualize the graph.'
-              : 'Connecting to backend…'}
+            {!ready
+              ? 'Connecting to backend…'
+              : 'No containers detected. Start a container to visualize the graph.'}
           </p>
         </Overlay>
       )}

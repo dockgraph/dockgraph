@@ -53,14 +53,14 @@ function globalStyles(mode: 'dark' | 'light') {
 }
 
 function AppContent() {
-  const { nodes, edges, connected } = useDockGraph();
+  const { nodes, edges, connected, ready } = useDockGraph();
   const { theme } = useTheme();
   const css = useMemo(() => globalStyles(theme.mode), [theme.mode]);
 
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <style>{css}</style>
-      <FlowCanvas dgNodes={nodes} dgEdges={edges} connected={connected} />
+      <FlowCanvas dgNodes={nodes} dgEdges={edges} connected={connected} ready={ready} />
     </div>
   );
 }
