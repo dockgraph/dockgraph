@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
+import type { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk.bundled';
 import { classifyNodes, buildElkChildren, wrapComponents } from './elkGraph';
 import { CONTAINER_NODE_HEIGHT, VOLUME_NODE_HEIGHT } from '../utils/constants';
 
@@ -209,7 +210,7 @@ describe('wrapComponents', () => {
     const rootEdges = [{ id: 'e1', sources: ['a'], targets: ['b'] }];
 
     const { wrappedChildren } = wrapComponents(
-      [['a', 'b']], elkChildren as any, rootEdges as any, new Map(),
+      [['a', 'b']], elkChildren as ElkNode[], rootEdges as ElkExtendedEdge[], new Map(),
     );
 
     expect(wrappedChildren).toHaveLength(1);
@@ -222,7 +223,7 @@ describe('wrapComponents', () => {
     const elkChildren = [{ id: 'a', width: 180, height: 70 }];
 
     const { wrappedChildren } = wrapComponents(
-      [['a']], elkChildren as any, [], new Map(),
+      [['a']], elkChildren as ElkNode[], [], new Map(),
     );
 
     expect(wrappedChildren).toHaveLength(1);
@@ -236,7 +237,7 @@ describe('wrapComponents', () => {
     ];
 
     const { wrappedChildren } = wrapComponents(
-      [['a', 'b']], elkChildren as any, [], new Map(),
+      [['a', 'b']], elkChildren as ElkNode[], [], new Map(),
     );
 
     // Two nodes, zero edges — still wraps because compChildren.length > 1
@@ -252,7 +253,7 @@ describe('wrapComponents', () => {
     const childToParent = new Map([['c1', 'net1']]);
 
     const { wrappedChildren } = wrapComponents(
-      [['net1', 'free1']], elkChildren as any, rootEdges as any, childToParent,
+      [['net1', 'free1']], elkChildren as ElkNode[], rootEdges as ElkExtendedEdge[], childToParent,
     );
 
     expect(wrappedChildren[0].id).toBe('__comp_net1');
@@ -268,7 +269,7 @@ describe('wrapComponents', () => {
     const rootEdges = [{ id: 'e1', sources: ['a'], targets: ['b'] }];
 
     const { wrappedChildren } = wrapComponents(
-      [['a', 'b'], ['c']], elkChildren as any, rootEdges as any, new Map(),
+      [['a', 'b'], ['c']], elkChildren as ElkNode[], rootEdges as ElkExtendedEdge[], new Map(),
     );
 
     expect(wrappedChildren).toHaveLength(2);
