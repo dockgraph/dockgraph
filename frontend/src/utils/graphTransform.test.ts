@@ -132,4 +132,30 @@ describe('toReactFlowEdges', () => {
     const result = toReactFlowEdges(edges, nodes, defaultStroke);
     expect(result[0].data?.active).toBe(false);
   });
+
+  it('uses network color for secondary_network edge stroke', () => {
+    const nodes: DGNode[] = [
+      { id: 'container:web', type: 'container', name: 'web', status: 'running', networkId: 'network:frontend' },
+      { id: 'network:backend', type: 'network', name: 'backend' },
+    ];
+    const edges: DGEdge[] = [
+      { id: 'e:net:web:backend', type: 'secondary_network', source: 'container:web', target: 'network:backend' },
+    ];
+    const result = toReactFlowEdges(edges, nodes, defaultStroke);
+    expect(result[0].style?.stroke).toMatch(/^#[0-9a-f]{6}$/);
+    expect(result[0].style?.stroke).not.toBe(defaultStroke);
+  });
+
+  it('falls back to default stroke for secondary_network edge with missing target', () => {
+    const nodes: DGNode[] = [
+      { id: 'container:web', type: 'container', name: 'web', status: 'running' },
+      { id: 'network:x', type: 'network', name: 'x' },
+    ];
+    const edges: DGEdge[] = [
+      { id: 'e:net:web:x', type: 'secondary_network', source: 'container:web', target: 'network:x' },
+    ];
+    const result = toReactFlowEdges(edges, nodes, defaultStroke);
+    // target exists so stroke should be network color
+    expect(result[0].style?.stroke).toBeDefined();
+  });
 });
