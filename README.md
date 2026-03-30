@@ -140,7 +140,8 @@ For implementation details, see the [backend](backend/README.md) and [frontend](
 
 ```bash
 make build          # Build frontend + backend
-make test           # Run Go tests
+make test           # Run all tests (backend + frontend)
+make test-coverage  # Run tests with coverage reports (enforces thresholds)
 make lint           # Run all linters (golangci-lint + eslint)
 make docker         # Build Docker image locally
 make docker-up      # Start with Docker Compose
@@ -166,9 +167,8 @@ The Vite dev server proxies `/ws` and `/healthz` to the backend at `localhost:78
 ### Running Tests
 
 ```bash
-make test
-# or
-cd backend && go test ./...
+make test              # Run all tests
+make test-coverage     # Run with coverage (backend profile + frontend thresholds)
 ```
 
 ## Tech Stack
