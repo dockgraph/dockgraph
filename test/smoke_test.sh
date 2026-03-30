@@ -70,17 +70,18 @@ docker run -d --name "$CONTAINER_NAME" \
 # Poll the health endpoint until the server is ready (up to 10 seconds).
 # The binary needs a moment to connect to the Docker daemon and start listening.
 echo "Waiting for startup..."
-attempts=0
+attempts=1
 until curl -s "$BASE_URL/healthz" | grep -q ok; do
-  attempts=$((attempts + 1))
   if [ "$attempts" -ge 10 ]; then
-    echo "FAIL: health check did not pass after ${attempts}s"
+    echo "FAIL: health check did not pass after ${attempts} attempts"
     docker logs "$CONTAINER_NAME"
     exit 1
   fi
   sleep 1
+  attempts=$((attempts + 1))
 done
-echo "Health check: OK (${attempts} attempts)"
+label="attempt"; [ "$attempts" -gt 1 ] && label="attempts"
+echo "Health check: OK (${attempts} ${label})"
 
 assert_http "Static file serving" "$BASE_URL/" 200
 
