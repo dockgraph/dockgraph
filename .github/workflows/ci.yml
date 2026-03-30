@@ -59,11 +59,12 @@ jobs:
 
       - name: Test report
         if: ${{ !cancelled() }}
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         with:
           name: Backend Test Results
           path: backend/junit.xml
           reporter: java-junit
+          collapsed: auto
 
       - name: Coverage summary
         if: ${{ !cancelled() }}
@@ -122,11 +123,12 @@ jobs:
 
       - name: Test report
         if: ${{ !cancelled() }}
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         with:
           name: Frontend Test Results
           path: frontend/junit.xml
           reporter: java-junit
+          collapsed: auto
 
       - name: Coverage summary
         if: ${{ !cancelled() }}
@@ -139,7 +141,7 @@ jobs:
 
       - name: Upload coverage report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage-report
           path: frontend/coverage/
