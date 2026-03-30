@@ -118,7 +118,16 @@ jobs:
         working-directory: frontend
 
       - name: Test
-        run: npx vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text --coverage.reporter=html --reporter=default --reporter=junit --outputFile.junit=junit.xml 2>&1 | tee test-output.txt
+        run: |
+          npx vitest run \
+            --coverage \
+            --coverage.reporter=lcov \
+            --coverage.reporter=text \
+            --coverage.reporter=html \
+            --reporter=default \
+            --reporter=junit \
+            --outputFile.junit=junit.xml \
+            2>&1 | tee test-output.txt
         working-directory: frontend
 
       - name: Test report
