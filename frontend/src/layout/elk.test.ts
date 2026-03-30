@@ -2,7 +2,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import { computeLayout } from './elk';
-import { CONTAINER_NODE_HEIGHT, VOLUME_NODE_HEIGHT } from '../utils/constants';
 
 // jsdom doesn't implement Canvas API — provide a minimal stub so
 // measureNodeWidth can call measureText without throwing.
@@ -10,7 +9,7 @@ beforeAll(() => {
   HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
     font: '',
     measureText: vi.fn(() => ({ width: 60 })),
-  }) as any;
+  }) as ReturnType<typeof vi.fn>;
 });
 
 function makeNode(

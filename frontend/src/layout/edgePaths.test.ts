@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ElkNode } from 'elkjs/lib/elk.bundled';
+import type { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk.bundled';
 import { smoothUturns, extractEdgePaths } from './edgePaths';
 
 describe('smoothUturns', () => {
@@ -131,7 +131,7 @@ describe('extractEdgePaths', () => {
           endPoint: { x: 100, y: 100 },
           bendPoints: [{ x: 50, y: 0 }, { x: 50, y: 100 }],
         }],
-      }] as any,
+      }] as ElkExtendedEdge[],
     };
     const out = new Map<string, string>();
 
@@ -156,7 +156,7 @@ describe('extractEdgePaths', () => {
           startPoint: { x: 10, y: 20 },
           endPoint: { x: 30, y: 40 },
         }],
-      }] as any,
+      }] as ElkExtendedEdge[],
     };
     const out = new Map<string, string>();
 
@@ -180,7 +180,7 @@ describe('extractEdgePaths', () => {
             startPoint: { x: 0, y: 0 },
             endPoint: { x: 10, y: 10 },
           }],
-        }] as any,
+        }] as ElkExtendedEdge[],
       }],
     };
     const out = new Map<string, string>();
@@ -201,7 +201,7 @@ describe('extractEdgePaths', () => {
           { startPoint: { x: 0, y: 0 }, endPoint: { x: 50, y: 50 } },
           { startPoint: { x: 50, y: 50 }, endPoint: { x: 100, y: 100 } },
         ],
-      }] as any,
+      }] as ElkExtendedEdge[],
     };
     const out = new Map<string, string>();
 
@@ -222,7 +222,7 @@ describe('extractEdgePaths', () => {
           { startPoint: { x: 0, y: 0 }, endPoint: { x: 50, y: 50 } },
           { startPoint: { x: 60, y: 60 }, endPoint: { x: 100, y: 100 } },
         ],
-      }] as any,
+      }] as ElkExtendedEdge[],
     };
     const out = new Map<string, string>();
 
@@ -235,7 +235,7 @@ describe('extractEdgePaths', () => {
   it('skips edges with no sections', () => {
     const node: ElkNode = {
       id: 'root',
-      edges: [{ id: 'e1', sources: ['a'], targets: ['b'] }] as any,
+      edges: [{ id: 'e1', sources: ['a'], targets: ['b'] }] as ElkExtendedEdge[],
     };
     const out = new Map<string, string>();
 
@@ -249,7 +249,7 @@ describe('extractEdgePaths', () => {
       id: 'root',
       edges: [{
         id: 'e1', sources: ['a'], targets: ['b'], sections: [],
-      }] as any,
+      }] as ElkExtendedEdge[],
     };
     const out = new Map<string, string>();
 
@@ -267,7 +267,7 @@ describe('extractEdgePaths', () => {
         sources: ['a'],
         targets: ['b'],
         sections: [{ startPoint: { x: 1, y: 1 }, endPoint: { x: 2, y: 2 } }],
-      }] as any,
+      }] as ElkExtendedEdge[],
     };
 
     extractEdgePaths(node, 0, 0, out);
@@ -294,7 +294,7 @@ describe('extractEdgePaths', () => {
               startPoint: { x: 0, y: 0 },
               endPoint: { x: 5, y: 5 },
             }],
-          }] as any,
+          }] as ElkExtendedEdge[],
         }],
       }],
     };
