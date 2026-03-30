@@ -9,6 +9,7 @@ backend/**/*_test.go
 
 # Frontend
 !frontend/src/
+frontend/src/**/*.test.*
 !frontend/public/
 !frontend/index.html
 !frontend/package.json
