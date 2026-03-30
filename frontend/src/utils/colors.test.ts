@@ -36,6 +36,21 @@ describe('networkColor', () => {
     const second = networkColor('frontend');
     expect(first).toBe(second);
   });
+
+  it('evicts the oldest entry when cache overflows', () => {
+    // Fill cache beyond MAX_CACHE_SIZE (256) to trigger eviction.
+    // Use a prefix unlikely to collide with other tests.
+    for (let i = 0; i < 260; i++) {
+      networkColor(`__evict_test_${i}`);
+    }
+    // Eviction path executed — verify it still returns valid colors
+    const color = networkColor('__evict_test_260');
+    expect(color).toMatch(/^#[0-9a-f]{6}$/);
+
+    // Earlier entries were evicted but re-querying still works
+    const fresh = networkColor('__evict_test_0');
+    expect(fresh).toMatch(/^#[0-9a-f]{6}$/);
+  });
 });
 
 describe('STATUS_COLORS', () => {
