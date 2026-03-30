@@ -80,7 +80,7 @@ until curl -s "$BASE_URL/healthz" | grep -q ok; do
   fi
   sleep 1
 done
-echo "Health check passed"
+echo "Health check: OK (${attempts} attempts)"
 
 assert_http "Static file serving" "$BASE_URL/" 200
 
