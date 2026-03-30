@@ -1,5 +1,5 @@
-title: "[Feature] "
-labels: ["feature request"]
+title: "[Feature Idea] "
+labels: ["feature idea"]
 body:
   - type: markdown
     attributes:
@@ -7,10 +7,10 @@ body:
         Got an idea for DockGraph? We'd love to hear it.
 
         **Before posting**, a quick check might save you time:
-        - [Existing feature discussions](https://github.com/dockgraph/dockgraph/discussions/categories/feature-requests) — someone may have proposed it already
+        - [Existing feature discussions](https://github.com/dockgraph/dockgraph/discussions/categories/feature-ideas) — someone may have proposed it already
         - [Enhancement issues](https://github.com/dockgraph/dockgraph/issues?q=is%3Aissue+label%3Aenhancement) — it might already be planned
 
-        Good feature requests explain the *problem* first — the solution often emerges from the discussion.
+        Good feature ideas explain the *problem* first — the solution often emerges from the discussion.
 
   - type: checkboxes
     id: prior-search
