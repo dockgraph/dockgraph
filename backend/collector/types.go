@@ -72,7 +72,7 @@ type DeltaUpdate struct {
 type WireMessage struct {
 	Type    string `json:"type"`
 	Version int    `json:"version"`
-	Data    any    `json:"data"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // NewSnapshotMessage wraps a full graph snapshot for WebSocket transmission.
