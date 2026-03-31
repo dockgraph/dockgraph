@@ -74,6 +74,38 @@ describe('resolveConnectedElements', () => {
     expect(result.highlightedGroupIds.has('group1')).toBe(true);
   });
 
+  it('node click: highlights network card but not its children', () => {
+    const group = makeNode('net1', 'networkGroup');
+    const child1 = makeNode('c1', 'containerNode', 'net1');
+    const child2 = makeNode('c2', 'containerNode', 'net1');
+    const external = makeNode('ext', 'containerNode');
+    const nodes = [group, child1, child2, external];
+    const edges = [makeEdge('e1', 'ext', 'net1')];
+
+    const result = resolveConnectedElements({ type: 'node', id: 'ext' }, nodes, edges);
+
+    expect(result.connectedNodeIds.has('ext')).toBe(true);
+    expect(result.connectedNodeIds.has('net1')).toBe(true);
+    expect(result.connectedNodeIds.has('c1')).toBe(false);
+    expect(result.connectedNodeIds.has('c2')).toBe(false);
+  });
+
+  it('edge click: expands network group children when endpoint is a network', () => {
+    const group = makeNode('net1', 'networkGroup');
+    const child1 = makeNode('c1', 'containerNode', 'net1');
+    const child2 = makeNode('c2', 'containerNode', 'net1');
+    const external = makeNode('ext', 'containerNode');
+    const nodes = [group, child1, child2, external];
+    const edges = [makeEdge('e1', 'ext', 'net1')];
+
+    const result = resolveConnectedElements({ type: 'edge', id: 'e1' }, nodes, edges);
+
+    expect(result.connectedNodeIds.has('ext')).toBe(true);
+    expect(result.connectedNodeIds.has('net1')).toBe(true);
+    expect(result.connectedNodeIds.has('c1')).toBe(true);
+    expect(result.connectedNodeIds.has('c2')).toBe(true);
+  });
+
   it('handles edge selection for nonexistent edge', () => {
     const nodes = [makeNode('a')];
     const edges: RFEdge[] = [];
@@ -102,6 +134,16 @@ describe('styleNodesForSelection', () => {
     const nodes = [group];
     const connected = new Set<string>();
     const groups = new Set(['g1']);
+
+    const styled = styleNodesForSelection(nodes, connected, groups);
+    expect(styled[0].style?.opacity).toBe(1);
+  });
+
+  it('highlights networkGroup when it is a direct edge endpoint in connectedNodeIds', () => {
+    const group = makeNode('net1', 'networkGroup');
+    const nodes = [group];
+    const connected = new Set(['net1']);
+    const groups = new Set<string>();
 
     const styled = styleNodesForSelection(nodes, connected, groups);
     expect(styled[0].style?.opacity).toBe(1);

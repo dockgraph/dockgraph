@@ -74,6 +74,16 @@ export function resolveConnectedElements(
       connectedEdgeIds.add(edge.id);
       connectedNodeIds.add(edge.source);
       connectedNodeIds.add(edge.target);
+
+      // When an edge endpoint is a network group, include all its children
+      // so clicking a node↔network edge lights up the entire network.
+      for (const endpointId of [edge.source, edge.target]) {
+        if (nodeById.get(endpointId)?.type === 'networkGroup') {
+          for (const n of nodes) {
+            if (n.parentId === endpointId) connectedNodeIds.add(n.id);
+          }
+        }
+      }
     }
   }
 
@@ -98,7 +108,7 @@ export function styleNodesForSelection(
 ): RFNode[] {
   return nodes.map((n) => {
     const highlighted = n.type === 'networkGroup'
-      ? highlightedGroupIds.has(n.id)
+      ? highlightedGroupIds.has(n.id) || connectedNodeIds.has(n.id)
       : connectedNodeIds.has(n.id);
     return { ...n, style: { ...n.style, opacity: highlighted ? 1 : FADE_OPACITY } };
   });
