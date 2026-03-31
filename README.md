@@ -103,19 +103,26 @@ environment:
 | `DG_PORT`          | `7800`           | HTTP listen port                                             |
 | `DG_POLL_INTERVAL` | `30s`            | Docker API polling interval                                  |
 | `DG_COMPOSE_PATH`  | _(auto-detect)_  | Override: comma-separated list of compose files or directories to scan |
+| `DG_PASSWORD`      | _(disabled)_     | Password for UI and WebSocket access; when set, requires login to view the dashboard |
 
 ## Security Considerations
 
 DockGraph requires access to the Docker daemon socket to read container, network, and volume state. Be aware of the following:
 
-- **No built-in authentication.** Anyone who can reach the DockGraph port can view your Docker topology (container names, images, network structure, volume mounts, port mappings). The API is read-only — DockGraph cannot start, stop, or modify containers.
+- **Password protection.** Set `DG_PASSWORD` to require authentication for the web UI and WebSocket connections. When set, all access goes through a login page — the dashboard and its data are not served until the correct password is provided. Sessions last 7 days and are invalidated on server restart.
+  ```yaml
+  environment:
+    DG_PASSWORD: "your-secure-password"
+  ```
+  When `DG_PASSWORD` is not set, DockGraph runs without authentication (suitable for localhost or trusted networks).
 - **Bind to localhost** when running on a shared network or production host:
   ```yaml
   environment:
     DG_BIND_ADDR: "127.0.0.1"
   ```
-- **Use a reverse proxy** (nginx, Caddy, Traefik) with authentication if you need to expose DockGraph beyond localhost.
+- **Use a reverse proxy** (nginx, Caddy, Traefik) for TLS termination if exposing DockGraph beyond your local network. DockGraph serves plain HTTP — the reverse proxy handles HTTPS.
 - **Docker socket access** is read-only (`:ro`), but any process that can read the socket can inspect all Docker resources on the host. Run DockGraph in a network-isolated environment or behind a firewall.
+- **Read-only API.** DockGraph cannot start, stop, or modify containers. It only observes topology.
 
 ## How It Works
 
