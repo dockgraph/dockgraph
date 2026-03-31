@@ -67,8 +67,13 @@ export function useDockGraph(): DockGraphState {
         console.warn('failed to parse WebSocket message', e);
         return;
       }
-      if (!msg || typeof msg.type !== 'string' || !msg.data) return;
+      if (!msg || typeof msg.type !== 'string') return;
       if (typeof msg.version !== 'number') return;
+      if (msg.type === 'auth_expired') {
+        window.location.reload();
+        return;
+      }
+      if (!('data' in msg) || !msg.data) return;
       if (msg.type === 'snapshot') {
         const d = msg.data;
         if (!Array.isArray(d.nodes) || !Array.isArray(d.edges)) return;

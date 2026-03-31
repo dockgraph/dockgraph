@@ -20,6 +20,9 @@ export default defineConfig({
       '/healthz': {
         target: 'http://localhost:7800',
       },
+      '/api': {
+        target: 'http://localhost:7800',
+      },
     },
   },
 });

@@ -39,7 +39,8 @@ export interface DeltaUpdate {
 
 export type WireMessage =
   | { type: 'snapshot'; version: number; data: GraphSnapshot }
-  | { type: 'delta'; version: number; data: DeltaUpdate };
+  | { type: 'delta'; version: number; data: DeltaUpdate }
+  | { type: 'auth_expired'; version: number };
 
 // Node data types used by React Flow custom components
 
