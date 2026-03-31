@@ -14,6 +14,8 @@ function globalStyles(mode: 'dark' | 'light') {
   const hoverBg = isDark ? '#334155' : '#f3f0eb';
 
   return `
+*, *::before, *::after { box-sizing: border-box; }
+
 .react-flow__edges { z-index: 1000 !important; }
 .react-flow__edge path { shape-rendering: optimizeSpeed; }
 .react-flow__node { contain: layout style paint; }
@@ -23,6 +25,8 @@ function globalStyles(mode: 'dark' | 'light') {
   border: 1px solid ${border} !important;
   border-radius: 6px !important;
   box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 .react-flow__controls button {
   background: ${bg} !important;
@@ -40,6 +44,25 @@ function globalStyles(mode: 'dark' | 'light') {
 }
 .react-flow__controls button svg {
   fill: ${text} !important;
+}
+
+.dg-theme-toggle {
+  width: 30px;
+  height: 30px;
+  background: ${bg};
+  border: 1px solid ${border};
+  border-radius: 6px;
+  color: ${text};
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.dg-theme-toggle:hover {
+  background: ${hoverBg};
 }
 
 .react-flow__attribution {

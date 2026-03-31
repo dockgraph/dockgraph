@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import {
   ReactFlow,
   MiniMap,
+  Panel,
   Controls,
   Background,
   BackgroundVariant,
@@ -16,6 +17,7 @@ import { VolumeNode } from './VolumeNode';
 import { ElkEdge } from './ElkEdge';
 import { CanvasEdgeLayer, type CanvasEdgeLayerHandle } from './CanvasEdgeLayer';
 import { ThemeToggle } from './ThemeToggle';
+import { LogoutButton } from './LogoutButton';
 import { StatusIndicator } from './StatusIndicator';
 import { useGraphLayout } from '../hooks/useGraphLayout';
 import { useSelectionHighlight } from '../hooks/useSelectionHighlight';
@@ -116,7 +118,7 @@ export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasPro
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <StatusIndicator connected={connected} />
-      <ThemeToggle />
+      <LogoutButton />
 
       {showEmptyState && (
         <Overlay>
@@ -168,10 +170,14 @@ export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasPro
         style={{ background: theme.canvasBg }}
       >
         {!largeGraph && <Background variant={BackgroundVariant.Dots} color={theme.dotColor} gap={20} />}
-        <Controls
-          showInteractive={false}
-          style={{ background: theme.panelBg, border: `1px solid ${theme.panelBorder}`, borderRadius: 6 }}
-        />
+        <Panel position="bottom-left" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, margin: 15 }}>
+          <Controls
+            showInteractive={false}
+            position="bottom-left"
+            style={{ position: 'relative', background: theme.panelBg, border: `1px solid ${theme.panelBorder}`, borderRadius: 6 }}
+          />
+          <ThemeToggle />
+        </Panel>
         {!largeGraph && (
           <MiniMap
             style={{ background: theme.minimapBg, border: `1px solid ${theme.panelBorder}` }}

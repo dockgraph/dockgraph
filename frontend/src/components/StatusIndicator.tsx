@@ -20,12 +20,13 @@ export function StatusIndicator({ connected }: StatusIndicatorProps) {
         zIndex: 10,
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
+        gap: 4,
         background: theme.panelBg,
         border: `1px solid ${theme.panelBorder}`,
         borderRadius: 6,
-        padding: '4px 10px',
-        fontSize: 11,
+        padding: '4px 8px',
+        fontSize: 12,
+        lineHeight: 1,
         color: theme.panelText,
       }}
     >
