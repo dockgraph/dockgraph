@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/dockgraph/dockgraph/auth"
 )
 
 // HealthChecker tests whether the backing service is reachable.
@@ -14,11 +16,9 @@ type HealthChecker interface {
 	HealthCheck(ctx context.Context) error
 }
 
-// NewServer sets up the HTTP routes for the application:
-//   - GET /healthz — checks Docker daemon connectivity
-//   - GET /ws      — upgrades to WebSocket for live graph updates
-//   - /*           — serves the embedded frontend SPA
-func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker) http.Handler {
+// NewServer sets up the HTTP routes for the application.
+// Pass nil for authService to disable authentication.
+func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth.Service) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -34,10 +34,21 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker) http.Handler {
 		fmt.Fprint(w, "ok")
 	})
 
+	if authService != nil {
+		mux.HandleFunc("POST /api/login", authService.Login())
+		mux.HandleFunc("POST /api/logout", authService.Logout())
+		mux.HandleFunc("GET /api/auth/check", authService.Check())
+	}
+
 	mux.HandleFunc("GET /ws", hub.HandleWS)
 	mux.HandleFunc("/", spaHandler(staticFS))
 
-	return securityHeaders(mux)
+	handler := securityHeaders(mux)
+	if authService != nil {
+		handler = authService.Middleware(handler)
+	}
+
+	return handler
 }
 
 // securityHeaders adds baseline security headers to every response.

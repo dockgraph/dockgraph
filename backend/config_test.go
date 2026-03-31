@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"testing"
+
+	"github.com/dockgraph/dockgraph/auth"
 )
 
 func TestLoadConfigDefaults(t *testing.T) {
@@ -10,6 +12,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	os.Unsetenv("DG_PORT")
 	os.Unsetenv("DG_POLL_INTERVAL")
 	os.Unsetenv("DG_COMPOSE_PATH")
+	os.Unsetenv("DG_PASSWORD")
 
 	cfg := LoadConfig()
 
@@ -149,5 +152,39 @@ func TestLoadConfigComposePathsTrimmed(t *testing.T) {
 	}
 	if cfg.ComposePaths[1] != "/b.yml" {
 		t.Errorf("expected '/b.yml', got %q", cfg.ComposePaths[1])
+	}
+}
+
+func TestLoadConfigPasswordPlaintext(t *testing.T) {
+	t.Setenv("DG_PASSWORD", "mysecret")
+	cfg := LoadConfig()
+	if cfg.PasswordHash == "" {
+		t.Error("PasswordHash should be set")
+	}
+	if cfg.PasswordHash == "mysecret" {
+		t.Error("PasswordHash should be hashed, not plaintext")
+	}
+	if !auth.IsHashedPassword(cfg.PasswordHash) {
+		t.Error("PasswordHash should be a valid argon2id hash")
+	}
+}
+
+func TestLoadConfigPasswordPrehashed(t *testing.T) {
+	hash, err := auth.HashPassword("testpass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DG_PASSWORD", hash)
+	cfg := LoadConfig()
+	if cfg.PasswordHash != hash {
+		t.Error("pre-hashed password should be stored as-is")
+	}
+}
+
+func TestLoadConfigPasswordEmpty(t *testing.T) {
+	os.Unsetenv("DG_PASSWORD")
+	cfg := LoadConfig()
+	if cfg.PasswordHash != "" {
+		t.Error("PasswordHash should be empty when DG_PASSWORD not set")
 	}
 }

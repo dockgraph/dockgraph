@@ -3,11 +3,13 @@
 package api
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/dockgraph/dockgraph/auth"
 	"github.com/dockgraph/dockgraph/collector"
 	"github.com/gorilla/websocket"
 )
@@ -34,18 +36,21 @@ var upgrader = websocket.Upgrader{
 }
 
 type wsClient struct {
-	conn   *websocket.Conn
-	sendCh chan collector.WireMessage
-	done   chan struct{}
+	conn      *websocket.Conn
+	sendCh    chan collector.WireMessage
+	done      chan struct{}
+	issuedAt  time.Time // JWT issued-at (zero when auth disabled)
+	expiresAt time.Time // JWT expiry (zero when auth disabled)
 }
 
 // Hub manages WebSocket client connections and broadcasts state updates.
 type Hub struct {
-	mu         sync.RWMutex
-	clients    map[*wsClient]bool
-	current    *collector.GraphSnapshot
-	closed     bool
-	MaxClients int
+	mu           sync.RWMutex
+	clients      map[*wsClient]bool
+	current      *collector.GraphSnapshot
+	closed       bool
+	MaxClients   int
+	CheckExpired func(issuedAt, expiresAt time.Time) bool // nil when auth disabled
 }
 
 // NewHub creates an empty WebSocket hub.
@@ -66,10 +71,18 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var iat, exp time.Time
+	if claims, ok := auth.ClaimsFromContext(r.Context()); ok {
+		iat = claims.IssuedAt
+		exp = claims.ExpiresAt
+	}
+
 	c := &wsClient{
-		conn:   conn,
-		sendCh: make(chan collector.WireMessage, 32),
-		done:   make(chan struct{}),
+		conn:      conn,
+		sendCh:    make(chan collector.WireMessage, 32),
+		done:      make(chan struct{}),
+		issuedAt:  iat,
+		expiresAt: exp,
 	}
 
 	h.mu.Lock()
@@ -213,4 +226,61 @@ func (h *Hub) ClientCount() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.clients)
+}
+
+// SweepExpiredClients checks all connected clients and disconnects those
+// with expired or invalidated sessions. Sends an auth_expired message
+// before closing the connection.
+func (h *Hub) SweepExpiredClients() {
+	if h.CheckExpired == nil {
+		return
+	}
+
+	h.mu.RLock()
+	var expired []*wsClient
+	for client := range h.clients {
+		if client.issuedAt.IsZero() {
+			continue
+		}
+		if h.CheckExpired(client.issuedAt, client.expiresAt) {
+			expired = append(expired, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, client := range expired {
+		msg := collector.WireMessage{Type: "auth_expired", Version: 1}
+		select {
+		case client.sendCh <- msg:
+		default:
+		}
+		// Close after writePump has time to flush the auth_expired message.
+		// 100ms is sufficient for local writes; the writePump processes
+		// sendCh in a tight select loop. For typical deployment sizes
+		// (MaxClients=128) this spawns at most 128 short-lived goroutines.
+		go func(c *wsClient) {
+			time.Sleep(100 * time.Millisecond)
+			c.conn.Close()
+		}(client)
+	}
+}
+
+// StartSessionSweep begins periodic session validation.
+// Does nothing when CheckExpired is nil (auth disabled).
+func (h *Hub) StartSessionSweep(ctx context.Context, interval time.Duration) {
+	if h.CheckExpired == nil {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				h.SweepExpiredClients()
+			}
+		}
+	}()
 }

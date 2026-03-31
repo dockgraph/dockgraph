@@ -8,6 +8,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/dockgraph/dockgraph/auth"
 	"github.com/dockgraph/dockgraph/collector"
 	"github.com/gorilla/websocket"
 )
@@ -201,7 +202,7 @@ func TestCheckOrigin(t *testing.T) {
 
 func TestSecurityHeaders(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{})
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -306,5 +307,86 @@ func TestHubRejectsOverLimit(t *testing.T) {
 	closeErr, ok := err.(*websocket.CloseError)
 	if ok && closeErr.Code != websocket.CloseTryAgainLater {
 		t.Errorf("expected CloseTryAgainLater (1013), got %d", closeErr.Code)
+	}
+}
+
+// dialHubWithClaims connects to a hub that injects auth claims into the context.
+func dialHubWithClaims(t *testing.T, hub *Hub) (*httptest.Server, *websocket.Conn) {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		claims := auth.Claims{
+			IssuedAt:  time.Now(),
+			ExpiresAt: time.Now().Add(time.Hour),
+			JTI:       "test",
+		}
+		ctx = auth.InjectClaims(ctx, claims)
+		hub.HandleWS(w, r.WithContext(ctx))
+	}))
+	u := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	return server, conn
+}
+
+func TestHubSessionSweepDisconnectsExpired(t *testing.T) {
+	hub := NewHub()
+	hub.CheckExpired = func(_, _ time.Time) bool {
+		return true // All expired
+	}
+
+	ts, conn := dialHubWithClaims(t, hub)
+	defer ts.Close()
+	defer conn.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() == 1 })
+
+	hub.SweepExpiredClients()
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var msg collector.WireMessage
+	if err := conn.ReadJSON(&msg); err != nil {
+		t.Fatalf("read auth_expired: %v", err)
+	}
+	if msg.Type != "auth_expired" {
+		t.Errorf("message type = %q, want auth_expired", msg.Type)
+	}
+}
+
+func TestHubSessionSweepNoopWithoutAuth(t *testing.T) {
+	hub := NewHub()
+	// CheckExpired is nil (auth disabled)
+
+	ts, conn := dialHub(t, hub)
+	defer ts.Close()
+	defer conn.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() == 1 })
+
+	hub.SweepExpiredClients()
+
+	if hub.ClientCount() != 1 {
+		t.Error("sweep should not affect clients when auth is disabled")
+	}
+}
+
+func TestHubSessionSweepKeepsValidClients(t *testing.T) {
+	hub := NewHub()
+	hub.CheckExpired = func(_, _ time.Time) bool {
+		return false // None expired
+	}
+
+	ts, conn := dialHub(t, hub)
+	defer ts.Close()
+	defer conn.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() == 1 })
+
+	hub.SweepExpiredClients()
+
+	if hub.ClientCount() != 1 {
+		t.Error("valid clients should not be removed")
 	}
 }

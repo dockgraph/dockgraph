@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dockgraph/dockgraph/auth"
 )
 
 // Config holds runtime configuration loaded from environment variables.
@@ -14,6 +16,7 @@ type Config struct {
 	Port         string        // HTTP listen port (DG_PORT, default "7800")
 	PollInterval time.Duration // Docker API poll interval (DG_POLL_INTERVAL, default 30s)
 	ComposePaths []string      // Explicit compose paths override (DG_COMPOSE_PATH); nil means auto-detect from container mounts
+	PasswordHash string        // Argon2id hash of DG_PASSWORD; empty means auth disabled
 }
 
 // LoadConfig reads configuration from environment variables with sensible defaults.
@@ -52,6 +55,21 @@ func LoadConfig() Config {
 			parts[i] = strings.TrimSpace(p)
 		}
 		cfg.ComposePaths = parts
+	}
+
+	if raw := os.Getenv("DG_PASSWORD"); raw != "" {
+		if auth.IsHashedPassword(raw) {
+			if err := auth.ValidateHash(raw); err != nil {
+				log.Fatalf("DG_PASSWORD contains invalid hash: %v", err)
+			}
+			cfg.PasswordHash = raw
+		} else {
+			hash, err := auth.HashPassword(raw)
+			if err != nil {
+				log.Fatalf("Failed to hash DG_PASSWORD: %v", err)
+			}
+			cfg.PasswordHash = hash
+		}
 	}
 
 	return cfg

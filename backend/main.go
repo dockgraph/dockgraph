@@ -16,6 +16,7 @@ import (
 
 	"github.com/docker/docker/client"
 	"github.com/dockgraph/dockgraph/api"
+	"github.com/dockgraph/dockgraph/auth"
 	"github.com/dockgraph/dockgraph/collector"
 	"github.com/dockgraph/dockgraph/frontend"
 	"github.com/dockgraph/dockgraph/state"
@@ -50,6 +51,7 @@ func main() {
 		fmt.Println("  DG_PORT            HTTP port (default: 7800)")
 		fmt.Println("  DG_POLL_INTERVAL   Docker API poll interval (default: 30s)")
 		fmt.Println("  DG_COMPOSE_PATH    Comma-separated compose file paths (default: auto-detect)")
+		fmt.Println("  DG_PASSWORD        Password for UI/WebSocket access (default: disabled)")
 		os.Exit(0)
 	}
 
@@ -66,6 +68,13 @@ func main() {
 			os.Exit(1)
 		}
 		os.Exit(0)
+	}
+
+	if cfg.PasswordHash == "" {
+		log.Println("WARN  Authentication is disabled. Set DG_PASSWORD to enable protection.")
+		log.Println("WARN  Tip: generate a strong password with: openssl rand -base64 24")
+	} else {
+		log.Println("INFO  Authentication enabled")
 	}
 
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -114,7 +123,40 @@ func main() {
 		pipeUpdates(ctx, mgr, dc, cc)
 	}()
 
+	var authService *auth.Service
+	if cfg.PasswordHash != "" {
+		signingKey, keyErr := auth.GenerateSigningKey()
+		if keyErr != nil {
+			log.Fatalf("failed to generate signing key: %v", keyErr)
+		}
+		authService = &auth.Service{
+			PasswordHash: cfg.PasswordHash,
+			SigningKey:   signingKey,
+			Sessions:     auth.NewSessionManager(),
+			Limiter:      auth.NewRateLimiter(5, time.Minute),
+			LoginPage:    frontend.LoginHTML,
+		}
+		go func() {
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					authService.Limiter.Cleanup()
+				}
+			}
+		}()
+	}
+
 	hub := api.NewHub()
+	if authService != nil {
+		hub.CheckExpired = func(iat, exp time.Time) bool {
+			return time.Now().After(exp) || !authService.Sessions.IsValid(iat)
+		}
+		hub.StartSessionSweep(ctx, 30*time.Second)
+	}
 	sub, unsub := mgr.Subscribe()
 	go func() {
 		defer unsub()
@@ -131,14 +173,15 @@ func main() {
 		log.Fatalf("failed to load embedded frontend: %v", err)
 	}
 
-	handler := api.NewServer(hub, staticFS, &dockerHealth{cli: dockerCli})
+	handler := api.NewServer(hub, staticFS, &dockerHealth{cli: dockerCli}, authService)
 	addr := cfg.BindAddr + ":" + cfg.Port
 	server := &http.Server{
-		Addr:         addr,
-		Handler:      handler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:              addr,
+		Handler:           handler,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {

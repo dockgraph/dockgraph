@@ -6,6 +6,7 @@
 backend/**/*_test.go
 !backend/go.mod
 !backend/go.sum
+!backend/frontend/login.html
 
 # Frontend
 !frontend/src/

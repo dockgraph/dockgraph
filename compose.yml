@@ -15,6 +15,7 @@ services:
       DG_PORT: "7800"                                # HTTP listen port (must match container port)
       DG_POLL_INTERVAL: "30s"                        # Docker API polling interval
       DG_COMPOSE_PATH: "/app/demo/compose-small.yml" # Override: only scan this file
+      DG_PASSWORD: ""                                # Set a password for the web UI (optional)
     deploy:
       resources:
         limits:

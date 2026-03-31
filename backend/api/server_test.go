@@ -8,6 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
+	"time"
+
+	"github.com/dockgraph/dockgraph/auth"
 )
 
 // stubHealth implements HealthChecker for tests.
@@ -21,7 +24,7 @@ func (s *stubHealth) HealthCheck(_ context.Context) error {
 
 func TestHealthzOK(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{})
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -49,7 +52,7 @@ func TestHealthzOK(t *testing.T) {
 func TestHealthzDockerUnreachable(t *testing.T) {
 	hub := NewHub()
 	pinger := &stubHealth{err: fmt.Errorf("connection refused")}
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, pinger)
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, pinger, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -77,7 +80,7 @@ func TestSPAHandlerServesStaticFiles(t *testing.T) {
 	}
 
 	hub := NewHub()
-	handler := NewServer(hub, fs, &stubHealth{})
+	handler := NewServer(hub, fs, &stubHealth{}, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -116,7 +119,7 @@ func TestSPAHandlerFallbackToIndex(t *testing.T) {
 	}
 
 	hub := NewHub()
-	handler := NewServer(hub, fs, &stubHealth{})
+	handler := NewServer(hub, fs, &stubHealth{}, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -135,7 +138,7 @@ func TestSPAHandlerFallbackToIndex(t *testing.T) {
 
 func TestCSPHeader(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{})
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -153,7 +156,7 @@ func TestCSPHeader(t *testing.T) {
 
 func TestSecurityHeadersComplete(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{})
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -175,5 +178,44 @@ func TestSecurityHeadersComplete(t *testing.T) {
 		if got := resp.Header.Get(header); got != want {
 			t.Errorf("%s = %q, want %q", header, got, want)
 		}
+	}
+}
+
+func TestNewServerRegistersAuthRoutes(t *testing.T) {
+	hub := NewHub()
+	fs := fstest.MapFS{"index.html": {Data: []byte("<html>app</html>")}}
+	hash, _ := auth.HashPassword("secret")
+	key, _ := auth.GenerateSigningKey()
+	svc := &auth.Service{
+		PasswordHash: hash,
+		SigningKey:   key,
+		Sessions:     auth.NewSessionManager(),
+		Limiter:      auth.NewRateLimiter(5, time.Minute),
+		LoginPage:    []byte("<html>login</html>"),
+	}
+	handler := NewServer(hub, fs, &stubHealth{}, svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/login", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	// Should get 400 (bad body) not 404 — the route exists
+	if w.Code == http.StatusNotFound {
+		t.Error("/api/login should be registered when auth enabled")
+	}
+}
+
+func TestNewServerNoAuthRoutes(t *testing.T) {
+	hub := NewHub()
+	fs := fstest.MapFS{"index.html": {Data: []byte("<html>app</html>")}}
+	handler := NewServer(hub, fs, &stubHealth{}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/login", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	// Without auth, /api/login falls through to SPA handler
+	body, _ := io.ReadAll(w.Body)
+	if string(body) != "<html>app</html>" {
+		t.Error("without auth, /api/login should fall through to SPA")
 	}
 }

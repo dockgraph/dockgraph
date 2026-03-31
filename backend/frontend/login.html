@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DockGraph</title>
+<style>
+  :root {
+    --bg: #0f172a; --card-bg: #1e293b; --border: #334155;
+    --text: #e2e8f0; --subtext: #94a3b8;
+    --btn-bg: #334155; --btn-hover: #475569;
+    --error: #ef4444; --focus: #3b82f6;
+  }
+  [data-theme="light"] {
+    --bg: #f0ece6; --card-bg: #f7f5f1; --border: #d6d0c8;
+    --text: #2c2418; --subtext: #7a7060;
+    --btn-bg: #d6d0c8; --btn-hover: #c2bbb0;
+    --error: #dc2626; --focus: #2563eb;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh;
+  }
+  .card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 32px; width: 320px;
+  }
+  .title {
+    font-size: 20px; font-weight: 600; text-align: center;
+    margin-bottom: 24px;
+  }
+  .title span { margin-right: 6px; }
+  input {
+    width: 100%; padding: 10px 12px; font-size: 14px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    outline: none; margin-bottom: 12px;
+  }
+  input:focus { border-color: var(--focus); }
+  input::placeholder { color: var(--subtext); }
+  button {
+    width: 100%; padding: 10px; font-size: 14px; font-weight: 500;
+    background: var(--btn-bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--btn-hover); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .error {
+    color: var(--error); font-size: 13px; text-align: center;
+    margin-top: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="title"><span>&#9670;</span>DockGraph</div>
+  <form id="f">
+    <input type="password" id="p" placeholder="Password" autofocus required
+      autocomplete="current-password">
+    <button type="submit" id="b">Sign in</button>
+  </form>
+  <p id="e" class="error"></p>
+</div>
+<script>
+(function(){
+  var t=localStorage.getItem('dockgraph-theme');
+  if(t==='light')document.documentElement.setAttribute('data-theme','light');
+
+  var f=document.getElementById('f'),p=document.getElementById('p'),
+      b=document.getElementById('b'),e=document.getElementById('e');
+
+  f.addEventListener('submit',function(ev){
+    ev.preventDefault();
+    e.textContent='';
+    b.disabled=true;
+    fetch('/api/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:p.value})
+    }).then(function(res){
+      if(res.ok){window.location.href='/';}
+      else if(res.status===429){
+        return res.json().then(function(d){
+          e.textContent='Too many attempts. Try again in '+d.retryAfter+'s.';
+        });
+      }else{e.textContent='Invalid password';}
+    }).catch(function(){
+      e.textContent='Connection error';
+    }).finally(function(){b.disabled=false;});
+  });
+})();
+</script>
+</body>
+</html>
