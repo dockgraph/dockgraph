@@ -202,7 +202,7 @@ func TestCheckOrigin(t *testing.T) {
 
 func TestSecurityHeaders(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil)
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 

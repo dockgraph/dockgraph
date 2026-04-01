@@ -24,7 +24,7 @@ func (s *stubHealth) HealthCheck(_ context.Context) error {
 
 func TestHealthzOK(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil)
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -52,7 +52,7 @@ func TestHealthzOK(t *testing.T) {
 func TestHealthzDockerUnreachable(t *testing.T) {
 	hub := NewHub()
 	pinger := &stubHealth{err: fmt.Errorf("connection refused")}
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, pinger, nil)
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, pinger, nil, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -80,7 +80,7 @@ func TestSPAHandlerServesStaticFiles(t *testing.T) {
 	}
 
 	hub := NewHub()
-	handler := NewServer(hub, fs, &stubHealth{}, nil)
+	handler := NewServer(hub, fs, &stubHealth{}, nil, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -119,7 +119,7 @@ func TestSPAHandlerFallbackToIndex(t *testing.T) {
 	}
 
 	hub := NewHub()
-	handler := NewServer(hub, fs, &stubHealth{}, nil)
+	handler := NewServer(hub, fs, &stubHealth{}, nil, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -138,7 +138,7 @@ func TestSPAHandlerFallbackToIndex(t *testing.T) {
 
 func TestCSPHeader(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil)
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -156,7 +156,7 @@ func TestCSPHeader(t *testing.T) {
 
 func TestSecurityHeadersComplete(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil)
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, nil)
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
@@ -193,7 +193,7 @@ func TestNewServerRegistersAuthRoutes(t *testing.T) {
 		Limiter:      auth.NewRateLimiter(5, time.Minute),
 		LoginPage:    []byte("<html>login</html>"),
 	}
-	handler := NewServer(hub, fs, &stubHealth{}, svc)
+	handler := NewServer(hub, fs, &stubHealth{}, svc, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/login", nil)
 	req.Header.Set("Content-Type", "application/json")
@@ -208,7 +208,7 @@ func TestNewServerRegistersAuthRoutes(t *testing.T) {
 func TestNewServerNoAuthRoutes(t *testing.T) {
 	hub := NewHub()
 	fs := fstest.MapFS{"index.html": {Data: []byte("<html>app</html>")}}
-	handler := NewServer(hub, fs, &stubHealth{}, nil)
+	handler := NewServer(hub, fs, &stubHealth{}, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/login", nil)
 	w := httptest.NewRecorder()

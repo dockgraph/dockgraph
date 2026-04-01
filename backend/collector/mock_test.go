@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"io"
 
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
@@ -43,6 +44,18 @@ func (s *stubDockerClient) Events(_ context.Context, _ events.ListOptions) (<-ch
 	ch := make(chan events.Message)
 	errCh := make(chan error)
 	return ch, errCh
+}
+
+func (s *stubDockerClient) ContainerStats(_ context.Context, _ string, _ bool) (containertypes.StatsResponseReader, error) {
+	return containertypes.StatsResponseReader{Body: io.NopCloser(io.LimitReader(nil, 0))}, fmt.Errorf("not implemented in stub")
+}
+
+func (s *stubDockerClient) ContainerInspect(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+	return containertypes.InspectResponse{}, fmt.Errorf("not implemented in stub")
+}
+
+func (s *stubDockerClient) ContainerLogs(_ context.Context, _ string, _ containertypes.LogsOptions) (io.ReadCloser, error) {
+	return nil, fmt.Errorf("not implemented in stub")
 }
 
 func (s *stubDockerClient) Close() error { return nil }
