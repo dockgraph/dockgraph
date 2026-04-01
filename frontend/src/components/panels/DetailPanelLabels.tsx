@@ -1,5 +1,5 @@
 import { useTheme } from '../../theme';
-import { Section } from './DetailPanelStats';
+import { Section } from './shared';
 
 interface Props {
   labels: Record<string, string> | undefined;

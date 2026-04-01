@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react';
 import { useTheme } from '../../theme';
 import { formatBytes } from '../../utils/formatBytes';
 import { STATS_CPU_WARN, STATS_CPU_CRIT, STATS_THROTTLE_CRIT } from '../../utils/constants';
+import { Section } from './shared';
 import type { ContainerStatsData } from '../../types/stats';
 
 interface Props {
@@ -68,21 +68,3 @@ export function DetailPanelStats({ stats }: Props) {
   );
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
-  const { theme } = useTheme();
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: theme.nodeSubtext, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{title}</div>
-      {children}
-    </div>
-  );
-}
-
-export function Row({ label, value, mono, subtext }: { label: string; value: string; mono: React.CSSProperties; subtext: string }) {
-  return (
-    <div style={{ marginBottom: 4 }}>
-      <span style={{ fontSize: 10, color: subtext }}>{label}: </span>
-      <span style={mono}>{value}</span>
-    </div>
-  );
-}

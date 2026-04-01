@@ -1,5 +1,5 @@
 import { useTheme } from '../../theme';
-import { Section } from './DetailPanelStats';
+import { Section } from './shared';
 import { STATUS_COLORS } from '../../utils/colors';
 import type { ContainerDetail } from '../../types/stats';
 

@@ -28,10 +28,10 @@ export function DetailPanelHeader({ detail }: Props) {
 
   return (
     <div>
-      <div style={{ fontSize: 16, fontWeight: 600, color: theme.nodeText, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={detail.name}>
+      <div style={{ fontSize: 16, fontWeight: 600, color: theme.nodeText, marginBottom: 2, wordBreak: 'break-all' }}>
         {detail.name}
       </div>
-      <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={detail.image}>
+      <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 6, wordBreak: 'break-all' }}>
         {detail.image}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>

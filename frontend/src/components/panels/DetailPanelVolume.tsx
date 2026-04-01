@@ -1,5 +1,5 @@
 import { useTheme } from '../../theme';
-import { Section, Row } from './DetailPanelStats';
+import { Section, Row } from './shared';
 import { formatBytes } from '../../utils/formatBytes';
 import type { VolumeDetail } from '../../types/stats';
 

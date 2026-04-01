@@ -1,5 +1,5 @@
 import { useTheme } from '../../theme';
-import { Section, Row } from './DetailPanelStats';
+import { Section, Row } from './shared';
 import type { ComposeConfig } from '../../types';
 
 interface Props {

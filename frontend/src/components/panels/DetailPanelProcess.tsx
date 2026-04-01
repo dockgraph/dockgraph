@@ -1,5 +1,5 @@
 import { useTheme } from '../../theme';
-import { Section } from './DetailPanelStats';
+import { Section } from './shared';
 import type { ContainerDetail } from '../../types/stats';
 
 interface Props {

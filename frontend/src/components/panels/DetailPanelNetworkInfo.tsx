@@ -1,12 +1,13 @@
 import { useTheme } from '../../theme';
-import { Section, Row } from './DetailPanelStats';
+import { Section, Row, navLinkStyle } from './shared';
 import type { NetworkDetail } from '../../types/stats';
 
 interface Props {
   network: NetworkDetail;
+  onNavigate?: (nodeId: string) => void;
 }
 
-export function DetailPanelNetworkInfo({ network }: Props) {
+export function DetailPanelNetworkInfo({ network, onNavigate }: Props) {
   const { theme } = useTheme();
   const mono: React.CSSProperties = { fontFamily: 'monospace', fontSize: 11, color: theme.panelText, wordBreak: 'break-all' };
 
@@ -38,7 +39,19 @@ export function DetailPanelNetworkInfo({ network }: Props) {
         <Section title="Connected Containers">
           {network.containers.map((c) => (
             <div key={c.name} style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: theme.panelText, marginBottom: 2 }}>{c.name}</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: theme.panelText,
+                  marginBottom: 4,
+                  ...(onNavigate ? navLinkStyle(theme.panelBorder) : {}),
+                }}
+                onClick={onNavigate ? () => onNavigate(`container:${c.name}`) : undefined}
+                title={onNavigate ? `Inspect ${c.name}` : undefined}
+              >
+                {c.name}
+              </div>
               {c.ipv4Address && <Row label="IPv4" value={c.ipv4Address} mono={mono} subtext={theme.nodeSubtext} />}
               {c.macAddress && <Row label="MAC" value={c.macAddress} mono={mono} subtext={theme.nodeSubtext} />}
             </div>
