@@ -58,6 +58,14 @@ func (s *stubDockerClient) ContainerLogs(_ context.Context, _ string, _ containe
 	return nil, fmt.Errorf("not implemented in stub")
 }
 
+func (s *stubDockerClient) VolumeInspect(_ context.Context, _ string) (volumetypes.Volume, error) {
+	return volumetypes.Volume{}, fmt.Errorf("not implemented in stub")
+}
+
+func (s *stubDockerClient) NetworkInspect(_ context.Context, _ string, _ networktypes.InspectOptions) (networktypes.Inspect, error) {
+	return networktypes.Inspect{}, fmt.Errorf("not implemented in stub")
+}
+
 func (s *stubDockerClient) Close() error { return nil }
 
 // errClient returns a stub that fails on the specified resource.

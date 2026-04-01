@@ -17,7 +17,7 @@ type ContainerInspector interface {
 	ContainerInspect(ctx context.Context, containerID string) (containertypes.InspectResponse, error)
 }
 
-var validContainerID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
+var validResourceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
 
 // sensitiveKeyPatterns matches env var keys that should be masked.
 var sensitiveKeyPatterns = []string{
@@ -52,7 +52,7 @@ func filterEnvVars(envList []string) []map[string]string {
 func HandleContainerInspect(inspector ContainerInspector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		if !validContainerID.MatchString(id) {
+		if !validResourceName.MatchString(id) {
 			http.Error(w, `{"error":"invalid container ID"}`, http.StatusBadRequest)
 			return
 		}

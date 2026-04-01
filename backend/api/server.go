@@ -20,6 +20,8 @@ type HealthChecker interface {
 type DockerAPI interface {
 	ContainerInspector
 	ContainerLogger
+	VolumeInspector
+	NetworkInspector
 }
 
 // NewServer sets up the HTTP routes for the application.
@@ -50,6 +52,8 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 	if docker != nil {
 		mux.HandleFunc("GET /api/containers/{id}/logs", HandleContainerLogs(docker))
 		mux.HandleFunc("GET /api/containers/{id}", HandleContainerInspect(docker))
+		mux.HandleFunc("GET /api/volumes/{name}", HandleVolumeInspect(docker))
+		mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(docker))
 	}
 	mux.HandleFunc("/", spaHandler(staticFS))
 
