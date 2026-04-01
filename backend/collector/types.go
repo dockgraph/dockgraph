@@ -41,6 +41,26 @@ type Node struct {
 	NetworkID string            `json:"networkId,omitempty"`
 	Driver    string            `json:"driver,omitempty"`
 	Source    string            `json:"source,omitempty"`
+	Compose   *ComposeConfig    `json:"compose,omitempty"`
+}
+
+// ComposeConfig carries service configuration from a compose file,
+// used to display details for services that aren't running yet.
+type ComposeConfig struct {
+	Service     string            `json:"service"`
+	Command     []string          `json:"command,omitempty"`
+	Entrypoint  []string          `json:"entrypoint,omitempty"`
+	Environment map[string]string `json:"environment,omitempty"`
+	Restart     string            `json:"restart,omitempty"`
+	DependsOn   []string          `json:"dependsOn,omitempty"`
+	Volumes     []string          `json:"volumes,omitempty"`
+	Networks    []string          `json:"networks,omitempty"`
+	User        string            `json:"user,omitempty"`
+	WorkingDir  string            `json:"workingDir,omitempty"`
+	Privileged  bool              `json:"privileged,omitempty"`
+	ReadOnly    bool              `json:"readOnly,omitempty"`
+	CapAdd      []string          `json:"capAdd,omitempty"`
+	CapDrop     []string          `json:"capDrop,omitempty"`
 }
 
 // Edge represents a directed relationship between two nodes.
@@ -111,6 +131,8 @@ type DockerClient interface {
 	ContainerStats(ctx context.Context, containerID string, stream bool) (containertypes.StatsResponseReader, error)
 	ContainerInspect(ctx context.Context, containerID string) (containertypes.InspectResponse, error)
 	ContainerLogs(ctx context.Context, containerID string, options containertypes.LogsOptions) (io.ReadCloser, error)
+	VolumeInspect(ctx context.Context, volumeID string) (volumetypes.Volume, error)
+	NetworkInspect(ctx context.Context, networkID string, options networktypes.InspectOptions) (networktypes.Inspect, error)
 	Close() error
 }
 

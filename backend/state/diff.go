@@ -74,6 +74,9 @@ func nodeEqual(a, b collector.Node) bool {
 			return false
 		}
 	}
+	if (a.Compose == nil) != (b.Compose == nil) {
+		return false
+	}
 	return true
 }
 

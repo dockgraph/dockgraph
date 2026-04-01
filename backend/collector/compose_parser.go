@@ -101,6 +101,7 @@ func buildServiceNode(svc composetypes.ServiceConfig, naming composeNaming, trac
 
 	node := buildContainerNode(svcName, svc.Image, "not_running", parseComposePorts(svc.Ports))
 	node.Source = sourceName
+	node.Compose = buildComposeConfig(svc, naming)
 	if primary != "" {
 		node.NetworkID = "network:" + naming.network(primary)
 	}
@@ -149,6 +150,50 @@ func buildServiceEdges(svc composetypes.ServiceConfig, naming composeNaming, svc
 	}
 
 	return edges
+}
+
+// buildComposeConfig extracts service configuration from a compose service
+// for display in the detail panel when the container isn't running.
+func buildComposeConfig(svc composetypes.ServiceConfig, naming composeNaming) *ComposeConfig {
+	cfg := &ComposeConfig{
+		Service:    svc.Name,
+		Command:    svc.Command,
+		Entrypoint: svc.Entrypoint,
+		Restart:    svc.Restart,
+		User:       svc.User,
+		WorkingDir: svc.WorkingDir,
+		Privileged: svc.Privileged,
+		ReadOnly:   svc.ReadOnly,
+		CapAdd:     svc.CapAdd,
+		CapDrop:    svc.CapDrop,
+	}
+
+	if len(svc.Environment) > 0 {
+		cfg.Environment = make(map[string]string, len(svc.Environment))
+		for k, v := range svc.Environment {
+			if v != nil {
+				cfg.Environment[k] = *v
+			}
+		}
+	}
+
+	for depName := range svc.DependsOn {
+		cfg.DependsOn = append(cfg.DependsOn, depName)
+	}
+
+	for _, v := range svc.Volumes {
+		summary := v.Source + ":" + v.Target
+		if v.ReadOnly {
+			summary += ":ro"
+		}
+		cfg.Volumes = append(cfg.Volumes, summary)
+	}
+
+	for netName := range svc.Networks {
+		cfg.Networks = append(cfg.Networks, naming.network(netName))
+	}
+
+	return cfg
 }
 
 // parseComposeFile loads a Docker Compose file and converts it into a graph
