@@ -1,7 +1,7 @@
 /** Shared layout and visual constants used across components and hooks. */
 
 /** Fixed height for container nodes in the ELK layout. */
-export const CONTAINER_NODE_HEIGHT = 70;
+export const CONTAINER_NODE_HEIGHT = 84;
 
 /** Fixed height for volume nodes in the ELK layout. */
 export const VOLUME_NODE_HEIGHT = 40;

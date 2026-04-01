@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { useStore } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
@@ -15,7 +15,7 @@ const ellipsis: React.CSSProperties = {
 };
 
 export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
-  const { dgNode, nodeWidth } = data as unknown as ContainerNodeData;
+  const { dgNode, nodeWidth, stats, onInfoClick } = data as unknown as ContainerNodeData;
   const w = nodeWidth ?? 200;
   const { theme } = useTheme();
   const isLowZoom = useStore(zoomSelector);
@@ -24,6 +24,11 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
   const isActive = dgNode.status === 'running' || dgNode.status === 'unhealthy';
   const isPaused = dgNode.status === 'paused';
   const opacity = isActive ? 1 : isPaused ? PAUSED_OPACITY : INACTIVE_OPACITY;
+
+  const handleInfo = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onInfoClick?.(dgNode.id);
+  }, [onInfoClick, dgNode.id]);
 
   // Simplified render at low zoom — just a colored block with the name.
   if (isLowZoom) {
@@ -74,28 +79,55 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
             fontWeight: 600,
             fontFamily: 'sans-serif',
             color: theme.nodeText,
-            maxWidth: 'calc(100% - 16px)',
+            maxWidth: 'calc(100% - 30px)',
             display: 'inline-block',
           }}
           title={dgNode.name}
         >
           {dgNode.name}
         </span>
-        <span
-          role="img"
-          aria-label={STATUS_LABELS[dgNode.status ?? 'exited'] ?? dgNode.status}
-          title={STATUS_LABELS[dgNode.status ?? 'exited'] ?? dgNode.status}
-          style={{
-            width: STATUS_DOT_SIZE,
-            height: STATUS_DOT_SIZE,
-            borderRadius: '50%',
-            background: isActive ? statusColor : 'transparent',
-            border: isActive ? 'none' : `1.5px solid ${statusColor}`,
-            display: 'inline-block',
-            boxSizing: 'border-box',
-            transition: 'background 0.3s, border-color 0.3s',
-          }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          {onInfoClick && (
+            <button
+              onClick={handleInfo}
+              aria-label={`Inspect ${dgNode.name}`}
+              title="Inspect container"
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: 2,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+                gap: 2,
+              }}
+            >
+              <span style={{ width: 10, height: 2, background: theme.nodeSubtext, borderRadius: 1, display: 'block' }} />
+              <span style={{ width: 10, height: 2, background: theme.nodeSubtext, borderRadius: 1, display: 'block' }} />
+              <span style={{ width: 7, height: 2, background: theme.nodeSubtext, borderRadius: 1, display: 'block' }} />
+            </button>
+          )}
+          <span
+            role="img"
+            aria-label={STATUS_LABELS[dgNode.status ?? 'exited'] ?? dgNode.status}
+            title={STATUS_LABELS[dgNode.status ?? 'exited'] ?? dgNode.status}
+            style={{
+              width: STATUS_DOT_SIZE,
+              height: STATUS_DOT_SIZE,
+              borderRadius: '50%',
+              background: isActive ? statusColor : 'transparent',
+              border: isActive ? 'none' : `1.5px solid ${statusColor}`,
+              display: 'inline-block',
+              boxSizing: 'border-box',
+              transition: 'background 0.3s, border-color 0.3s',
+            }}
+          />
+        </div>
       </div>
 
       {dgNode.image && (
@@ -139,7 +171,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
         </div>
       )}
 
-      <StatsMini stats={(data as unknown as ContainerNodeData).stats} />
+      <StatsMini stats={stats} />
     </div>
   );
 });

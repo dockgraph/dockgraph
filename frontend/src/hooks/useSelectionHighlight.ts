@@ -17,6 +17,8 @@ interface HighlightResult {
   onNodeClick: (_: React.MouseEvent, node: RFNode) => void;
   onEdgeClick: (_: React.MouseEvent, edge: RFEdge) => void;
   onPaneClick: () => void;
+  selectNode: (id: string) => void;
+  selectEdge: (id: string) => void;
 }
 
 /**
@@ -81,6 +83,16 @@ export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[], useCanva
     setSelection(null);
   }, []);
 
+  const selectNode = useCallback((id: string) => {
+    setSelection({ type: 'node', id });
+  }, []);
+
+  const selectEdge = useCallback((id: string) => {
+    setSelection((prev) =>
+      prev?.type === 'edge' && prev.id === id ? null : { type: 'edge', id },
+    );
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSelection(null);
@@ -89,5 +101,5 @@ export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[], useCanva
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  return { styledNodes, styledEdges, canvasEdges, svgEdges, onNodeClick, onEdgeClick, onPaneClick };
+  return { styledNodes, styledEdges, canvasEdges, svgEdges, onNodeClick, onEdgeClick, onPaneClick, selectNode, selectEdge };
 }

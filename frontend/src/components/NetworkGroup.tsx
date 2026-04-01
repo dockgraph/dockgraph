@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { networkColor } from '../utils/colors';
@@ -6,9 +6,17 @@ import { useTheme } from '../theme';
 import type { NetworkGroupData } from '../types';
 
 export const NetworkGroup = memo(function NetworkGroup({ data }: NodeProps) {
-  const { dgNode } = data as unknown as NetworkGroupData;
+  const { dgNode, onInfoClick } = data as unknown as NetworkGroupData;
   const { theme } = useTheme();
   const color = networkColor(dgNode.name);
+
+  const handleInfo = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onInfoClick?.(dgNode.id);
+    },
+    [onInfoClick, dgNode.id],
+  );
 
   return (
     <div
@@ -32,9 +40,35 @@ export const NetworkGroup = memo(function NetworkGroup({ data }: NodeProps) {
           color: `${color}${theme.groupTextAlpha}`,
           letterSpacing: '0.3px',
           textTransform: 'uppercase' as const,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
         }}
       >
-        {dgNode.name}
+        <button
+          onClick={handleInfo}
+          aria-label={`Inspect ${dgNode.name}`}
+          title="Inspect network"
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 2,
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            padding: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            gap: 2,
+          }}
+        >
+          <span style={{ width: 10, height: 2, background: `${color}${theme.groupTextAlpha}`, borderRadius: 1, display: 'block' }} />
+          <span style={{ width: 10, height: 2, background: `${color}${theme.groupTextAlpha}`, borderRadius: 1, display: 'block' }} />
+          <span style={{ width: 7, height: 2, background: `${color}${theme.groupTextAlpha}`, borderRadius: 1, display: 'block' }} />
+        </button>
+        <span onClick={handleInfo} style={{ cursor: 'pointer' }}>{dgNode.name}</span>
       </div>
 
     </div>

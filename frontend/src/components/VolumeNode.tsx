@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { useStore } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
@@ -7,12 +7,17 @@ import type { VolumeNodeData } from '../types';
 import { INACTIVE_OPACITY, zoomSelector } from '../utils/constants';
 
 export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
-  const { dgNode, nodeWidth } = data as unknown as VolumeNodeData;
+  const { dgNode, nodeWidth, onInfoClick } = data as unknown as VolumeNodeData;
   const w = nodeWidth ?? 200;
   const { theme } = useTheme();
   const isLowZoom = useStore(zoomSelector);
   const isGhost = dgNode.status === 'not_running';
   const opacity = isGhost ? INACTIVE_OPACITY : 1;
+
+  const handleInfo = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onInfoClick?.(dgNode.id);
+  }, [onInfoClick, dgNode.id]);
 
   if (isLowZoom) {
     return (
@@ -54,20 +59,48 @@ export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
       <NodeHandles />
 
       <span style={{ fontSize: 14 }}>💾</span>
-      <div style={{ overflow: 'hidden' }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            fontFamily: 'sans-serif',
-            color: theme.nodeText,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-          title={dgNode.name}
-        >
-          {dgNode.name}
+      <div style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              fontFamily: 'sans-serif',
+              color: theme.nodeText,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={dgNode.name}
+          >
+            {dgNode.name}
+          </div>
+          {onInfoClick && (
+            <button
+              onClick={handleInfo}
+              aria-label={`Inspect ${dgNode.name}`}
+              title="Inspect volume"
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: 2,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+                gap: 2,
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ width: 10, height: 2, background: theme.nodeSubtext, borderRadius: 1, display: 'block' }} />
+              <span style={{ width: 10, height: 2, background: theme.nodeSubtext, borderRadius: 1, display: 'block' }} />
+              <span style={{ width: 7, height: 2, background: theme.nodeSubtext, borderRadius: 1, display: 'block' }} />
+            </button>
+          )}
         </div>
         {dgNode.driver && (
           <div style={{ fontSize: 9, color: theme.nodeSubtext }}>{dgNode.driver}</div>
