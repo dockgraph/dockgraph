@@ -1,23 +1,22 @@
 import type { LogLine } from '../types/stats';
 
+let nextLogId = 0;
+
+/** Returns a monotonically increasing ID for log line keys. */
+export function logLineId(): number {
+  return nextLogId++;
+}
+
 /** Parses an SSE data payload into a LogLine. */
 export function parseLogEvent(data: string): LogLine | null {
   try {
-    const parsed = JSON.parse(data) as { stream?: string; line?: string };
-    if (!parsed.line) return null;
+    const parsed = JSON.parse(data) as { stream?: string; line?: string; timestamp?: string };
+    if (!parsed.line && !parsed.timestamp) return null;
     const stream = parsed.stream === 'stderr' ? 'stderr' : 'stdout';
-    const { timestamp, message } = splitTimestamp(parsed.line);
-    return { stream, text: message, timestamp };
+    return { id: logLineId(), stream, text: parsed.line ?? '', timestamp: parsed.timestamp };
   } catch {
     return null;
   }
-}
-
-/** Splits a Docker log line into timestamp and message parts. */
-function splitTimestamp(line: string): { timestamp?: string; message: string } {
-  const match = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z?)\s(.*)/);
-  if (!match) return { message: line };
-  return { timestamp: match[1], message: match[2] };
 }
 
 /** Formats a Docker timestamp to HH:MM:SS.mmm for display. */

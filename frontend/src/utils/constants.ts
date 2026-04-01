@@ -86,10 +86,7 @@ export const HIGHLIGHT_EDGE_STROKE_WIDTH = 2.5;
 export const DETAIL_PANEL_WIDTH = 420;
 
 /** Max number of log lines held in the browser. */
-export const LOG_BUFFER_SIZE = 500;
-
-/** Initial number of log lines to fetch. */
-export const LOG_TAIL_DEFAULT = 100;
+export const LOG_BUFFER_SIZE = 2000;
 
 /** CPU % threshold for amber warning. */
 export const STATS_CPU_WARN = 60;

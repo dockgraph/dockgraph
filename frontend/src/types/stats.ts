@@ -37,7 +37,7 @@ export interface ContainerDetail {
   restartPolicy: { Name: string; MaximumRetryCount: number };
   networkMode: string;
   ports: { hostPort: string; containerPort: string; protocol: string }[];
-  mounts: { type: string; source: string; destination: string; rw: boolean; propagation: string }[];
+  mounts: { type: string; source: string; destination: string; rw: boolean; propagation: string; name?: string }[];
   networks: { name: string; ipAddress: string; gateway: string; macAddress: string; ipPrefixLen: number }[];
   security: { privileged: boolean; readonlyRootfs: boolean; capAdd: string[]; capDrop: string[] };
   resources: { cpuQuota: number; cpuPeriod: number; nanoCpus: number; memoryLimit: number; memoryReservation: number };
@@ -45,6 +45,7 @@ export interface ContainerDetail {
 }
 
 export interface LogLine {
+  id: number;
   stream: 'stdout' | 'stderr';
   text: string;
   timestamp?: string;
