@@ -5,12 +5,13 @@ import { DETAIL_PANEL_WIDTH } from '../../utils/constants';
 interface DetailPanelProps {
   open: boolean;
   onClose: () => void;
+  header?: ReactNode;
   loading?: boolean;
   error?: string | null;
   children: ReactNode;
 }
 
-export function DetailPanel({ open, onClose, loading, error, children }: DetailPanelProps) {
+export function DetailPanel({ open, onClose, header, loading, error, children }: DetailPanelProps) {
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -39,26 +40,31 @@ export function DetailPanel({ open, onClose, loading, error, children }: DetailP
         overflow: 'hidden',
       }}
     >
-      <button
-        onClick={onClose}
-        aria-label="Close panel"
-        style={{
-          position: 'absolute',
-          top: 8,
-          right: 8,
-          zIndex: 1,
-          background: 'none',
-          border: 'none',
-          color: theme.panelText,
-          fontSize: 18,
-          cursor: 'pointer',
-          lineHeight: 1,
-          padding: 4,
-        }}
-      >
-        ✕
-      </button>
+      {/* Fixed header: close button + container identity */}
+      <div style={{ padding: '12px 16px 8px', borderBottom: `1px solid ${theme.panelBorder}`, flexShrink: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>{header}</div>
+          <button
+            onClick={onClose}
+            aria-label="Close panel"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: theme.panelText,
+              fontSize: 18,
+              cursor: 'pointer',
+              lineHeight: 1,
+              padding: 4,
+              flexShrink: 0,
+              marginLeft: 8,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
 
+      {/* Scrollable body */}
       {loading && (
         <div style={{ padding: 20, color: theme.nodeSubtext, textAlign: 'center' }}>Loading…</div>
       )}

@@ -38,20 +38,28 @@ export function DetailPanelStats({ stats }: Props) {
 
   return (
     <Section title="Resources">
-      <StatBar label="CPU" value={stats.cpuPercent} max={100} color={color} />
-      {stats.cpuThrottled > 0 && (
-        <div style={{ fontSize: 10, color: '#f59e0b', marginBottom: 6 }}>Throttled {stats.cpuThrottled.toFixed(1)}%</div>
+      <StatBar
+        label={stats.cpuThrottled > 0 ? `CPU (throttled ${stats.cpuThrottled.toFixed(1)}%)` : 'CPU'}
+        value={stats.cpuPercent}
+        max={100}
+        color={color}
+      />
+      {stats.memUsage > 0 ? (
+        <>
+          <StatBar label="Memory" value={stats.memUsage} max={stats.memLimit || stats.memUsage} color="#3b82f6" />
+          <div style={{ fontSize: 10, color: theme.nodeSubtext, marginBottom: 8 }}>
+            {formatBytes(stats.memUsage)} / {stats.memLimit ? formatBytes(stats.memLimit) : '∞'}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 10, color: theme.nodeSubtext, marginBottom: 8 }}>Memory: N/A (cgroup not available)</div>
       )}
-      <StatBar label="Memory" value={stats.memUsage} max={stats.memLimit || stats.memUsage} color="#3b82f6" />
-      <div style={{ fontSize: 10, color: theme.nodeSubtext, marginBottom: 8 }}>
-        {formatBytes(stats.memUsage)} / {stats.memLimit ? formatBytes(stats.memLimit) : '\u221E'}
-      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 10, color: theme.panelText }}>
         <span>Net Rx: {formatBytes(stats.netRx)}</span>
         <span>Net Tx: {formatBytes(stats.netTx)}</span>
         <span>Disk Read: {formatBytes(stats.blockRead)}</span>
         <span>Disk Write: {formatBytes(stats.blockWrite)}</span>
-        <span>PIDs: {stats.pids}</span>
+        {stats.pids > 0 && <span>PIDs: {stats.pids}</span>}
         {(stats.netRxErrors > 0 || stats.netTxErrors > 0) && (
           <span style={{ color: '#f59e0b' }}>Errors: {stats.netRxErrors + stats.netTxErrors}</span>
         )}
@@ -66,6 +74,15 @@ export function Section({ title, children }: { title: string; children: ReactNod
     <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: theme.nodeSubtext, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{title}</div>
       {children}
+    </div>
+  );
+}
+
+export function Row({ label, value, mono, subtext }: { label: string; value: string; mono: React.CSSProperties; subtext: string }) {
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <span style={{ fontSize: 10, color: subtext }}>{label}: </span>
+      <span style={mono}>{value}</span>
     </div>
   );
 }

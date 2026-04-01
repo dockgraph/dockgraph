@@ -22,7 +22,7 @@ export function DetailPanelHealth({ health }: Props) {
       </div>
       {health.log?.slice(-5).map((entry, i) => (
         <div key={i} style={{ fontSize: 10, color: entry.exitCode === 0 ? theme.nodeSubtext : '#ef4444', marginBottom: 2, fontFamily: 'monospace' }}>
-          [{entry.exitCode}] {entry.output?.slice(0, 80)}
+          exit {entry.exitCode}{entry.output ? `: ${entry.output.slice(0, 80)}` : ''}
         </div>
       ))}
     </Section>

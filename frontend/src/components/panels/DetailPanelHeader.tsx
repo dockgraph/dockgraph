@@ -27,7 +27,7 @@ export function DetailPanelHeader({ detail }: Props) {
   const uptime = formatUptime(detail.startedAt, detail.finishedAt, detail.running);
 
   return (
-    <div style={{ marginBottom: 12, paddingRight: 24 }}>
+    <div>
       <div style={{ fontSize: 16, fontWeight: 600, color: theme.nodeText, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={detail.name}>
         {detail.name}
       </div>
