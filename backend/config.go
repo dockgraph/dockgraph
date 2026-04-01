@@ -16,7 +16,9 @@ type Config struct {
 	Port         string        // HTTP listen port (DG_PORT, default "7800")
 	PollInterval time.Duration // Docker API poll interval (DG_POLL_INTERVAL, default 30s)
 	ComposePaths []string      // Explicit compose paths override (DG_COMPOSE_PATH); nil means auto-detect from container mounts
-	PasswordHash string        // Argon2id hash of DG_PASSWORD; empty means auth disabled
+	PasswordHash  string        // Argon2id hash of DG_PASSWORD; empty means auth disabled
+	StatsInterval time.Duration // Container stats poll interval (DG_STATS_INTERVAL, default 3s)
+	StatsWorkers  int           // Max concurrent stats API calls (DG_STATS_WORKERS, default 50)
 }
 
 // LoadConfig reads configuration from environment variables with sensible defaults.
@@ -24,7 +26,9 @@ func LoadConfig() Config {
 	cfg := Config{
 		BindAddr:     "0.0.0.0",
 		Port:         "7800",
-		PollInterval: 30 * time.Second,
+		PollInterval:  30 * time.Second,
+		StatsInterval: 3 * time.Second,
+		StatsWorkers:  50,
 	}
 
 	if v := os.Getenv("DG_BIND_ADDR"); v != "" {
@@ -55,6 +59,26 @@ func LoadConfig() Config {
 			parts[i] = strings.TrimSpace(p)
 		}
 		cfg.ComposePaths = parts
+	}
+
+	if v := os.Getenv("DG_STATS_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			if d < time.Second {
+				log.Printf("DG_STATS_INTERVAL %s is too low, using minimum 1s", v)
+				d = time.Second
+			}
+			cfg.StatsInterval = d
+		} else {
+			log.Printf("invalid DG_STATS_INTERVAL %q, using default %s", v, cfg.StatsInterval)
+		}
+	}
+	if v := os.Getenv("DG_STATS_WORKERS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			log.Printf("invalid DG_STATS_WORKERS %q, using default %d", v, cfg.StatsWorkers)
+		} else {
+			cfg.StatsWorkers = n
+		}
 	}
 
 	if raw := os.Getenv("DG_PASSWORD"); raw != "" {

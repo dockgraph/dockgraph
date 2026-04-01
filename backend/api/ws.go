@@ -199,6 +199,28 @@ func (h *Hub) Broadcast(msg collector.StateMessage) {
 	}
 }
 
+// BroadcastStats sends a stats snapshot to all connected clients.
+func (h *Hub) BroadcastStats(msg collector.StateMessage) {
+	if msg.Stats == nil {
+		return
+	}
+	wire := collector.NewStatsMessage(*msg.Stats)
+
+	h.mu.RLock()
+	clients := make([]*wsClient, 0, len(h.clients))
+	for c := range h.clients {
+		clients = append(clients, c)
+	}
+	h.mu.RUnlock()
+
+	for _, client := range clients {
+		select {
+		case client.sendCh <- wire:
+		default:
+		}
+	}
+}
+
 // Shutdown sends a close frame to all connected clients and closes their
 // connections so that the reader and writer goroutines exit cleanly.
 // After Shutdown, the hub rejects new connections.

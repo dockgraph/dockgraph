@@ -10,6 +10,7 @@ package collector
 
 import (
 	"context"
+	"io"
 
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
@@ -91,6 +92,7 @@ type StateMessage struct {
 	Type     string
 	Snapshot *GraphSnapshot
 	Delta    *DeltaUpdate
+	Stats    *StatsSnapshot
 }
 
 // StateUpdate is emitted by collectors whenever they detect a topology change.
@@ -106,6 +108,9 @@ type DockerClient interface {
 	NetworkList(ctx context.Context, options networktypes.ListOptions) ([]networktypes.Summary, error)
 	VolumeList(ctx context.Context, options volumetypes.ListOptions) (volumetypes.ListResponse, error)
 	Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error)
+	ContainerStats(ctx context.Context, containerID string, stream bool) (containertypes.StatsResponseReader, error)
+	ContainerInspect(ctx context.Context, containerID string) (containertypes.InspectResponse, error)
+	ContainerLogs(ctx context.Context, containerID string, options containertypes.LogsOptions) (io.ReadCloser, error)
 	Close() error
 }
 

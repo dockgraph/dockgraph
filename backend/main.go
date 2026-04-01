@@ -52,6 +52,8 @@ func main() {
 		fmt.Println("  DG_POLL_INTERVAL   Docker API poll interval (default: 30s)")
 		fmt.Println("  DG_COMPOSE_PATH    Comma-separated compose file paths (default: auto-detect)")
 		fmt.Println("  DG_PASSWORD        Password for UI/WebSocket access (default: disabled)")
+		fmt.Println("  DG_STATS_INTERVAL  Stats poll interval (default: 3s)")
+		fmt.Println("  DG_STATS_WORKERS   Max concurrent stats calls (default: 50)")
 		os.Exit(0)
 	}
 
@@ -114,6 +116,10 @@ func main() {
 		defer cc.Stop()
 	}
 
+	sc := collector.NewStatsCollector(dockerCli, cfg.StatsInterval, cfg.StatsWorkers)
+	sc.Start(ctx)
+	defer sc.Stop()
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -121,6 +127,22 @@ func main() {
 			}
 		}()
 		pipeUpdates(ctx, mgr, dc, cc)
+	}()
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("pipeStats panic: %v", r)
+			}
+		}()
+		for {
+			select {
+			case snap := <-sc.Updates():
+				mgr.HandleStats(snap)
+			case <-ctx.Done():
+				return
+			}
+		}
 	}()
 
 	var authService *auth.Service
@@ -166,6 +188,29 @@ func main() {
 			}
 		}()
 		pipeToHub(ctx, sub, hub)
+	}()
+
+	statsSub, statsUnsub := mgr.Subscribe()
+	go func() {
+		defer statsUnsub()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("pipeStatsToHub panic: %v", r)
+			}
+		}()
+		for {
+			select {
+			case msg, ok := <-statsSub:
+				if !ok {
+					return
+				}
+				if msg.Type == "stats" {
+					hub.BroadcastStats(msg)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
 	}()
 
 	staticFS, err := fs.Sub(frontend.Assets, "dist")

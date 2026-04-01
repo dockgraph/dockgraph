@@ -138,6 +138,20 @@ func (m *Manager) HandleUpdate(name string, runtime bool, update collector.State
 	m.mu.Unlock()
 }
 
+// HandleStats broadcasts a stats snapshot to all subscribers.
+// Stats are ephemeral — no merge, no diff, no storage.
+func (m *Manager) HandleStats(snap collector.StatsSnapshot) {
+	m.mu.RLock()
+	msg := collector.StateMessage{Type: "stats", Stats: &snap}
+	for _, ch := range m.subscribers {
+		select {
+		case ch <- msg:
+		default:
+		}
+	}
+	m.mu.RUnlock()
+}
+
 // mergeSnapshots combines runtime and declarative snapshots into a single graph.
 //
 // Merge strategy: runtime data takes precedence for nodes that exist in both
