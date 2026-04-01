@@ -200,11 +200,8 @@ func (h *Hub) Broadcast(msg collector.StateMessage) {
 }
 
 // BroadcastStats sends a stats snapshot to all connected clients.
-func (h *Hub) BroadcastStats(msg collector.StateMessage) {
-	if msg.Stats == nil {
-		return
-	}
-	wire := collector.NewStatsMessage(*msg.Stats)
+func (h *Hub) BroadcastStats(snap collector.StatsSnapshot) {
+	wire := collector.NewStatsMessage(snap)
 
 	h.mu.RLock()
 	clients := make([]*wsClient, 0, len(h.clients))

@@ -32,6 +32,22 @@ func calcCPUThrottle(stats *containertypes.StatsResponse) float64 {
 	return float64(stats.CPUStats.ThrottlingData.ThrottledPeriods) / float64(total) * 100
 }
 
+// calcMemUsage returns the actual memory used by the container, handling
+// the difference between cgroup v1 and v2 reporting. On cgroup v1,
+// Usage includes page cache, so we subtract InactiveFile. On cgroup v2,
+// the Stats map may be empty but Usage is already the correct value.
+func calcMemUsage(mem containertypes.MemoryStats) uint64 {
+	if mem.Usage == 0 {
+		return 0
+	}
+	// cgroup v1: subtract inactive file cache from usage for accurate RSS.
+	if inactiveFile, ok := mem.Stats["inactive_file"]; ok && inactiveFile < mem.Usage {
+		return mem.Usage - inactiveFile
+	}
+	// cgroup v2 or no Stats map: Usage is already correct.
+	return mem.Usage
+}
+
 // sumNetworkIO sums rx/tx bytes and errors across all network interfaces.
 func sumNetworkIO(networks map[string]containertypes.NetworkStats) (rx, tx, rxErr, txErr uint64) {
 	for _, n := range networks {

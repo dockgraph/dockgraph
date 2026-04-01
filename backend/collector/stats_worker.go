@@ -85,7 +85,7 @@ func fetchOneStats(ctx context.Context, cli DockerClient, containerID string) (C
 	return ContainerStats{
 		CPUPercent:   calcCPUPercent(&raw),
 		CPUThrottled: calcCPUThrottle(&raw),
-		MemUsage:     raw.MemoryStats.Usage,
+		MemUsage:     calcMemUsage(raw.MemoryStats),
 		MemLimit:     raw.MemoryStats.Limit,
 		NetRx:        rx,
 		NetTx:        tx,

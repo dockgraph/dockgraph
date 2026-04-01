@@ -129,22 +129,6 @@ func main() {
 		pipeUpdates(ctx, mgr, dc, cc)
 	}()
 
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("pipeStats panic: %v", r)
-			}
-		}()
-		for {
-			select {
-			case snap := <-sc.Updates():
-				mgr.HandleStats(snap)
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
 	var authService *auth.Service
 	if cfg.PasswordHash != "" {
 		signingKey, keyErr := auth.GenerateSigningKey()
@@ -190,27 +174,13 @@ func main() {
 		pipeToHub(ctx, sub, hub)
 	}()
 
-	statsSub, statsUnsub := mgr.Subscribe()
 	go func() {
-		defer statsUnsub()
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("pipeStatsToHub panic: %v", r)
+				log.Printf("pipeStats panic: %v", r)
 			}
 		}()
-		for {
-			select {
-			case msg, ok := <-statsSub:
-				if !ok {
-					return
-				}
-				if msg.Type == "stats" {
-					hub.BroadcastStats(msg)
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
+		pipeStats(ctx, sc, hub)
 	}()
 
 	staticFS, err := fs.Sub(frontend.Assets, "dist")
@@ -240,6 +210,19 @@ func main() {
 	log.Printf("dockgraph listening on %s", addr)
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatal(err)
+	}
+}
+
+// pipeStats forwards stats snapshots directly to the WebSocket hub, bypassing the
+// state manager since stats are ephemeral and don't affect topology.
+func pipeStats(ctx context.Context, sc *collector.StatsCollector, hub *api.Hub) {
+	for {
+		select {
+		case snap := <-sc.Updates():
+			hub.BroadcastStats(snap)
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
