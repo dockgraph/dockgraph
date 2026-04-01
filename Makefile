@@ -1,4 +1,4 @@
-.PHONY: all build build-backend build-frontend test test-coverage lint lint-backend lint-frontend vet fmt dev docker docker-up docker-down ci clean help \
+.PHONY: all build build-backend build-frontend test test-coverage lint lint-backend lint-frontend vet fmt dev docker docker-up docker-down ci tidy clean help \
 	demo demo-down demo-small demo-small-down demo-medium demo-medium-down demo-large demo-large-down
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null)
@@ -36,7 +36,10 @@ vet: ## Run go vet
 fmt: ## Format Go code
 	cd backend && golangci-lint fmt ./...
 
-ci: lint test ## Run all checks (lint + test)
+ci: lint tidy test build ## Run all checks (mirrors GitHub CI pipeline)
+
+tidy: ## Verify go.mod is tidy
+	cd backend && go mod tidy && git diff --exit-code go.mod go.sum
 
 dev: ## Start development servers (backend + frontend)
 	@echo "Start backend: cd backend && go run ."
