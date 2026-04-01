@@ -25,7 +25,7 @@ type ContainerLogger interface {
 func HandleContainerLogs(logger ContainerLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		if !validContainerID.MatchString(id) {
+		if !validResourceName.MatchString(id) {
 			http.Error(w, `{"error":"invalid container ID"}`, http.StatusBadRequest)
 			return
 		}
@@ -64,6 +64,10 @@ func HandleContainerLogs(logger ContainerLogger) http.HandlerFunc {
 			http.Error(w, "streaming not supported", http.StatusInternalServerError)
 			return
 		}
+
+		// Flush headers immediately so the EventSource client sees the
+		// connection as open even when no log lines have arrived yet.
+		flusher.Flush()
 
 		streamDockerLogs(w, flusher, reader)
 	}
