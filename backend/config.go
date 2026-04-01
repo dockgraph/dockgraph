@@ -12,10 +12,10 @@ import (
 
 // Config holds runtime configuration loaded from environment variables.
 type Config struct {
-	BindAddr     string        // Listen address (DG_BIND_ADDR, default "0.0.0.0")
-	Port         string        // HTTP listen port (DG_PORT, default "7800")
-	PollInterval time.Duration // Docker API poll interval (DG_POLL_INTERVAL, default 30s)
-	ComposePaths []string      // Explicit compose paths override (DG_COMPOSE_PATH); nil means auto-detect from container mounts
+	BindAddr      string        // Listen address (DG_BIND_ADDR, default "0.0.0.0")
+	Port          string        // HTTP listen port (DG_PORT, default "7800")
+	PollInterval  time.Duration // Docker API poll interval (DG_POLL_INTERVAL, default 30s)
+	ComposePaths  []string      // Explicit compose paths override (DG_COMPOSE_PATH); nil means auto-detect from container mounts
 	PasswordHash  string        // Argon2id hash of DG_PASSWORD; empty means auth disabled
 	StatsInterval time.Duration // Container stats poll interval (DG_STATS_INTERVAL, default 3s)
 	StatsWorkers  int           // Max concurrent stats API calls (DG_STATS_WORKERS, default 50)
@@ -24,8 +24,8 @@ type Config struct {
 // LoadConfig reads configuration from environment variables with sensible defaults.
 func LoadConfig() Config {
 	cfg := Config{
-		BindAddr:     "0.0.0.0",
-		Port:         "7800",
+		BindAddr:      "0.0.0.0",
+		Port:          "7800",
 		PollInterval:  30 * time.Second,
 		StatsInterval: 3 * time.Second,
 		StatsWorkers:  50,
@@ -42,17 +42,10 @@ func LoadConfig() Config {
 			cfg.Port = v
 		}
 	}
-	if v := os.Getenv("DG_POLL_INTERVAL"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			if d < time.Second {
-				log.Printf("DG_POLL_INTERVAL %s is too low, using minimum 1s", v)
-				d = time.Second
-			}
-			cfg.PollInterval = d
-		} else {
-			log.Printf("invalid DG_POLL_INTERVAL %q, using default %s", v, cfg.PollInterval)
-		}
-	}
+
+	cfg.PollInterval = parseDuration("DG_POLL_INTERVAL", cfg.PollInterval, time.Second)
+	cfg.StatsInterval = parseDuration("DG_STATS_INTERVAL", cfg.StatsInterval, time.Second)
+
 	if v := os.Getenv("DG_COMPOSE_PATH"); v != "" {
 		parts := strings.Split(v, ",")
 		for i, p := range parts {
@@ -61,17 +54,6 @@ func LoadConfig() Config {
 		cfg.ComposePaths = parts
 	}
 
-	if v := os.Getenv("DG_STATS_INTERVAL"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			if d < time.Second {
-				log.Printf("DG_STATS_INTERVAL %s is too low, using minimum 1s", v)
-				d = time.Second
-			}
-			cfg.StatsInterval = d
-		} else {
-			log.Printf("invalid DG_STATS_INTERVAL %q, using default %s", v, cfg.StatsInterval)
-		}
-	}
 	if v := os.Getenv("DG_STATS_WORKERS"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 {
@@ -97,4 +79,22 @@ func LoadConfig() Config {
 	}
 
 	return cfg
+}
+
+// parseDuration reads a duration from an environment variable with minimum enforcement.
+func parseDuration(envKey string, fallback, minimum time.Duration) time.Duration {
+	v := os.Getenv(envKey)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		log.Printf("invalid %s %q, using default %s", envKey, v, fallback)
+		return fallback
+	}
+	if d < minimum {
+		log.Printf("%s %s is too low, using minimum %s", envKey, v, minimum)
+		return minimum
+	}
+	return d
 }

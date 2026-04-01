@@ -202,15 +202,24 @@ func (h *Hub) Broadcast(msg collector.StateMessage) {
 // BroadcastStats sends a stats snapshot to all connected clients.
 func (h *Hub) BroadcastStats(snap collector.StatsSnapshot) {
 	wire := collector.NewStatsMessage(snap)
+	h.sendToAll(wire)
+}
 
+// snapshotClients returns a copy of the current client list under a read lock.
+func (h *Hub) snapshotClients() []*wsClient {
 	h.mu.RLock()
 	clients := make([]*wsClient, 0, len(h.clients))
 	for c := range h.clients {
 		clients = append(clients, c)
 	}
 	h.mu.RUnlock()
+	return clients
+}
 
-	for _, client := range clients {
+// sendToAll delivers a wire message to every connected client.
+// Messages are dropped for slow consumers to prevent backpressure.
+func (h *Hub) sendToAll(wire collector.WireMessage) {
+	for _, client := range h.snapshotClients() {
 		select {
 		case client.sendCh <- wire:
 		default:

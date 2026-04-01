@@ -25,6 +25,13 @@ import (
 // Version is set at build time via -ldflags.
 var Version = "dev"
 
+// logRecover logs panics from background goroutines without crashing the process.
+func logRecover(name string) {
+	if r := recover(); r != nil {
+		log.Printf("%s panic: %v", name, r)
+	}
+}
+
 // dockerHealth adapts a Docker client to the api.HealthChecker interface.
 type dockerHealth struct {
 	cli *client.Client
@@ -121,11 +128,7 @@ func main() {
 	defer sc.Stop()
 
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("pipeUpdates panic: %v", r)
-			}
-		}()
+		defer logRecover("pipeUpdates")
 		pipeUpdates(ctx, mgr, dc, cc)
 	}()
 
@@ -166,20 +169,12 @@ func main() {
 	sub, unsub := mgr.Subscribe()
 	go func() {
 		defer unsub()
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("pipeToHub panic: %v", r)
-			}
-		}()
+		defer logRecover("pipeToHub")
 		pipeToHub(ctx, sub, hub)
 	}()
 
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("pipeStats panic: %v", r)
-			}
-		}()
+		defer logRecover("pipeStats")
 		pipeStats(ctx, sc, hub)
 	}()
 

@@ -108,8 +108,8 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 
 	msgCh, errCh := d.client.Events(ctx, events.ListOptions{Filters: eventFilter})
 
-	var debounceTimer *time.Timer
-	debounceCh := make(chan struct{}, 1)
+	db := newDebouncer(500 * time.Millisecond)
+	defer db.stop()
 	reconnectBackoff := 2 * time.Second
 
 	for {
@@ -119,18 +119,8 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 			if !isTopologyEvent(msg.Action) {
 				continue
 			}
-			if debounceTimer != nil {
-				debounceTimer.Stop()
-			}
-			// 500ms debounce: Docker emits a burst of events during compose up/down,
-			// and polling on every event would waste resources.
-			debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
-				select {
-				case debounceCh <- struct{}{}:
-				default:
-				}
-			})
-		case <-debounceCh:
+			db.trigger()
+		case <-db.notify:
 			if err := d.poll(ctx); err != nil {
 				log.Printf("event-triggered poll error: %v", err)
 			}
@@ -139,11 +129,7 @@ func (d *DockerCollector) watchEvents(ctx context.Context) {
 				return
 			}
 			log.Printf("docker events error: %v, reconnecting...", err)
-			// Cancel any pending debounce from the old event stream before reconnecting.
-			if debounceTimer != nil {
-				debounceTimer.Stop()
-				debounceTimer = nil
-			}
+			db.stop()
 			// Exponential backoff to avoid tight-loop reconnection when the daemon is temporarily unavailable.
 			backoff := min(reconnectBackoff, 30*time.Second)
 			reconnectBackoff *= 2

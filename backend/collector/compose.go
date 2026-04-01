@@ -119,8 +119,8 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 		})
 	}
 
-	var debounceTimer *time.Timer
-	debounceCh := make(chan struct{}, 1)
+	db := newDebouncer(500 * time.Millisecond)
+	defer db.stop()
 
 	for {
 		select {
@@ -132,17 +132,9 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 						_ = watcher.Add(event.Name)
 					}
 				}
-				if debounceTimer != nil {
-					debounceTimer.Stop()
-				}
-				debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
-					select {
-					case debounceCh <- struct{}{}:
-					default:
-					}
-				})
+				db.trigger()
 			}
-		case <-debounceCh:
+		case <-db.notify:
 			log.Printf("compose files changed, rescanning")
 			if err := c.scan(ctx); err != nil {
 				log.Printf("rescan error: %v", err)
