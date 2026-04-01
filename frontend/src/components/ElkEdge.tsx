@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import type { EdgeProps } from '@xyflow/react';
 import { useStore } from '@xyflow/react';
 import type { ElkEdgeData } from '../types';
@@ -20,8 +20,13 @@ import {
   zoomSelector,
 } from '../utils/constants';
 
-export const ElkEdge = memo(function ElkEdge({ data, style }: EdgeProps) {
+export const ElkEdge = memo(function ElkEdge({ id, data, style }: EdgeProps) {
   const edgeData = data as ElkEdgeData | undefined;
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    document.dispatchEvent(new CustomEvent('dg:edge-click', { detail: id }));
+  }, [id]);
   const path = edgeData?.path;
   const active = edgeData?.active !== false;
   const animated = edgeData?.edgeType === 'depends_on' && (edgeData?.animated ?? active);
@@ -59,18 +64,22 @@ export const ElkEdge = memo(function ElkEdge({ data, style }: EdgeProps) {
         strokeWidth={strokeWidth}
         strokeDasharray={strokeDasharray}
         opacity={opacity}
-        style={{ cursor: 'pointer' }}
+        onClick={handleClick}
+        style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
       />
     );
   }
 
   return (
-    <g opacity={opacity} style={{ cursor: 'pointer' }}>
+    <g opacity={opacity}>
+      {/* Wide transparent hit area for clicks — pointer-events: stroke responds even for transparent fills */}
       <path
         d={path}
         fill="none"
         stroke="transparent"
         strokeWidth={CANVAS_EDGE_HIT_WIDTH}
+        onClick={handleClick}
+        style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
       />
       <path
         d={path}
@@ -78,6 +87,7 @@ export const ElkEdge = memo(function ElkEdge({ data, style }: EdgeProps) {
         stroke={stroke}
         strokeWidth={strokeWidth}
         strokeDasharray={strokeDasharray}
+        style={{ pointerEvents: 'none' }}
       />
       {ep && (
         <circle cx={ep.sx} cy={ep.sy} r={ENDPOINT_RADIUS} fill={stroke} />
