@@ -50,6 +50,7 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 
 	mux.HandleFunc("GET /ws", hub.HandleWS)
 	if docker != nil {
+		mux.HandleFunc("GET /api/containers/{id}/logs/history", HandleContainerLogsHistory(docker))
 		mux.HandleFunc("GET /api/containers/{id}/logs", HandleContainerLogs(docker))
 		mux.HandleFunc("GET /api/containers/{id}", HandleContainerInspect(docker))
 		mux.HandleFunc("GET /api/volumes/{name}", HandleVolumeInspect(docker))

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -15,37 +14,6 @@ import (
 // ContainerInspector is the subset of the Docker API needed for container inspection.
 type ContainerInspector interface {
 	ContainerInspect(ctx context.Context, containerID string) (containertypes.InspectResponse, error)
-}
-
-var validResourceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
-
-// sensitiveKeyPatterns matches env var keys that should be masked.
-var sensitiveKeyPatterns = []string{
-	"PASSWORD", "SECRET", "KEY", "TOKEN", "CREDENTIAL",
-	"API_KEY", "APIKEY", "PRIVATE", "AUTH", "CERT",
-	"SSL_", "TLS_", "ENCRYPT", "ACCESS_KEY", "SESSION",
-}
-
-func isSensitiveKey(key string) bool {
-	upper := strings.ToUpper(key)
-	for _, pattern := range sensitiveKeyPatterns {
-		if strings.Contains(upper, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-func filterEnvVars(envList []string) []map[string]string {
-	result := make([]map[string]string, 0, len(envList))
-	for _, e := range envList {
-		k, v, _ := strings.Cut(e, "=")
-		if isSensitiveKey(k) {
-			v = "********"
-		}
-		result = append(result, map[string]string{"key": k, "value": v})
-	}
-	return result
 }
 
 // HandleContainerInspect returns a handler for GET /api/containers/{id}.

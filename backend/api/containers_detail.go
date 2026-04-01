@@ -5,7 +5,7 @@ import (
 )
 
 func buildPorts(info containertypes.InspectResponse) []map[string]any {
-	var ports []map[string]any
+	ports := make([]map[string]any, 0)
 	for port, bindings := range info.NetworkSettings.Ports {
 		for _, b := range bindings {
 			ports = append(ports, map[string]any{
@@ -21,19 +21,23 @@ func buildPorts(info containertypes.InspectResponse) []map[string]any {
 func buildMounts(info containertypes.InspectResponse) []map[string]any {
 	mounts := make([]map[string]any, 0, len(info.Mounts))
 	for _, m := range info.Mounts {
-		mounts = append(mounts, map[string]any{
+		entry := map[string]any{
 			"type":        string(m.Type),
 			"source":      m.Source,
 			"destination": m.Destination,
 			"rw":          m.RW,
 			"propagation": string(m.Propagation),
-		})
+		}
+		if m.Name != "" {
+			entry["name"] = m.Name
+		}
+		mounts = append(mounts, entry)
 	}
 	return mounts
 }
 
 func buildNetworks(info containertypes.InspectResponse) []map[string]any {
-	var nets []map[string]any
+	nets := make([]map[string]any, 0)
 	if info.NetworkSettings == nil {
 		return nets
 	}
