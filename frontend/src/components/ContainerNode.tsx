@@ -2,6 +2,7 @@ import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { useStore } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
+import { StatsMini } from './StatsMini';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
 import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY, zoomSelector } from '../utils/constants';
@@ -138,6 +139,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
         </div>
       )}
 
+      <StatsMini stats={(data as unknown as ContainerNodeData).stats} />
     </div>
   );
 });

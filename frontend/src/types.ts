@@ -40,13 +40,15 @@ export interface DeltaUpdate {
 export type WireMessage =
   | { type: 'snapshot'; version: number; data: GraphSnapshot }
   | { type: 'delta'; version: number; data: DeltaUpdate }
-  | { type: 'auth_expired'; version: number };
+  | { type: 'auth_expired'; version: number }
+  | { type: 'stats'; version: number; data: import('./types/stats').StatsMessage };
 
 // Node data types used by React Flow custom components
 
 export interface ContainerNodeData {
   dgNode: DGNode;
   nodeWidth?: number;
+  stats?: import('./types/stats').ContainerStatsData;
 }
 
 export interface VolumeNodeData {
@@ -66,3 +68,5 @@ export interface ElkEdgeData {
   animated?: boolean;
   nodeCount?: number;
 }
+
+export type { ContainerStatsData, StatsMessage, ContainerDetail, LogLine } from './types/stats';

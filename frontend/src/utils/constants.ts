@@ -79,3 +79,26 @@ export const VIEWPORT_SETTLE_DELAY = 150;
 
 /** Stroke width for highlighted (selected/connected) edges. */
 export const HIGHLIGHT_EDGE_STROKE_WIDTH = 2.5;
+
+// --- Detail panel & stats ---
+
+/** Width of the detail panel in pixels. */
+export const DETAIL_PANEL_WIDTH = 420;
+
+/** Max number of log lines held in the browser. */
+export const LOG_BUFFER_SIZE = 500;
+
+/** Initial number of log lines to fetch. */
+export const LOG_TAIL_DEFAULT = 100;
+
+/** CPU % threshold for amber warning. */
+export const STATS_CPU_WARN = 60;
+
+/** CPU % threshold for red critical. */
+export const STATS_CPU_CRIT = 85;
+
+/** Throttle % threshold for red critical. */
+export const STATS_THROTTLE_CRIT = 50;
+
+/** Debounce delay for search input (ms). */
+export const SEARCH_DEBOUNCE_MS = 150;

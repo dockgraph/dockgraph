@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import { useStore } from '@xyflow/react';
-import { zoomSelector } from '../utils/constants';
+import { FADE_OPACITY, zoomSelector } from '../utils/constants';
 import {
   type SelectionState,
   resolveConnectedElements,
@@ -24,12 +24,25 @@ interface HighlightResult {
  * When a node or edge is selected, connected elements stay fully opaque
  * while unrelated elements fade to 20% opacity.
  */
-export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[], useCanvas = false): HighlightResult {
+export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[], useCanvas = false, matchingNodeIds: Set<string> | null = null): HighlightResult {
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const isLowZoom = useStore(zoomSelector);
 
   const { styledNodes, styledEdges, canvasEdges, svgEdges } = useMemo(() => {
     if (!selection) {
+      // When search is active but no selection, dim non-matching nodes.
+      if (matchingNodeIds) {
+        const searchStyled = nodes.map((n) => ({
+          ...n,
+          style: { ...n.style, opacity: matchingNodeIds.has(n.id) || n.type === 'networkGroup' ? 1 : FADE_OPACITY },
+        }));
+        return {
+          styledNodes: searchStyled,
+          styledEdges: edges,
+          canvasEdges: useCanvas ? edges : [],
+          svgEdges: useCanvas ? [] as RFEdge[] : [],
+        };
+      }
       return {
         styledNodes: nodes,
         styledEdges: edges,
@@ -50,7 +63,7 @@ export function useSelectionHighlight(nodes: RFNode[], edges: RFEdge[], useCanva
       canvasEdges: useCanvas ? styledEdgeList : [],
       svgEdges: [],
     };
-  }, [selection, nodes, edges, useCanvas, isLowZoom]);
+  }, [selection, nodes, edges, useCanvas, isLowZoom, matchingNodeIds]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: RFNode) => {
     setSelection((prev) =>

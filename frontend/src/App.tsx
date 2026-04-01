@@ -4,6 +4,7 @@ import '@xyflow/react/dist/style.css';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FlowCanvas } from './components/FlowCanvas';
 import { useDockGraph } from './hooks/useDockGraph';
+import { useContainerStats } from './hooks/useContainerStats';
 import { ThemeProvider, useTheme } from './theme';
 
 function globalStyles(mode: 'dark' | 'light') {
@@ -76,14 +77,15 @@ function globalStyles(mode: 'dark' | 'light') {
 }
 
 function AppContent() {
-  const { nodes, edges, connected, ready } = useDockGraph();
+  const { stats, handleStatsMessage } = useContainerStats();
+  const { nodes, edges, connected, ready } = useDockGraph(handleStatsMessage);
   const { theme } = useTheme();
   const css = useMemo(() => globalStyles(theme.mode), [theme.mode]);
 
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <style>{css}</style>
-      <FlowCanvas dgNodes={nodes} dgEdges={edges} connected={connected} ready={ready} />
+      <FlowCanvas dgNodes={nodes} dgEdges={edges} connected={connected} ready={ready} statsMap={stats} />
     </div>
   );
 }

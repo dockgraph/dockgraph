@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DGNode, DGEdge, GraphSnapshot, WireMessage } from '../types';
+import type { StatsMessage } from '../types/stats';
 import { RECONNECT_MAX_DELAY } from '../utils/constants';
 import { snapshotFingerprint, applyDelta as applyDeltaFn } from './deltaUtils';
 
@@ -18,7 +19,7 @@ interface DockGraphState {
  * connection automatically reconnects with exponential backoff (capped
  * at 30 seconds) if the server drops or the network blips.
  */
-export function useDockGraph(): DockGraphState {
+export function useDockGraph(onStats?: (data: StatsMessage) => void): DockGraphState {
   const [state, setState] = useState<DockGraphState>({
     nodes: [],
     edges: [],
@@ -32,6 +33,8 @@ export function useDockGraph(): DockGraphState {
   const unmountedRef = useRef(false);
   const fingerprintRef = useRef('');
   const connectRef = useRef<(() => void) | null>(null);
+  const onStatsRef = useRef(onStats);
+  onStatsRef.current = onStats;
   const maxRetryDelay = RECONNECT_MAX_DELAY;
 
   const applySnapshot = useCallback((snap: GraphSnapshot) => {
@@ -80,6 +83,8 @@ export function useDockGraph(): DockGraphState {
         applySnapshot(d);
       } else if (msg.type === 'delta') {
         applyDelta(msg.data);
+      } else if (msg.type === 'stats') {
+        onStatsRef.current?.(msg.data as StatsMessage);
       }
     };
 

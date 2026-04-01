@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -19,11 +19,26 @@ import { CanvasEdgeLayer, type CanvasEdgeLayerHandle } from './CanvasEdgeLayer';
 import { ThemeToggle } from './ThemeToggle';
 import { LogoutButton } from './LogoutButton';
 import { StatusIndicator } from './StatusIndicator';
+import { SearchFilter } from './SearchFilter';
+import { DetailPanel } from './panels/DetailPanel';
+import { DetailPanelHeader } from './panels/DetailPanelHeader';
+import { DetailPanelStats } from './panels/DetailPanelStats';
+import { DetailPanelProcess } from './panels/DetailPanelProcess';
+import { DetailPanelPorts } from './panels/DetailPanelPorts';
+import { DetailPanelMounts } from './panels/DetailPanelMounts';
+import { DetailPanelEnv } from './panels/DetailPanelEnv';
+import { DetailPanelLabels } from './panels/DetailPanelLabels';
+import { DetailPanelNetwork } from './panels/DetailPanelNetwork';
+import { DetailPanelSecurity } from './panels/DetailPanelSecurity';
+import { DetailPanelHealth } from './panels/DetailPanelHealth';
+import { DetailPanelLogs } from './panels/DetailPanelLogs';
 import { useGraphLayout } from '../hooks/useGraphLayout';
 import { useSelectionHighlight } from '../hooks/useSelectionHighlight';
+import { useContainerDetail } from '../hooks/useContainerDetail';
+import { useSearchFilter } from '../hooks/useSearchFilter';
 import { networkColor } from '../utils/colors';
 import { useTheme } from '../theme';
-import type { DGNode, DGEdge } from '../types';
+import type { DGNode, DGEdge, ContainerStatsData } from '../types';
 import type { ReactNode } from 'react';
 
 function Overlay({ children }: { children: ReactNode }) {
@@ -61,9 +76,10 @@ interface FlowCanvasProps {
   dgEdges: DGEdge[];
   connected: boolean;
   ready: boolean;
+  statsMap: Map<string, ContainerStatsData>;
 }
 
-export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasProps) {
+export function FlowCanvas({ dgNodes, dgEdges, connected, ready, statsMap }: FlowCanvasProps) {
   const { theme } = useTheme();
   const canvasEdgeRef = useRef<CanvasEdgeLayerHandle>(null);
 
@@ -74,8 +90,29 @@ export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasPro
   const showEmptyState = !ready || !hasVisibleNodes;
   const largeGraph = dgNodes.length > ANIMATION_NODE_LIMIT;
 
+  // Inject live stats into container node data (doesn't affect layout).
+  const nodesWithStats = useMemo(() => {
+    if (statsMap.size === 0) return nodes;
+    return nodes.map((n) => {
+      if (n.type !== 'containerNode') return n;
+      const dgNode = (n.data as { dgNode: DGNode }).dgNode;
+      const s = statsMap.get(dgNode.name);
+      if (!s) return n;
+      return { ...n, data: { ...n.data, stats: s } };
+    });
+  }, [nodes, statsMap]);
+
+  // Detail panel state.
+  const [detailContainerId, setDetailContainerId] = useState<string | null>(null);
+  const detailOpen = detailContainerId !== null;
+  const containerName = detailContainerId?.replace('container:', '') ?? null;
+  const { data: detailData, loading: detailLoading, error: detailError } = useContainerDetail(containerName);
+
+  // Search & filter.
+  const search = useSearchFilter(dgNodes);
+
   const { styledNodes, styledEdges, canvasEdges, svgEdges, onNodeClick, onEdgeClick, onPaneClick } =
-    useSelectionHighlight(nodes, edges, largeGraph);
+    useSelectionHighlight(nodesWithStats, edges, largeGraph, search.matchingNodeIds);
 
   // Canvas edge hit-test helper — returns the edge if hit, null otherwise.
   const canvasEdgeHit = useCallback(
@@ -115,16 +152,49 @@ export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasPro
     [canvasEdgeHit, onEdgeClick, onPaneClick],
   );
 
+  // Double-click opens the detail panel for containers.
+  const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: RFNode) => {
+    if (node.type === 'containerNode') {
+      setDetailContainerId(node.id);
+    }
+  }, []);
+
+  const closeDetail = useCallback(() => setDetailContainerId(null), []);
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <StatusIndicator connected={connected} />
       <LogoutButton />
+      <SearchFilter search={search} />
+
+      <DetailPanel
+        open={detailOpen}
+        onClose={closeDetail}
+        loading={detailLoading}
+        error={detailError}
+      >
+        {detailData && (
+          <>
+            <DetailPanelHeader detail={detailData} />
+            <DetailPanelStats stats={containerName ? statsMap.get(detailData.name) : undefined} />
+            <DetailPanelProcess detail={detailData} />
+            <DetailPanelPorts ports={detailData.ports} />
+            <DetailPanelMounts mounts={detailData.mounts} />
+            <DetailPanelNetwork networkMode={detailData.networkMode} networks={detailData.networks} />
+            <DetailPanelSecurity security={detailData.security} />
+            <DetailPanelEnv env={detailData.env} />
+            <DetailPanelLabels labels={detailData.labels} />
+            <DetailPanelHealth health={detailData.health} />
+            <DetailPanelLogs containerId={containerName} active={detailOpen} />
+          </>
+        )}
+      </DetailPanel>
 
       {showEmptyState && (
         <Overlay>
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
             {!ready
-              ? 'Connecting to backend…'
+              ? 'Connecting to backend\u2026'
               : 'No containers detected. Start a container to visualize the graph.'}
           </p>
         </Overlay>
@@ -133,7 +203,7 @@ export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasPro
       {layoutBusy && !showEmptyState && (
         <Overlay>
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
-            Computing layout for {dgNodes.length} nodes…
+            Computing layout for {dgNodes.length} nodes\u2026
           </p>
         </Overlay>
       )}
@@ -156,6 +226,7 @@ export function FlowCanvas({ dgNodes, dgEdges, connected, ready }: FlowCanvasPro
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={largeGraph ? handleNodeClick : onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
