@@ -31,7 +31,7 @@ func pollAllStats(ctx context.Context, cli DockerClient, maxWorkers int) StatsSn
 		if c.State != "running" {
 			continue
 		}
-		if c.Labels[SelfExcludeLabel] == "true" {
+		if isSelfExcluded(c.Labels) {
 			continue
 		}
 		if len(c.Names) == 0 {

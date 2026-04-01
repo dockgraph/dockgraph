@@ -1,6 +1,8 @@
 package state
 
 import (
+	"reflect"
+
 	"github.com/dockgraph/dockgraph/collector"
 )
 
@@ -74,10 +76,9 @@ func nodeEqual(a, b collector.Node) bool {
 			return false
 		}
 	}
-	if (a.Compose == nil) != (b.Compose == nil) {
-		return false
-	}
-	return true
+	// Compose config changes are infrequent (only on file edits), so
+	// reflect.DeepEqual is acceptable here and avoids a fragile field-by-field check.
+	return reflect.DeepEqual(a.Compose, b.Compose)
 }
 
 func indexNodes(snap *collector.GraphSnapshot) map[string]collector.Node {

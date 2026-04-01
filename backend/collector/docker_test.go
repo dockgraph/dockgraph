@@ -86,7 +86,7 @@ func TestSelfExclusionByLabel(t *testing.T) {
 
 	var included []string
 	for _, c := range containers {
-		if c.Labels[SelfExcludeLabel] == "true" {
+		if isSelfExcluded(c.Labels) {
 			continue
 		}
 		included = append(included, strings.TrimPrefix(c.Names[0], "/"))

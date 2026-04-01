@@ -35,6 +35,7 @@ func buildComposeNetworkNodes(project *composetypes.Project, naming composeNamin
 		tracked[name] = true
 		fullName := naming.network(name)
 		node := buildNetworkNode(fullName, "")
+		node.Status = "not_running"
 		node.Source = sourceName
 		nodes = append(nodes, node)
 	}
@@ -224,7 +225,7 @@ func parseComposeFile(ctx context.Context, path, sourceName string) (GraphSnapsh
 	snap.Nodes = append(snap.Nodes, buildComposeVolumeNodes(project, naming, sourceName)...)
 
 	for _, svc := range project.AllServices() {
-		if svc.Labels[SelfExcludeLabel] == "true" {
+		if isSelfExcluded(svc.Labels) {
 			continue
 		}
 		node, edges := buildServiceNode(svc, naming, trackedNets, sourceName)
