@@ -49,4 +49,4 @@ Keep PRs small and focused. One PR should address one concern.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing, you agree that your contributions will be licensed under the [Business Source License 1.1](LICENSE).

@@ -7,7 +7,7 @@
 Real-time Docker infrastructure visualizer. See your containers, networks, volumes, and their relationships as an interactive graph that updates live as your infrastructure changes.
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/dockgraph/dockgraph?logo=github&style=flat)](https://github.com/dockgraph/dockgraph)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/dockgraph/dockgraph/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-BSL--1.1-blue.svg)](https://github.com/dockgraph/dockgraph/blob/main/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/dockgraph/dockgraph?logo=docker)](https://hub.docker.com/r/dockgraph/dockgraph/tags)
 [![Docker Image Version (latest semver)](https://img.shields.io/docker/v/dockgraph/dockgraph/latest?logo=docker&label=docker%20image%20ver.)](https://hub.docker.com/r/dockgraph/dockgraph/tags)
 [![GitHub last commit (branch)](https://img.shields.io/github/last-commit/dockgraph/dockgraph/main?logo=github)](https://github.com/dockgraph/dockgraph/commits/main/)
@@ -201,4 +201,4 @@ This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md) code of cond
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [Business Source License 1.1](LICENSE). You are free to use, modify, and redistribute the software, including in production. The only restriction is offering it as a hosted service or embedding it as a feature in a commercial product. Each version converts to Apache License 2.0 four years after its release.
