@@ -26,11 +26,11 @@ export function DetailPanelEnv({ env }: Props) {
           <div key={i} style={{ fontSize: 11, marginBottom: 3, display: 'flex', gap: 4, alignItems: 'baseline' }}>
             <span style={{ color: theme.nodeSubtext, flexShrink: 0 }}>{e.key}=</span>
             <span style={{ fontFamily: 'monospace', color: theme.panelText, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-              {masked && !revealed.has(i) ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : e.value}
+              {masked && !revealed.has(i) ? '••••••••' : e.value}
             </span>
             {masked && (
               <button onClick={() => toggle(i)} style={{ background: 'none', border: 'none', color: theme.nodeSubtext, fontSize: 10, cursor: 'pointer', padding: 0, flexShrink: 0 }} aria-label={revealed.has(i) ? 'Hide value' : 'Show value'}>
-                {revealed.has(i) ? '\u{1F512}' : '\u{1F441}'}
+                {revealed.has(i) ? '🔒' : '👁'}
               </button>
             )}
           </div>

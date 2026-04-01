@@ -47,7 +47,7 @@ export const StatsMini = memo(function StatsMini({ stats }: StatsMiniProps) {
         />
       </div>
       <span style={{ fontSize: 8, color: theme.nodeSubtext, whiteSpace: 'nowrap' }}>
-        {stats.cpuPercent.toFixed(0)}% · {formatBytesShort(stats.memUsage)}
+        {stats.cpuPercent.toFixed(0)}%{stats.memUsage > 0 ? ` · ${formatBytesShort(stats.memUsage)}` : ''}
       </span>
     </div>
   );

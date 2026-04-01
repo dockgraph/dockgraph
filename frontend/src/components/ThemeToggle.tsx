@@ -11,7 +11,7 @@ export function ThemeToggle() {
       title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
       aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
     >
-      {isDark ? '\u2600' : '\u263E'}
+      {isDark ? '☀' : '☾'}
     </button>
   );
 }

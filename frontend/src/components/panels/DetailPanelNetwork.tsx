@@ -19,7 +19,7 @@ export function DetailPanelNetwork({ networkMode, networks }: Props) {
         <div key={n.name} style={{ fontSize: 11, marginBottom: 4 }}>
           <div style={{ fontWeight: 600, color: theme.panelText }}>{n.name}</div>
           <div style={{ color: theme.nodeSubtext, fontFamily: 'monospace', fontSize: 10 }}>
-            IP: {n.ipAddress || '\u2014'} · GW: {n.gateway || '\u2014'}
+            IP: {n.ipAddress || '—'} · GW: {n.gateway || '—'}
           </div>
           {n.macAddress && <div style={{ color: theme.nodeSubtext, fontFamily: 'monospace', fontSize: 10 }}>MAC: {n.macAddress}</div>}
         </div>
