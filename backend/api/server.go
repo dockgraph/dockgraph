@@ -16,9 +16,15 @@ type HealthChecker interface {
 	HealthCheck(ctx context.Context) error
 }
 
+// DockerAPI groups the Docker client interfaces needed by API handlers.
+type DockerAPI interface {
+	ContainerInspector
+	ContainerLogger
+}
+
 // NewServer sets up the HTTP routes for the application.
 // Pass nil for authService to disable authentication.
-func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth.Service) http.Handler {
+func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth.Service, docker DockerAPI) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +47,10 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 	}
 
 	mux.HandleFunc("GET /ws", hub.HandleWS)
+	if docker != nil {
+		mux.HandleFunc("GET /api/containers/{id}/logs", HandleContainerLogs(docker))
+		mux.HandleFunc("GET /api/containers/{id}", HandleContainerInspect(docker))
+	}
 	mux.HandleFunc("/", spaHandler(staticFS))
 
 	handler := securityHeaders(mux)

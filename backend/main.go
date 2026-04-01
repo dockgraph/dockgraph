@@ -218,7 +218,7 @@ func main() {
 		log.Fatalf("failed to load embedded frontend: %v", err)
 	}
 
-	handler := api.NewServer(hub, staticFS, &dockerHealth{cli: dockerCli}, authService)
+	handler := api.NewServer(hub, staticFS, &dockerHealth{cli: dockerCli}, authService, dockerCli)
 	addr := cfg.BindAddr + ":" + cfg.Port
 	server := &http.Server{
 		Addr:              addr,
