@@ -1,10 +1,12 @@
-import { memo, useCallback } from 'react';
+import { memo } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { useStore } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
+import { InspectButton } from './InspectButton';
 import { StatsMini } from './StatsMini';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
+import { ghostBorder } from '../utils/nodeStyles';
 import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY, zoomSelector } from '../utils/constants';
 import type { ContainerNodeData } from '../types';
 
@@ -24,11 +26,6 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
   const isActive = dgNode.status === 'running' || dgNode.status === 'unhealthy';
   const isPaused = dgNode.status === 'paused';
   const opacity = isActive ? 1 : isPaused ? PAUSED_OPACITY : INACTIVE_OPACITY;
-
-  const handleInfo = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onInfoClick?.(dgNode.id);
-  }, [onInfoClick, dgNode.id]);
 
   // Simplified render at low zoom — just a colored block with the name.
   if (isLowZoom) {
@@ -58,7 +55,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
     <div
       style={{
         background: theme.nodeBg,
-        border: `1px ${isGhost ? 'dashed' : 'solid'} ${isGhost ? theme.nodeGhostBorder : theme.nodeBorder}`,
+        ...ghostBorder(isGhost, theme),
         borderLeft: `3px solid ${statusColor}`,
         borderRadius: 4,
         padding: '6px 10px',
@@ -88,29 +85,12 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           {onInfoClick && (
-            <button
-              onClick={handleInfo}
-              aria-label={`Inspect ${dgNode.name}`}
+            <InspectButton
+              label={`Inspect ${dgNode.name}`}
               title="Inspect container"
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: 2,
-                border: 'none',
-                background: 'transparent',
-                cursor: 'pointer',
-                padding: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end',
-                justifyContent: 'center',
-                gap: 2,
-              }}
-            >
-              <span style={{ width: 10, height: 2, background: theme.nodeSubtext, borderRadius: 1, display: 'block' }} />
-              <span style={{ width: 10, height: 2, background: theme.nodeSubtext, borderRadius: 1, display: 'block' }} />
-              <span style={{ width: 7, height: 2, background: theme.nodeSubtext, borderRadius: 1, display: 'block' }} />
-            </button>
+              color={theme.nodeSubtext}
+              onClick={() => onInfoClick(dgNode.id)}
+            />
           )}
           <span
             role="img"

@@ -45,7 +45,75 @@ import { useSearchFilter } from "../hooks/useSearchFilter";
 import { networkColor } from "../utils/colors";
 import { useTheme } from "../theme";
 import type { DGNode, DGEdge, ContainerStatsData } from "../types";
+import type { Theme } from "../theme";
 import type { ReactNode } from "react";
+
+// Shared header for network and volume detail panels.
+function ResourceHeader({ name, subtitle, theme }: { name: string; subtitle?: string; theme: Theme }) {
+  return (
+    <>
+      <div style={{ fontSize: 16, fontWeight: 600, color: theme.nodeText, marginBottom: 2, wordBreak: "break-all" as const }}>
+        {name}
+      </div>
+      {subtitle && (
+        <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 6 }}>
+          {subtitle}
+        </div>
+      )}
+    </>
+  );
+}
+
+// Header for ghost (not-running) container detail panels.
+function GhostHeader({ node, theme }: { node: DGNode; theme: Theme }) {
+  return (
+    <>
+      <div style={{ fontSize: 16, fontWeight: 600, color: theme.nodeText, marginBottom: 2, wordBreak: "break-all" as const }}>
+        {node.name}
+      </div>
+      {node.image && (
+        <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 6, wordBreak: "break-all" as const }}>
+          {node.image}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#64748b" }} />
+        <span style={{ fontSize: 12, color: theme.panelText }}>Not Running</span>
+        {node.source && (
+          <span style={{ fontSize: 10, color: theme.nodeSubtext }}>from {node.source}</span>
+        )}
+      </div>
+    </>
+  );
+}
+
+function ContainerList({ containers, onNavigate, theme }: { containers: DGNode[]; onNavigate: (id: string) => void; theme: Theme }) {
+  if (containers.length === 0) return null;
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: theme.nodeSubtext, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+        Containers ({containers.length})
+      </div>
+      {containers.map((c) => (
+        <div
+          key={c.id}
+          onClick={() => onNavigate(`container:${c.name}`)}
+          style={{
+            fontSize: 11,
+            color: theme.panelText,
+            padding: "4px 0",
+            cursor: "pointer",
+            textDecoration: "underline",
+            textDecorationColor: theme.panelBorder,
+            textUnderlineOffset: 2,
+          }}
+        >
+          {c.name}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Overlay({ children }: { children: ReactNode }) {
   return (
@@ -129,6 +197,37 @@ export function FlowCanvas({
     [fitView],
   );
 
+  // Resolve a cross-reference name (from Docker inspect data) to an actual
+  // graph node ID. Docker might return short names (e.g. service name without
+  // compose prefix), so we try exact match first, then suffix match.
+  const handleNavigate = useCallback(
+    (targetId: string) => {
+      // Exact match — fast path.
+      if (dgNodes.some((n) => n.id === targetId)) {
+        handleInfoClick(targetId);
+        return;
+      }
+
+      // Parse type:name from the target.
+      const sepIdx = targetId.indexOf(":");
+      if (sepIdx < 0) return;
+      const type = targetId.slice(0, sepIdx) as DGNode["type"];
+      const name = targetId.slice(sepIdx + 1);
+
+      // Suffix match: "elasticsearch-1" matches "demo-large-elasticsearch-1".
+      const match = dgNodes.find(
+        (n) =>
+          n.type === type &&
+          (n.name === name ||
+            n.name.endsWith(`-${name}`) ||
+            n.name.endsWith(`_${name}`)),
+      );
+
+      handleInfoClick(match ? match.id : targetId);
+    },
+    [dgNodes, handleInfoClick],
+  );
+
   // Inject live stats and info callback into container and volume node data (doesn't affect layout).
   const enrichedNodes = useMemo(() => {
     return nodes.map((n) => {
@@ -153,16 +252,30 @@ export function FlowCanvas({
   const detailOpen = detailNodeId !== null;
   const isVolumeDetail = detailNodeId?.startsWith("volume:") ?? false;
   const isNetworkDetail = detailNodeId?.startsWith("network:") ?? false;
+  const isGroupDetail = detailNodeId?.startsWith("group:") ?? false;
   const detailDgNode = detailNodeId
     ? dgNodes.find((n) => n.id === detailNodeId)
     : null;
 
+  // Ghost detection — resources defined in compose but not yet created in Docker.
+  const isGhostResource = detailDgNode?.status === "not_running";
+
+  // Containers belonging to the selected network/group.
+  const groupContainers = useMemo(() => {
+    if (isGroupDetail) {
+      return dgNodes.filter((n) => n.type === "container" && !n.source && !n.networkId);
+    }
+    if (isNetworkDetail && isGhostResource && detailNodeId) {
+      return dgNodes.filter((n) => n.type === "container" && n.networkId === detailNodeId);
+    }
+    return [];
+  }, [isGroupDetail, isNetworkDetail, isGhostResource, detailNodeId, dgNodes]);
+
   // Container detail derivation.
-  const containerName = !isVolumeDetail && !isNetworkDetail
-    ? (detailNodeId?.replace("container:", "") ?? null)
+  const containerName = detailNodeId?.startsWith("container:")
+    ? detailNodeId.replace("container:", "")
     : null;
-  const isGhostDetail =
-    !isVolumeDetail && !isNetworkDetail && detailDgNode?.status === "not_running";
+  const isGhostDetail = !isVolumeDetail && !isNetworkDetail && isGhostResource;
   const {
     data: detailData,
     loading: detailLoading,
@@ -175,21 +288,23 @@ export function FlowCanvas({
   const volumeName = isVolumeDetail
     ? (detailNodeId?.replace("volume:", "") ?? null)
     : null;
+  const isGhostVolume = isVolumeDetail && isGhostResource;
   const {
     data: volumeDetailData,
     loading: volumeDetailLoading,
     error: volumeDetailError,
-  } = useVolumeDetail(isVolumeDetail ? volumeName : null);
+  } = useVolumeDetail(isGhostVolume ? null : volumeName);
 
   // Network detail derivation.
   const networkName = isNetworkDetail
     ? (detailNodeId?.replace("network:", "") ?? null)
     : null;
+  const isGhostNetwork = isNetworkDetail && isGhostResource;
   const {
     data: networkDetailData,
     loading: networkDetailLoading,
     error: networkDetailError,
-  } = useNetworkDetail(isNetworkDetail ? networkName : null);
+  } = useNetworkDetail(isGhostNetwork ? null : networkName);
 
   // Search & filter.
   const search = useSearchFilter(dgNodes);
@@ -210,7 +325,7 @@ export function FlowCanvas({
     largeGraph,
     search.matchingNodeIds,
   );
-  selectNodeRef.current = selectNode;
+  useEffect(() => { selectNodeRef.current = selectNode; }, [selectNode]);
 
   // Canvas edge hit-test helper — returns the edge if hit, null otherwise.
   const canvasEdgeHit = useCallback(
@@ -288,152 +403,61 @@ export function FlowCanvas({
         open={detailOpen}
         onClose={closeDetail}
         loading={
-          isNetworkDetail
-            ? networkDetailLoading
-            : isVolumeDetail
-              ? volumeDetailLoading
-              : !isGhostDetail && detailLoading
+          isGroupDetail || isGhostResource
+            ? false
+            : isNetworkDetail
+              ? networkDetailLoading
+              : isVolumeDetail
+                ? volumeDetailLoading
+                : detailLoading
         }
         error={
-          isNetworkDetail
-            ? networkDetailError
-            : isVolumeDetail
-              ? volumeDetailError
-              : !isGhostDetail
-                ? detailError
-                : null
+          isGroupDetail || isGhostResource
+            ? null
+            : isNetworkDetail
+              ? networkDetailError
+              : isVolumeDetail
+                ? volumeDetailError
+                : detailError
         }
         header={
-          isNetworkDetail && detailDgNode ? (
-            <>
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: theme.nodeText,
-                  marginBottom: 2,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={detailDgNode.name}
-              >
-                {detailDgNode.name}
-              </div>
-              {detailDgNode.driver && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: theme.nodeSubtext,
-                    marginBottom: 6,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {detailDgNode.driver}
-                </div>
-              )}
-            </>
-          ) : isVolumeDetail && detailDgNode ? (
-            <>
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: theme.nodeText,
-                  marginBottom: 2,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={detailDgNode.name}
-              >
-                {detailDgNode.name}
-              </div>
-              {detailDgNode.driver && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: theme.nodeSubtext,
-                    marginBottom: 6,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {detailDgNode.driver}
-                </div>
-              )}
-            </>
-          ) : isGhostDetail && detailDgNode ? (
-            <>
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: theme.nodeText,
-                  marginBottom: 2,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={detailDgNode.name}
-              >
-                {detailDgNode.name}
-              </div>
-              {detailDgNode.image && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: theme.nodeSubtext,
-                    marginBottom: 6,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={detailDgNode.image}
-                >
-                  {detailDgNode.image}
-                </div>
-              )}
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "#64748b",
-                  }}
-                />
-                <span style={{ fontSize: 12, color: theme.panelText }}>
-                  Not Running
-                </span>
-                {detailDgNode.source && (
-                  <span style={{ fontSize: 10, color: theme.nodeSubtext }}>
-                    from {detailDgNode.source}
-                  </span>
-                )}
-              </div>
-            </>
+          isGroupDetail ? (
+            <ResourceHeader name="Unmanaged" subtitle="Default bridge network" theme={theme} />
+          ) : isGhostResource && detailDgNode ? (
+            <GhostHeader node={detailDgNode} theme={theme} />
+          ) : (isNetworkDetail || isVolumeDetail) && detailDgNode ? (
+            <ResourceHeader name={detailDgNode.name} subtitle={detailDgNode.driver} theme={theme} />
           ) : detailData ? (
             <DetailPanelHeader detail={detailData} />
           ) : null
         }
       >
-        {isNetworkDetail && networkDetailData ? (
-          <DetailPanelNetworkInfo network={networkDetailData} />
-        ) : isVolumeDetail && volumeDetailData ? (
-          <DetailPanelVolume volume={volumeDetailData} />
-        ) : isGhostDetail && detailDgNode ? (
-          <>
+        {isGroupDetail ? (
+          <div style={{ padding: "0 16px 12px" }}>
+            <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 10 }}>
+              Containers not assigned to a named network.
+            </div>
+            <ContainerList containers={groupContainers} onNavigate={handleNavigate} theme={theme} />
+          </div>
+        ) : isGhostResource && detailDgNode ? (
+          <div style={{ padding: "0 16px 12px" }}>
             {detailDgNode.compose && (
               <DetailPanelCompose
                 compose={detailDgNode.compose}
                 image={detailDgNode.image}
               />
             )}
-          </>
+            {detailDgNode.source && (
+              <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 10 }}>
+                Defined in {detailDgNode.source}
+              </div>
+            )}
+            <ContainerList containers={groupContainers} onNavigate={handleNavigate} theme={theme} />
+          </div>
+        ) : isNetworkDetail && networkDetailData ? (
+          <DetailPanelNetworkInfo network={networkDetailData} onNavigate={handleNavigate} />
+        ) : isVolumeDetail && volumeDetailData ? (
+          <DetailPanelVolume volume={volumeDetailData} />
         ) : detailData ? (
           <>
             <DetailPanelStats
@@ -441,10 +465,11 @@ export function FlowCanvas({
             />
             <DetailPanelProcess detail={detailData} />
             <DetailPanelPorts ports={detailData.ports} />
-            <DetailPanelMounts mounts={detailData.mounts} />
+            <DetailPanelMounts mounts={detailData.mounts} onNavigate={handleNavigate} />
             <DetailPanelNetwork
               networkMode={detailData.networkMode}
               networks={detailData.networks}
+              onNavigate={handleNavigate}
             />
             <DetailPanelSecurity security={detailData.security} />
             <DetailPanelEnv env={detailData.env} />

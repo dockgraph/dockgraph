@@ -89,8 +89,7 @@ describe('ContainerNode', () => {
   it('uses dashed border for ghost (not_running) containers', () => {
     const { container } = renderContainer({ status: 'not_running' });
     const el = container.firstChild as HTMLElement;
-    // jsdom splits shorthand — check borderStyle
-    expect(el.style.borderStyle).toContain('dashed');
+    expect(el.style.borderTop).toContain('dashed');
   });
 
   it('applies reduced opacity for exited containers', () => {
