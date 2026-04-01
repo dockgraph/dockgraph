@@ -49,3 +49,33 @@ export interface LogLine {
   text: string;
   timestamp?: string;
 }
+
+export interface VolumeDetail {
+  name: string;
+  driver: string;
+  mountpoint: string;
+  scope: string;
+  createdAt: string;
+  labels: Record<string, string>;
+  options: Record<string, string>;
+  usageSize: number;
+  usageRefCount: number;
+  status: Record<string, string>;
+}
+
+export interface NetworkDetail {
+  name: string;
+  id: string;
+  driver: string;
+  scope: string;
+  internal: boolean;
+  enableIPv6: boolean;
+  created: string;
+  ipam: {
+    driver: string;
+    config: { subnet: string; gateway: string; ipRange: string; auxAddresses: Record<string, string> }[];
+  };
+  options: Record<string, string>;
+  labels: Record<string, string>;
+  containers: { name: string; ipv4Address: string; ipv6Address: string; macAddress: string }[];
+}
