@@ -35,7 +35,7 @@ export function useSearchFilter(dgNodes: DGNode[]): SearchFilterResult {
   const toggleStatus = useCallback((s: string) => {
     setFilters((prev) => {
       const next = new Set<string>(prev.statuses);
-      next.has(s) ? next.delete(s) : next.add(s);
+      if (next.has(s)) { next.delete(s); } else { next.add(s); }
       return { ...prev, statuses: next };
     });
   }, []);
@@ -43,7 +43,7 @@ export function useSearchFilter(dgNodes: DGNode[]): SearchFilterResult {
   const toggleType = useCallback((t: string) => {
     setFilters((prev) => {
       const next = new Set<string>(prev.types);
-      next.has(t) ? next.delete(t) : next.add(t);
+      if (next.has(t)) { next.delete(t); } else { next.add(t); }
       return { ...prev, types: next };
     });
   }, []);

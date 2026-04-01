@@ -34,7 +34,7 @@ export function useDockGraph(onStats?: (data: StatsMessage) => void): DockGraphS
   const fingerprintRef = useRef('');
   const connectRef = useRef<(() => void) | null>(null);
   const onStatsRef = useRef(onStats);
-  onStatsRef.current = onStats;
+  useEffect(() => { onStatsRef.current = onStats; }, [onStats]);
   const maxRetryDelay = RECONNECT_MAX_DELAY;
 
   const applySnapshot = useCallback((snap: GraphSnapshot) => {
