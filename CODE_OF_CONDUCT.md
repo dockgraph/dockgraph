@@ -24,7 +24,7 @@ Project maintainers may remove, edit, or reject comments, commits, issues, and o
 
 ## Reporting
 
-If you experience or witness unacceptable behavior, please reach out to the maintainers via [email](mailto:dockgraph-conduct@akozak.me). All reports will be handled confidentially.
+If you experience or witness unacceptable behavior, please reach out to the maintainers via [email](mailto:conduct@dockgraph.dev). All reports will be handled confidentially.
 
 ## Attribution
 
