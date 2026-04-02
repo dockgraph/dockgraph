@@ -10,7 +10,7 @@ import {
   type Node as RFNode,
   type Edge as RFEdge,
 } from "@xyflow/react";
-import { ANIMATION_NODE_LIMIT } from "../utils/constants";
+import { ANIMATION_NODE_LIMIT, DETAIL_PANEL_WIDTH } from "../utils/constants";
 
 import { ContainerNode } from "./ContainerNode";
 import { NetworkGroup } from "./NetworkGroup";
@@ -187,15 +187,24 @@ export function FlowCanvas({
     (nodeId: string) => {
       setDetailNodeId(nodeId);
       selectNodeRef.current?.(nodeId);
+    },
+    [],
+  );
+
+  // Fit view to the selected node after the canvas container has resized
+  // to account for the detail panel width.
+  useEffect(() => {
+    if (!detailNodeId) return;
+    const timer = setTimeout(() => {
       fitView({
-        nodes: [{ id: nodeId }],
+        nodes: [{ id: detailNodeId }],
         duration: 300,
         maxZoom: 1.5,
         padding: 0.3,
       });
-    },
-    [fitView],
-  );
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [detailNodeId, fitView]);
 
   // Resolve a cross-reference name (from Docker inspect data) to an actual
   // graph node ID. Docker might return short names (e.g. service name without
@@ -392,12 +401,10 @@ export function FlowCanvas({
         height: "100%",
         position: "relative",
         overflow: "hidden",
+        background: theme.canvasBg,
       }}
     >
       <style>{'.react-flow__edge { cursor: default; }'}</style>
-      <StatusIndicator connected={connected} />
-      <LogoutButton />
-      <SearchFilter search={search} />
 
       <DetailPanel
         open={detailOpen}
@@ -479,6 +486,22 @@ export function FlowCanvas({
           </>
         ) : null}
       </DetailPanel>
+
+      {/* Canvas area — shrinks when the detail panel is open so that
+          React Flow's viewport calculations (fitView, center, etc.)
+          use the actual visible area rather than the full window. */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: detailOpen ? DETAIL_PANEL_WIDTH : 0,
+          bottom: 0,
+        }}
+      >
+      <StatusIndicator connected={connected} />
+      <LogoutButton />
+      <SearchFilter search={search} />
 
       {showEmptyState && (
         <Overlay>
@@ -579,6 +602,7 @@ export function FlowCanvas({
           />
         )}
       </ReactFlow>
+      </div>
     </div>
   );
 }
