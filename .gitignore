@@ -1,5 +1,6 @@
 # Go
 backend/dockgraph
+*.test
 *.out
 
 # Coverage & test results
