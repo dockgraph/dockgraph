@@ -1,7 +1,9 @@
 package collector
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -23,6 +25,10 @@ type stubDockerClient struct {
 
 	eventsCh <-chan events.Message
 	errCh    <-chan error
+
+	// statsFn, when set, overrides the default ContainerStats behavior.
+	// It receives the containerID and returns the response or error.
+	statsFn func(containerID string) (containertypes.StatsResponseReader, error)
 }
 
 func (s *stubDockerClient) ContainerList(_ context.Context, _ containertypes.ListOptions) ([]containertypes.Summary, error) {
@@ -46,7 +52,10 @@ func (s *stubDockerClient) Events(_ context.Context, _ events.ListOptions) (<-ch
 	return ch, errCh
 }
 
-func (s *stubDockerClient) ContainerStats(_ context.Context, _ string, _ bool) (containertypes.StatsResponseReader, error) {
+func (s *stubDockerClient) ContainerStats(_ context.Context, containerID string, _ bool) (containertypes.StatsResponseReader, error) {
+	if s.statsFn != nil {
+		return s.statsFn(containerID)
+	}
 	return containertypes.StatsResponseReader{Body: io.NopCloser(io.LimitReader(nil, 0))}, fmt.Errorf("not implemented in stub")
 }
 
@@ -80,4 +89,22 @@ func errClient(resource string) *stubDockerClient {
 		c.volumeErr = fmt.Errorf("volume list failed")
 	}
 	return c
+}
+
+// fakeStatsBody returns a StatsResponseReader whose Body contains the given
+// StatsResponse encoded as JSON. This is the format the Docker daemon uses
+// for one-shot (stream=false) stats responses.
+func fakeStatsBody(stats containertypes.StatsResponse) containertypes.StatsResponseReader {
+	buf, _ := json.Marshal(stats)
+	return containertypes.StatsResponseReader{
+		Body: io.NopCloser(bytes.NewReader(buf)),
+	}
+}
+
+// fakeStatsBodyRaw returns a StatsResponseReader whose Body contains the given
+// raw bytes, useful for testing malformed JSON responses.
+func fakeStatsBodyRaw(data []byte) containertypes.StatsResponseReader {
+	return containertypes.StatsResponseReader{
+		Body: io.NopCloser(bytes.NewReader(data)),
+	}
 }

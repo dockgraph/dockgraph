@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const maskedValue = "********"
+
 // validResourceName matches safe Docker resource identifiers (container names,
 // volume names, network names). Used across all inspect and log handlers.
 var validResourceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
@@ -31,7 +33,7 @@ func filterEnvVars(envList []string) []map[string]string {
 	for _, e := range envList {
 		k, v, _ := strings.Cut(e, "=")
 		if isSensitiveKey(k) {
-			v = "********"
+			v = maskedValue
 		}
 		result = append(result, map[string]string{"key": k, "value": v})
 	}

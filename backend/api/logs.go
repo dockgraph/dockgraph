@@ -16,6 +16,11 @@ import (
 	containertypes "github.com/docker/docker/api/types/container"
 )
 
+const (
+	streamStdout = "stdout"
+	streamStderr = "stderr"
+)
+
 // ContainerLogger is the subset of the Docker API needed for container logs.
 type ContainerLogger interface {
 	ContainerLogs(ctx context.Context, containerID string, options containertypes.LogsOptions) (io.ReadCloser, error)
@@ -42,9 +47,9 @@ func (r *dockerLogReader) next() (string, []byte, error) {
 		return "", nil, err
 	}
 
-	streamType := "stdout"
+	streamType := streamStdout
 	if r.header[0] == 2 {
-		streamType = "stderr"
+		streamType = streamStderr
 	}
 
 	size := binary.BigEndian.Uint32(r.header[4:8])
