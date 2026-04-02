@@ -1,13 +1,14 @@
 import { useTheme } from '../../theme';
-import { Section, Row } from './shared';
+import { Section, Row, navLinkStyle } from './shared';
 import type { ComposeConfig } from '../../types';
 
 interface Props {
   compose: ComposeConfig;
   image?: string;
+  onNavigate?: (targetId: string) => void;
 }
 
-export function DetailPanelCompose({ compose, image }: Props) {
+export function DetailPanelCompose({ compose, image, onNavigate }: Props) {
   const { theme } = useTheme();
   const mono: React.CSSProperties = { fontFamily: 'monospace', fontSize: 11, color: theme.panelText, wordBreak: 'break-all' };
 
@@ -25,7 +26,20 @@ export function DetailPanelCompose({ compose, image }: Props) {
       {compose.dependsOn && compose.dependsOn.length > 0 && (
         <Section title="Dependencies">
           {compose.dependsOn.map((dep) => (
-            <div key={dep} style={{ fontSize: 11, color: theme.panelText, marginBottom: 2, fontFamily: 'monospace' }}>{dep}</div>
+            <div
+              key={dep}
+              style={{
+                fontSize: 11,
+                color: theme.panelText,
+                marginBottom: 2,
+                fontFamily: 'monospace',
+                ...(onNavigate ? navLinkStyle(theme.panelBorder) : {}),
+              }}
+              onClick={onNavigate ? () => onNavigate(`container:${dep}`) : undefined}
+              title={onNavigate ? `Inspect ${dep}` : undefined}
+            >
+              {dep}
+            </div>
           ))}
         </Section>
       )}
@@ -41,7 +55,20 @@ export function DetailPanelCompose({ compose, image }: Props) {
       {compose.networks && compose.networks.length > 0 && (
         <Section title="Networks">
           {compose.networks.map((n) => (
-            <div key={n} style={{ fontSize: 11, color: theme.panelText, marginBottom: 2, fontFamily: 'monospace' }}>{n}</div>
+            <div
+              key={n}
+              style={{
+                fontSize: 11,
+                color: theme.panelText,
+                marginBottom: 2,
+                fontFamily: 'monospace',
+                ...(onNavigate ? navLinkStyle(theme.panelBorder) : {}),
+              }}
+              onClick={onNavigate ? () => onNavigate(`network:${n}`) : undefined}
+              title={onNavigate ? `Inspect ${n}` : undefined}
+            >
+              {n}
+            </div>
           ))}
         </Section>
       )}
