@@ -1,15 +1,24 @@
 import { useTheme } from '../../theme';
 import { Section, Row } from './shared';
+import { monoStyle, navLinkStyle } from './panelStyles';
 import { formatBytes } from '../../utils/formatBytes';
 import type { VolumeDetail } from '../../types/stats';
+import type { DGNode } from '../../types';
+
+interface VolumeMount {
+  node: DGNode;
+  mountPath: string;
+}
 
 interface Props {
   volume: VolumeDetail;
+  mounts?: VolumeMount[];
+  onNavigate?: (targetId: string) => void;
 }
 
-export function DetailPanelVolume({ volume }: Props) {
+export function DetailPanelVolume({ volume, mounts, onNavigate }: Props) {
   const { theme } = useTheme();
-  const mono: React.CSSProperties = { fontFamily: 'monospace', fontSize: 11, color: theme.panelText, wordBreak: 'break-all' };
+  const mono = monoStyle(theme.panelText);
 
   return (
     <>
@@ -27,6 +36,29 @@ export function DetailPanelVolume({ volume }: Props) {
         <Section title="Usage">
           {volume.usageSize > 0 && <Row label="Size" value={formatBytes(volume.usageSize)} mono={mono} subtext={theme.nodeSubtext} />}
           {volume.usageRefCount > 0 && <Row label="Reference Count" value={String(volume.usageRefCount)} mono={mono} subtext={theme.nodeSubtext} />}
+        </Section>
+      )}
+
+      {mounts && mounts.length > 0 && (
+        <Section title={`Containers (${mounts.length})`}>
+          {mounts.map(({ node, mountPath }) => (
+            <div key={node.id} style={{ marginBottom: 6 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: theme.panelText,
+                  marginBottom: 4,
+                  ...(onNavigate ? navLinkStyle(theme.panelBorder) : {}),
+                }}
+                onClick={onNavigate ? () => onNavigate(`container:${node.name}`) : undefined}
+                title={onNavigate ? `Inspect ${node.name}` : undefined}
+              >
+                {node.name}
+              </div>
+              {mountPath && <Row label="Mount" value={mountPath} mono={mono} subtext={theme.nodeSubtext} />}
+            </div>
+          ))}
         </Section>
       )}
 
@@ -65,4 +97,3 @@ export function DetailPanelVolume({ volume }: Props) {
     </>
   );
 }
-
