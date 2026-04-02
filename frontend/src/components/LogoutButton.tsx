@@ -35,14 +35,10 @@ export function LogoutButton() {
       title="Sign out"
       aria-label="Sign out"
       style={{
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        zIndex: 10,
         background: theme.panelBg,
         border: `1px solid ${theme.panelBorder}`,
-        borderRadius: 6,
-        padding: '4px 8px',
+        borderRadius: 8,
+        padding: '8px 8px',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',

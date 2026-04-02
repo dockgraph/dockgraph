@@ -21,6 +21,8 @@ import { ThemeToggle } from "./ThemeToggle";
 import { LogoutButton } from "./LogoutButton";
 import { StatusIndicator } from "./StatusIndicator";
 import { SearchFilter } from "./SearchFilter";
+import { ViewTabs } from "./ViewTabs";
+import type { ViewKey } from "./ViewTabs";
 import { DetailPanel } from "./panels/DetailPanel";
 import { DetailPanelHeader } from "./panels/DetailPanelHeader";
 import { DetailPanelStats } from "./panels/DetailPanelStats";
@@ -179,6 +181,9 @@ export function FlowCanvas({
   );
   const showEmptyState = !ready || !hasVisibleNodes;
   const largeGraph = dgNodes.length > ANIMATION_NODE_LIMIT;
+
+  // View navigation state.
+  const [activeView, setActiveView] = useState<ViewKey>("graph");
 
   // Detail panel state.
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
@@ -452,6 +457,7 @@ export function FlowCanvas({
               <DetailPanelCompose
                 compose={detailDgNode.compose}
                 image={detailDgNode.image}
+                onNavigate={handleNavigate}
               />
             )}
             {detailDgNode.source && (
@@ -499,10 +505,42 @@ export function FlowCanvas({
           bottom: 0,
         }}
       >
-      <StatusIndicator connected={connected} />
-      <LogoutButton />
-      <SearchFilter search={search} />
+      <div
+        style={{
+          position: "absolute",
+          top: 10,
+          left: 10,
+          right: 10,
+          zIndex: 10,
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+        }}
+      >
+        <ViewTabs activeView={activeView} onViewChange={setActiveView} />
+        <SearchFilter search={search} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <LogoutButton />
+          <StatusIndicator connected={connected} />
+        </div>
+      </div>
 
+      {activeView !== "graph" ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
+            Coming soon
+          </p>
+        </div>
+      ) : (
+      <>
       {showEmptyState && (
         <Overlay>
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
@@ -602,6 +640,8 @@ export function FlowCanvas({
           />
         )}
       </ReactFlow>
+      </>
+      )}
       </div>
     </div>
   );

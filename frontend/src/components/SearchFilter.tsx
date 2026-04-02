@@ -25,11 +25,6 @@ export function SearchFilter({ search }: Props) {
   return (
     <div
       style={{
-        position: "absolute",
-        top: 10,
-        left: "50%",
-        transform: "translateX(-50%)",
-        zIndex: 10,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -43,8 +38,8 @@ export function SearchFilter({ search }: Props) {
           gap: 6,
           background: theme.panelBg,
           border: `1px solid ${theme.panelBorder}`,
-          borderRadius: 6,
-          padding: "4px 10px",
+          borderRadius: 8,
+          padding: "6px 10px",
         }}
       >
         <span style={{ fontSize: 12, color: theme.nodeSubtext }}>&#x2315;</span>

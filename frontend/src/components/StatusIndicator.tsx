@@ -14,17 +14,13 @@ export function StatusIndicator({ connected }: StatusIndicatorProps) {
       aria-live="polite"
       aria-label={connected ? 'Backend connected' : 'Backend disconnected'}
       style={{
-        position: 'absolute',
-        top: 10,
-        left: 10,
-        zIndex: 10,
         display: 'flex',
         alignItems: 'center',
         gap: 4,
         background: theme.panelBg,
         border: `1px solid ${theme.panelBorder}`,
-        borderRadius: 6,
-        padding: '4px 8px',
+        borderRadius: 8,
+        padding: '8px 8px',
         fontSize: 12,
         lineHeight: 1,
         color: theme.panelText,
