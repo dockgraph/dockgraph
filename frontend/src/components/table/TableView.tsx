@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, memo } from "react";
+import { useState, useMemo, memo } from "react";
 import { useTheme } from "../../theme";
 import { ContainerTable } from "./ContainerTable";
 import { NetworkTable } from "./NetworkTable";
@@ -33,14 +33,17 @@ export const TableView = memo(function TableView({
   onRowClick,
 }: Props) {
   const { theme } = useTheme();
-  const [activeTab, setActiveTab] = useState<ResourceTab>("containers");
+  const [userTab, setUserTab] = useState<ResourceTab>("containers");
 
-  useEffect(() => {
-    if (!selectedNodeId) return;
-    if (selectedNodeId.startsWith("network:")) setActiveTab("networks");
-    else if (selectedNodeId.startsWith("volume:")) setActiveTab("volumes");
-    else if (selectedNodeId.startsWith("container:")) setActiveTab("containers");
-  }, [selectedNodeId]);
+  function tabForSelection(id: string | null): ResourceTab | null {
+    if (!id) return null;
+    if (id.startsWith("network:")) return "networks";
+    if (id.startsWith("volume:")) return "volumes";
+    if (id.startsWith("container:")) return "containers";
+    return null;
+  }
+
+  const activeTab = tabForSelection(selectedNodeId) ?? userTab;
 
   const styles = tableLayout(theme);
   const tabStyles = resourceTabs(theme);
@@ -66,7 +69,7 @@ export const TableView = memo(function TableView({
         {TABS.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => setUserTab(tab.key)}
             style={tabStyles.tab(activeTab === tab.key)}
           >
             {tab.label}
