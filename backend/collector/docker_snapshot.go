@@ -173,7 +173,12 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 	networkIDToName := resolveNetworkNames(res.networks)
 	for _, n := range res.networks {
 		if networkIDToName[n.ID] != "" {
-			snap.Nodes = append(snap.Nodes, buildNetworkNode(n.Name, n.Driver))
+			node := buildNetworkNode(n.Name, n.Driver)
+			if len(n.IPAM.Config) > 0 {
+				node.Subnet = n.IPAM.Config[0].Subnet
+				node.Gateway = n.IPAM.Config[0].Gateway
+			}
+			snap.Nodes = append(snap.Nodes, node)
 		}
 	}
 
@@ -195,6 +200,9 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		node := buildContainerNode(name, c.Image, status, ports)
 		if primary != "" {
 			node.NetworkID = "network:" + primary
+		}
+		if project := c.Labels["com.docker.compose.project"]; project != "" {
+			node.Labels = map[string]string{"com.docker.compose.project": project}
 		}
 		snap.Nodes = append(snap.Nodes, node)
 
