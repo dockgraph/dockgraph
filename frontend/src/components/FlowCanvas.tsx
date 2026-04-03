@@ -532,7 +532,9 @@ export function FlowCanvas({
         }}
       >
         <ViewTabs activeView={activeView} onViewChange={setActiveView} />
-        <SearchFilter search={search} />
+        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
+          <SearchFilter search={search} />
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <LogoutButton />
           <StatusIndicator connected={connected} />
@@ -555,13 +557,19 @@ export function FlowCanvas({
           style={{
             position: "absolute",
             inset: 0,
+            top: 50,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            flexDirection: "column",
+            gap: 12,
           }}
         >
-          <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
-            Coming soon
+          <p style={{ color: theme.nodeSubtext, fontSize: 16, fontWeight: 600, margin: 0 }}>
+            Dashboard
+          </p>
+          <p style={{ color: theme.nodeSubtext, fontSize: 13, margin: 0, opacity: 0.6 }}>
+            Resource metrics and insights — coming soon
           </p>
         </div>
       ) : (
