@@ -1,5 +1,6 @@
 import { useTheme } from '../../theme';
-import { Section, Row, navLinkStyle, monoStyle } from './shared';
+import { Section, Row } from './shared';
+import { navLinkStyle, monoStyle } from './panelStyles';
 import type { ContainerDetail } from '../../types/stats';
 
 interface Props {

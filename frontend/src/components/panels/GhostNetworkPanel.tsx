@@ -1,6 +1,7 @@
 import { useTheme } from '../../theme';
 import { Section, Row } from './shared';
-import { monoStyle, navLinkStyle } from './panelStyles';
+import { monoStyle } from './panelStyles';
+import { ContainerLink } from './ContainerLink';
 import type { DGNode } from '../../types';
 
 interface Props {
@@ -23,20 +24,7 @@ export function GhostNetworkPanel({ node, containers, onNavigate }: Props) {
       {containers.length > 0 && (
         <Section title={`Containers (${containers.length})`}>
           {containers.map((c) => (
-            <div
-              key={c.id}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: theme.panelText,
-                marginBottom: 6,
-                ...navLinkStyle(theme.panelBorder),
-              }}
-              onClick={() => onNavigate(`container:${c.name}`)}
-              title={`Inspect ${c.name}`}
-            >
-              {c.name}
-            </div>
+            <ContainerLink key={c.id} name={c.name} onNavigate={onNavigate} />
           ))}
         </Section>
       )}

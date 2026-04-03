@@ -1,5 +1,7 @@
 import { useTheme } from '../../theme';
 import { Section, Row, navLinkStyle, monoStyle } from './shared';
+import { SecurityBadges } from './SecurityBadges';
+import { KeyValueList } from './KeyValueList';
 import type { ComposeConfig } from '../../types';
 
 interface Props {
@@ -75,27 +77,16 @@ export function DetailPanelCompose({ compose, image, onNavigate }: Props) {
 
       {compose.environment && Object.keys(compose.environment).length > 0 && (
         <Section title="Environment">
-          {Object.entries(compose.environment).map(([k, v]) => (
-            <div key={k} style={{ fontSize: 11, marginBottom: 2 }}>
-              <span style={{ color: theme.nodeSubtext }}>{k}=</span>
-              <span style={mono}>{v}</span>
-            </div>
-          ))}
+          <KeyValueList entries={compose.environment} />
         </Section>
       )}
 
-      {(compose.privileged || compose.readOnly || compose.capAdd?.length || compose.capDrop?.length) && (
-        <Section title="Security">
-          {compose.privileged && <div style={{ fontSize: 11, color: '#ef4444', fontWeight: 600, marginBottom: 4 }}>Privileged Mode</div>}
-          {compose.readOnly && <div style={{ fontSize: 11, color: '#22c55e', marginBottom: 4 }}>Read-only Root Filesystem</div>}
-          {compose.capAdd && compose.capAdd.length > 0 && (
-            <div style={{ fontSize: 10, color: '#f59e0b', marginBottom: 2 }}>+Capabilities: {compose.capAdd.join(', ')}</div>
-          )}
-          {compose.capDrop && compose.capDrop.length > 0 && (
-            <div style={{ fontSize: 10, color: theme.nodeSubtext }}>-Capabilities: {compose.capDrop.join(', ')}</div>
-          )}
-        </Section>
-      )}
+      <SecurityBadges
+        privileged={compose.privileged}
+        readonlyRootfs={compose.readOnly}
+        capAdd={compose.capAdd}
+        capDrop={compose.capDrop}
+      />
     </>
   );
 }

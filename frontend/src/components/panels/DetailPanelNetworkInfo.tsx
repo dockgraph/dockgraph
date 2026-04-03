@@ -1,5 +1,7 @@
 import { useTheme } from '../../theme';
-import { Section, Row, navLinkStyle, monoStyle } from './shared';
+import { Section, Row, monoStyle } from './shared';
+import { KeyValueList } from './KeyValueList';
+import { ContainerLink } from './ContainerLink';
 import type { NetworkDetail } from '../../types/stats';
 
 interface Props {
@@ -39,19 +41,7 @@ export function DetailPanelNetworkInfo({ network, onNavigate }: Props) {
         <Section title="Connected Containers">
           {network.containers.map((c) => (
             <div key={c.name} style={{ marginBottom: 6 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: theme.panelText,
-                  marginBottom: 4,
-                  ...(onNavigate ? navLinkStyle(theme.panelBorder) : {}),
-                }}
-                onClick={onNavigate ? () => onNavigate(`container:${c.name}`) : undefined}
-                title={onNavigate ? `Inspect ${c.name}` : undefined}
-              >
-                {c.name}
-              </div>
+              <ContainerLink name={c.name} onNavigate={onNavigate} />
               {c.ipv4Address && <Row label="IPv4" value={c.ipv4Address} mono={mono} subtext={theme.nodeSubtext} />}
               {c.macAddress && <Row label="MAC" value={c.macAddress} mono={mono} subtext={theme.nodeSubtext} />}
             </div>
@@ -61,23 +51,13 @@ export function DetailPanelNetworkInfo({ network, onNavigate }: Props) {
 
       {network.options && Object.keys(network.options).length > 0 && (
         <Section title="Options">
-          {Object.entries(network.options).map(([k, v]) => (
-            <div key={k} style={{ fontSize: 11, marginBottom: 2 }}>
-              <span style={{ color: theme.nodeSubtext }}>{k}=</span>
-              <span style={mono}>{v}</span>
-            </div>
-          ))}
+          <KeyValueList entries={network.options} />
         </Section>
       )}
 
       {network.labels && Object.keys(network.labels).length > 0 && (
         <Section title="Labels">
-          {Object.entries(network.labels).map(([k, v]) => (
-            <div key={k} style={{ fontSize: 11, marginBottom: 2 }}>
-              <span style={{ color: theme.nodeSubtext }}>{k}=</span>
-              <span style={mono}>{v}</span>
-            </div>
-          ))}
+          <KeyValueList entries={network.labels} />
         </Section>
       )}
     </>
