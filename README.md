@@ -13,6 +13,8 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 [![GitHub last commit (branch)](https://img.shields.io/github/last-commit/dockgraph/dockgraph/main?logo=github)](https://github.com/dockgraph/dockgraph/commits/main/)
 [![codecov](https://codecov.io/github/dockgraph/dockgraph/graph/badge.svg?token=TGEJFE4CMY)](https://codecov.io/github/dockgraph/dockgraph)
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/P5P61X5CND)
+
 <div align="center" width="100%">
     <img src="https://raw.githubusercontent.com/dockgraph/dockgraph/main/.github/assets/screenshot.png" width="1280" alt="DockGraph screenshot" />
 </div>
@@ -56,12 +58,12 @@ services:
   dockgraph:
     image: dockgraph/dockgraph:latest
     ports:
-      - "7800:7800"                                    # Web UI
+      - "7800:7800" # Web UI
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro   # Docker API access
-      - ./compose.yml:/compose/compose.yml:ro          # Optional: show services before they start
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Docker API access
+      - ./compose.yml:/compose/compose.yml:ro # Optional: show services before they start
     labels:
-      dockgraph.self: "true"                           # Hide DockGraph from its own graph
+      dockgraph.self: "true" # Hide DockGraph from its own graph
 ```
 
 Compose file mounts are optional — they let DockGraph show services defined in your compose files even when they aren't running yet. Just mount a file or directory and DockGraph picks it up automatically.
@@ -101,13 +103,13 @@ environment:
 
 ### Environment variables
 
-| Variable           | Default          | Description                                                  |
-| ------------------ | ---------------- | ------------------------------------------------------------ |
-| `DG_BIND_ADDR`     | `0.0.0.0`        | Listen address (`127.0.0.1` to restrict to localhost)        |
-| `DG_PORT`          | `7800`           | HTTP listen port                                             |
-| `DG_POLL_INTERVAL` | `30s`            | Docker API polling interval                                  |
-| `DG_COMPOSE_PATH`  | _(auto-detect)_  | Override: comma-separated list of compose files or directories to scan |
-| `DG_PASSWORD`      | _(disabled)_     | Password for UI and WebSocket access; when set, requires login to view the dashboard |
+| Variable           | Default         | Description                                                                          |
+| ------------------ | --------------- | ------------------------------------------------------------------------------------ |
+| `DG_BIND_ADDR`     | `0.0.0.0`       | Listen address (`127.0.0.1` to restrict to localhost)                                |
+| `DG_PORT`          | `7800`          | HTTP listen port                                                                     |
+| `DG_POLL_INTERVAL` | `30s`           | Docker API polling interval                                                          |
+| `DG_COMPOSE_PATH`  | _(auto-detect)_ | Override: comma-separated list of compose files or directories to scan               |
+| `DG_PASSWORD`      | _(disabled)_    | Password for UI and WebSocket access; when set, requires login to view the dashboard |
 
 ## Security Considerations
 
