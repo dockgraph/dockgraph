@@ -20,7 +20,7 @@ func HandleNetworkInspect(inspector NetworkInspector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
 		if !validResourceName.MatchString(name) {
-			http.Error(w, `{"error":"invalid network name"}`, http.StatusBadRequest)
+			jsonError(w, "invalid network name", http.StatusBadRequest)
 			return
 		}
 
@@ -30,7 +30,7 @@ func HandleNetworkInspect(inspector NetworkInspector) http.HandlerFunc {
 		network, err := inspector.NetworkInspect(ctx, name, networktypes.InspectOptions{})
 		if err != nil {
 			log.Printf("inspect network %s: %v", name, err)
-			http.Error(w, `{"error":"network not found"}`, http.StatusNotFound)
+			jsonError(w, "network not found", http.StatusNotFound)
 			return
 		}
 

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"net/http"
 	"regexp"
 	"strings"
 )
@@ -16,6 +18,13 @@ var sensitiveKeyPatterns = []string{
 	"PASSWORD", "SECRET", "KEY", "TOKEN", "CREDENTIAL",
 	"API_KEY", "APIKEY", "PRIVATE", "AUTH", "CERT",
 	"SSL_", "TLS_", "ENCRYPT", "ACCESS_KEY", "SESSION",
+}
+
+// jsonError writes a JSON error response with the correct Content-Type header.
+func jsonError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
 func isSensitiveKey(key string) bool {

@@ -122,6 +122,12 @@ func (s *Service) setSessionCookie(w http.ResponseWriter, r *http.Request) error
 	return nil
 }
 
+// clientIP extracts the client address from the request for rate-limiting.
+// It uses RemoteAddr directly, which means all requests behind a reverse proxy
+// appear to originate from the proxy's IP. In such deployments the rate limiter
+// will bucket all clients together. For DockGraph's typical use (local network
+// or single-user), this is acceptable. Trusting X-Forwarded-For without a
+// known proxy allowlist would let attackers spoof their IP and bypass limits.
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

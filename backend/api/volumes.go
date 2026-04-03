@@ -20,7 +20,7 @@ func HandleVolumeInspect(inspector VolumeInspector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
 		if !validResourceName.MatchString(name) {
-			http.Error(w, `{"error":"invalid volume name"}`, http.StatusBadRequest)
+			jsonError(w, "invalid volume name", http.StatusBadRequest)
 			return
 		}
 
@@ -30,7 +30,7 @@ func HandleVolumeInspect(inspector VolumeInspector) http.HandlerFunc {
 		vol, err := inspector.VolumeInspect(ctx, name)
 		if err != nil {
 			log.Printf("inspect volume %s: %v", name, err)
-			http.Error(w, `{"error":"volume not found"}`, http.StatusNotFound)
+			jsonError(w, "volume not found", http.StatusNotFound)
 			return
 		}
 

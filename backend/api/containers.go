@@ -21,7 +21,7 @@ func HandleContainerInspect(inspector ContainerInspector) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if !validResourceName.MatchString(id) {
-			http.Error(w, `{"error":"invalid container ID"}`, http.StatusBadRequest)
+			jsonError(w, "invalid container ID", http.StatusBadRequest)
 			return
 		}
 
@@ -31,7 +31,7 @@ func HandleContainerInspect(inspector ContainerInspector) http.HandlerFunc {
 		info, err := inspector.ContainerInspect(ctx, id)
 		if err != nil {
 			log.Printf("inspect %s: %v", id, err)
-			http.Error(w, `{"error":"container not found"}`, http.StatusNotFound)
+			jsonError(w, "container not found", http.StatusNotFound)
 			return
 		}
 

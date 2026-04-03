@@ -67,7 +67,7 @@ func HandleContainerLogsHistory(logger ContainerLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if !validResourceName.MatchString(id) {
-			http.Error(w, `{"error":"invalid container ID"}`, http.StatusBadRequest)
+			jsonError(w, "invalid container ID", http.StatusBadRequest)
 			return
 		}
 
@@ -95,7 +95,7 @@ func HandleContainerLogsHistory(logger ContainerLogger) http.HandlerFunc {
 		reader, err := logger.ContainerLogs(ctx, id, opts)
 		if err != nil {
 			log.Printf("logs history %s: %v", id, err)
-			http.Error(w, `{"error":"failed to read logs"}`, http.StatusInternalServerError)
+			jsonError(w, "failed to read logs", http.StatusInternalServerError)
 			return
 		}
 		defer reader.Close()
@@ -116,7 +116,7 @@ func HandleContainerLogs(logger ContainerLogger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if !validResourceName.MatchString(id) {
-			http.Error(w, `{"error":"invalid container ID"}`, http.StatusBadRequest)
+			jsonError(w, "invalid container ID", http.StatusBadRequest)
 			return
 		}
 
@@ -146,7 +146,7 @@ func HandleContainerLogs(logger ContainerLogger) http.HandlerFunc {
 		reader, err := logger.ContainerLogs(ctx, id, opts)
 		if err != nil {
 			log.Printf("logs %s: %v", id, err)
-			http.Error(w, `{"error":"failed to open logs"}`, http.StatusInternalServerError)
+			jsonError(w, "failed to open logs", http.StatusInternalServerError)
 			return
 		}
 		defer reader.Close()
