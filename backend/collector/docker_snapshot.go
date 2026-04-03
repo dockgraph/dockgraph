@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	containertypes "github.com/docker/docker/api/types/container"
 	networktypes "github.com/docker/docker/api/types/network"
@@ -215,6 +216,9 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 
 		primary, _ := classifyContainerNetworks(c, networkIDToName)
 		node := buildContainerNode(name, c.Image, status, ports)
+		if c.Created > 0 {
+			node.CreatedAt = time.Unix(c.Created, 0).UTC().Format(time.RFC3339)
+		}
 		if primary != "" {
 			node.NetworkID = "network:" + primary
 		}

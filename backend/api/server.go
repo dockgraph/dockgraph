@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dockgraph/dockgraph/auth"
+	"github.com/dockgraph/dockgraph/collector"
 )
 
 // HealthChecker tests whether the backing service is reachable.
@@ -24,9 +25,16 @@ type DockerAPI interface {
 	NetworkInspector
 }
 
+// SystemAPI groups Docker system-level interfaces for dashboard handlers.
+type SystemAPI interface {
+	SystemInfoProvider
+	SystemDiskUsageProvider
+	ImageLister
+}
+
 // NewServer sets up the HTTP routes for the application.
 // Pass nil for authService to disable authentication.
-func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth.Service, docker DockerAPI) http.Handler {
+func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth.Service, docker DockerAPI, system SystemAPI, statsHistory *collector.StatsHistory, eventHistory *collector.EventHistory) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +63,17 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 		mux.HandleFunc("GET /api/containers/{id}", HandleContainerInspect(docker))
 		mux.HandleFunc("GET /api/volumes/{name}", HandleVolumeInspect(docker))
 		mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(docker))
+	}
+	if system != nil {
+		mux.HandleFunc("GET /api/system/info", HandleSystemInfo(system))
+		mux.HandleFunc("GET /api/system/disk-usage", HandleSystemDiskUsage(system))
+		mux.HandleFunc("GET /api/images", HandleImages(system))
+	}
+	if statsHistory != nil {
+		mux.HandleFunc("GET /api/stats/history", HandleStatsHistory(statsHistory))
+	}
+	if eventHistory != nil {
+		mux.HandleFunc("GET /api/events/recent", HandleRecentEvents(eventHistory))
 	}
 	mux.HandleFunc("/", spaHandler(staticFS))
 

@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/docker/docker/api/types/events"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/dockgraph/dockgraph/api"
 	"github.com/dockgraph/dockgraph/auth"
@@ -127,6 +129,9 @@ func main() {
 	sc.Start(ctx)
 	defer sc.Stop()
 
+	statsHistory := collector.NewStatsHistory(24 * time.Hour)
+	eventHistory := collector.NewEventHistory(500)
+
 	go func() {
 		defer logRecover("pipeUpdates")
 		pipeUpdates(ctx, mgr, dc, cc)
@@ -175,7 +180,12 @@ func main() {
 
 	go func() {
 		defer logRecover("pipeStats")
-		pipeStats(ctx, sc, hub)
+		pipeStatsWithHistory(ctx, sc, hub, statsHistory)
+	}()
+
+	go func() {
+		defer logRecover("pipeEvents")
+		pipeEvents(ctx, dockerCli, eventHistory)
 	}()
 
 	staticFS, err := fs.Sub(frontend.Assets, "dist")
@@ -183,7 +193,8 @@ func main() {
 		log.Fatalf("failed to load embedded frontend: %v", err)
 	}
 
-	handler := api.NewServer(hub, staticFS, &dockerHealth{cli: dockerCli}, authService, dockerCli)
+	systemCache := api.NewCachedSystemData(ctx, dockerCli, 5*time.Minute, 60*time.Second)
+	handler := api.NewServer(hub, staticFS, &dockerHealth{cli: dockerCli}, authService, dockerCli, systemCache, statsHistory, eventHistory)
 	addr := cfg.BindAddr + ":" + cfg.Port
 	server := &http.Server{
 		Addr:              addr,
@@ -208,13 +219,55 @@ func main() {
 	}
 }
 
-// pipeStats forwards stats snapshots directly to the WebSocket hub, bypassing the
-// state manager since stats are ephemeral and don't affect topology.
-func pipeStats(ctx context.Context, sc *collector.StatsCollector, hub *api.Hub) {
+// pipeStatsWithHistory forwards stats snapshots to the WebSocket hub and records
+// them in the history ring buffer for the dashboard charts.
+func pipeStatsWithHistory(ctx context.Context, sc *collector.StatsCollector, hub *api.Hub, history *collector.StatsHistory) {
+	downsampleTicker := time.NewTicker(time.Minute)
+	defer downsampleTicker.Stop()
+
 	for {
 		select {
 		case snap := <-sc.Updates():
 			hub.BroadcastStats(snap)
+			history.Record(time.Now(), snap)
+		case <-downsampleTicker.C:
+			history.Evict()
+			history.Downsample(30 * time.Second)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// pipeEvents subscribes to Docker events and records them in the event history buffer.
+func pipeEvents(ctx context.Context, cli *client.Client, history *collector.EventHistory) {
+	filter := filters.NewArgs()
+	filter.Add("type", string(events.ContainerEventType))
+	filter.Add("type", string(events.NetworkEventType))
+	filter.Add("type", string(events.VolumeEventType))
+
+	msgCh, errCh := cli.Events(ctx, events.ListOptions{Filters: filter})
+	for {
+		select {
+		case msg := <-msgCh:
+			name := msg.Actor.Attributes["name"]
+			if name == "" {
+				name = msg.Actor.ID
+			}
+			history.Add(collector.DockerEvent{
+				Timestamp:  time.Unix(msg.Time, msg.TimeNano),
+				Action:     string(msg.Action),
+				Type:       string(msg.Type),
+				Name:       name,
+				Attributes: msg.Actor.Attributes,
+			})
+		case err := <-errCh:
+			if err == nil || ctx.Err() != nil {
+				return
+			}
+			log.Printf("event history: stream error: %v, reconnecting...", err)
+			time.Sleep(2 * time.Second)
+			msgCh, errCh = cli.Events(ctx, events.ListOptions{Filters: filter})
 		case <-ctx.Done():
 			return
 		}

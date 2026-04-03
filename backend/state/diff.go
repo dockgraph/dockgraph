@@ -57,7 +57,9 @@ func diffSnapshots(prev, curr *collector.GraphSnapshot) (collector.DeltaUpdate, 
 func nodeEqual(a, b collector.Node) bool {
 	if a.ID != b.ID || a.Type != b.Type || a.Name != b.Name ||
 		a.Image != b.Image || a.Status != b.Status ||
-		a.NetworkID != b.NetworkID || a.Driver != b.Driver || a.Source != b.Source {
+		a.NetworkID != b.NetworkID || a.Driver != b.Driver ||
+		a.Subnet != b.Subnet || a.Gateway != b.Gateway || a.Source != b.Source ||
+		a.CreatedAt != b.CreatedAt {
 		return false
 	}
 	if len(a.Ports) != len(b.Ports) {

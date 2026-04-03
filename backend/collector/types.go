@@ -12,9 +12,12 @@ import (
 	"context"
 	"io"
 
+	dockertypes "github.com/docker/docker/api/types"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
+	imagetypes "github.com/docker/docker/api/types/image"
 	networktypes "github.com/docker/docker/api/types/network"
+	systemtypes "github.com/docker/docker/api/types/system"
 	volumetypes "github.com/docker/docker/api/types/volume"
 )
 
@@ -43,6 +46,7 @@ type Node struct {
 	Gateway   string            `json:"gateway,omitempty"`
 	Driver    string            `json:"driver,omitempty"`
 	Source    string            `json:"source,omitempty"`
+	CreatedAt string            `json:"createdAt,omitempty"`
 	Compose   *ComposeConfig    `json:"compose,omitempty"`
 }
 
@@ -135,6 +139,9 @@ type DockerClient interface {
 	ContainerLogs(ctx context.Context, containerID string, options containertypes.LogsOptions) (io.ReadCloser, error)
 	VolumeInspect(ctx context.Context, volumeID string) (volumetypes.Volume, error)
 	NetworkInspect(ctx context.Context, networkID string, options networktypes.InspectOptions) (networktypes.Inspect, error)
+	Info(ctx context.Context) (systemtypes.Info, error)
+	DiskUsage(ctx context.Context, options dockertypes.DiskUsageOptions) (dockertypes.DiskUsage, error)
+	ImageList(ctx context.Context, options imagetypes.ListOptions) ([]imagetypes.Summary, error)
 	Close() error
 }
 

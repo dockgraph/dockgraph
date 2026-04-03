@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"io"
 
+	dockertypes "github.com/docker/docker/api/types"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
+	imagetypes "github.com/docker/docker/api/types/image"
 	networktypes "github.com/docker/docker/api/types/network"
+	systemtypes "github.com/docker/docker/api/types/system"
 	volumetypes "github.com/docker/docker/api/types/volume"
 )
 
@@ -73,6 +76,18 @@ func (s *stubDockerClient) VolumeInspect(_ context.Context, _ string) (volumetyp
 
 func (s *stubDockerClient) NetworkInspect(_ context.Context, _ string, _ networktypes.InspectOptions) (networktypes.Inspect, error) {
 	return networktypes.Inspect{}, fmt.Errorf("not implemented in stub")
+}
+
+func (s *stubDockerClient) Info(_ context.Context) (systemtypes.Info, error) {
+	return systemtypes.Info{}, nil
+}
+
+func (s *stubDockerClient) DiskUsage(_ context.Context, _ dockertypes.DiskUsageOptions) (dockertypes.DiskUsage, error) {
+	return dockertypes.DiskUsage{}, nil
+}
+
+func (s *stubDockerClient) ImageList(_ context.Context, _ imagetypes.ListOptions) ([]imagetypes.Summary, error) {
+	return nil, nil
 }
 
 func (s *stubDockerClient) Close() error { return nil }

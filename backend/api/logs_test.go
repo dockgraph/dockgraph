@@ -348,7 +348,7 @@ func TestReadLogLinesMultipleLinesPerFrame(t *testing.T) {
 func newTestServer(logger *stubContainerLogger) *httptest.Server {
 	hub := NewHub()
 	fs := fstest.MapFS{"index.html": {Data: []byte("ok")}}
-	handler := NewServer(hub, fs, &stubHealth{}, nil, &stubDockerAPI{logger: logger})
+	handler := NewServer(hub, fs, &stubHealth{}, nil, &stubDockerAPI{logger: logger}, nil, nil, nil)
 	return httptest.NewServer(handler)
 }
 
