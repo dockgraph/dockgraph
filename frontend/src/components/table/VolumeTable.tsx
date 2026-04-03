@@ -1,10 +1,17 @@
 import { memo, useMemo } from "react";
-import { useTheme } from "../../theme";
 import { useTableSort } from "../../hooks/useTableSort";
-import { SortableHeader } from "./SortableHeader";
+import { useTableGrouping } from "../../hooks/useTableGrouping";
 import { VolumeRow } from "./VolumeRow";
-import { VOLUME_GRID, tableLayout } from "./tableStyles";
+import { GroupedTable } from "./GroupedTable";
+import { VOLUME_GRID } from "./tableStyles";
+import type { GroupOption } from "./TableToolbar";
 import type { DGNode, DGEdge } from "../../types";
+
+const GROUP_OPTIONS: GroupOption[] = [
+  { key: "compose", label: "Compose Project" },
+  { key: "driver", label: "Driver" },
+  { key: "none", label: "None" },
+];
 
 const COLUMNS = [
   { key: "name", label: "Name" },
@@ -26,8 +33,8 @@ export const VolumeTable = memo(function VolumeTable({
   selectedNodeId,
   onRowClick,
 }: Props) {
-  const { theme } = useTheme();
   const sort = useTableSort<string>("name");
+  const grouping = useTableGrouping(nodes, "compose");
 
   const { containerCounts, mountPaths } = useMemo(() => {
     const counts = new Map<string, number>();
@@ -43,42 +50,32 @@ export const VolumeTable = memo(function VolumeTable({
     return { containerCounts: counts, mountPaths: paths };
   }, [edges]);
 
-  const sorted = sort.sortItems(nodes, (n) => ({
-    name: n.name,
-    driver: n.driver ?? "",
-    mountpoint: mountPaths.get(n.id) ?? "",
-    containers: containerCounts.get(n.id) ?? 0,
-  }));
-
-  const layout = tableLayout(theme);
-
   return (
-    <div style={{ ...layout.scrollBody, paddingTop: 12 }}>
-      <div style={layout.card}>
-        <SortableHeader
-          columns={COLUMNS}
-          sortColumn={sort.column}
-          sortDirection={sort.direction}
-          onSort={sort.toggleSort}
+    <GroupedTable
+      nodes={nodes}
+      grouping={grouping}
+      sort={sort}
+      columns={COLUMNS}
+      gridTemplate={VOLUME_GRID}
+      groupOptions={GROUP_OPTIONS}
+      emptyMessage="No volumes found"
+      sortKeyFn={(n) => ({
+        name: n.name,
+        driver: n.driver ?? "",
+        mountpoint: mountPaths.get(n.id) ?? "",
+        containers: containerCounts.get(n.id) ?? 0,
+      })}
+      renderRow={(node) => (
+        <VolumeRow
+          key={node.id}
+          node={node}
+          mountPath={mountPaths.get(node.id) ?? ""}
+          containerCount={containerCounts.get(node.id) ?? 0}
+          selected={node.id === selectedNodeId}
+          onClick={onRowClick}
           gridTemplate={VOLUME_GRID}
         />
-        {sorted.map((node) => (
-          <VolumeRow
-            key={node.id}
-            node={node}
-            mountPath={mountPaths.get(node.id) ?? ""}
-            containerCount={containerCounts.get(node.id) ?? 0}
-            selected={node.id === selectedNodeId}
-            onClick={onRowClick}
-            gridTemplate={VOLUME_GRID}
-          />
-        ))}
-        {nodes.length === 0 && (
-          <div style={{ padding: 32, textAlign: "center", color: theme.nodeSubtext, fontSize: 13 }}>
-            No volumes found
-          </div>
-        )}
-      </div>
-    </div>
+      )}
+    />
   );
 });
