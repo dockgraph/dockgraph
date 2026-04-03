@@ -13,6 +13,7 @@ function Chip({ label, active, onClick, theme }: { label: string; active: boolea
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       style={{
         fontSize: 10,
         padding: '2px 8px',

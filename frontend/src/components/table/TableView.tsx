@@ -15,6 +15,14 @@ const TABS: { key: ResourceTab; label: string }[] = [
   { key: "volumes", label: "Volumes" },
 ];
 
+function tabForSelection(id: string | null): ResourceTab | null {
+  if (!id) return null;
+  if (id.startsWith("network:")) return "networks";
+  if (id.startsWith("volume:")) return "volumes";
+  if (id.startsWith("container:")) return "containers";
+  return null;
+}
+
 interface Props {
   nodes: DGNode[];
   edges: DGEdge[];
@@ -37,16 +45,12 @@ export const TableView = memo(function TableView({
   const [prevSelection, setPrevSelection] = useState<string | null>(null);
 
   // Auto-switch tab when selection changes to a different resource type.
-  // Once switched, the user can freely click other tabs without being locked.
+  // Uses the "setState during render" pattern documented by React for
+  // adjusting state based on changed props without an extra render pass.
   if (selectedNodeId !== prevSelection) {
     setPrevSelection(selectedNodeId);
-    if (selectedNodeId) {
-      let target: ResourceTab | null = null;
-      if (selectedNodeId.startsWith("network:")) target = "networks";
-      else if (selectedNodeId.startsWith("volume:")) target = "volumes";
-      else if (selectedNodeId.startsWith("container:")) target = "containers";
-      if (target && target !== activeTab) setActiveTab(target);
-    }
+    const target = tabForSelection(selectedNodeId);
+    if (target && target !== activeTab) setActiveTab(target);
   }
 
   const styles = tableLayout(theme);

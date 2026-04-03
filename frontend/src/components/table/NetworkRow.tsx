@@ -25,7 +25,10 @@ export const NetworkRow = memo(function NetworkRow({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onClick(node.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(node.id); } }}
       {...handlers}
       style={rowStyle(theme, selected, { ...styles.row, gridTemplateColumns: gridTemplate })}
     >

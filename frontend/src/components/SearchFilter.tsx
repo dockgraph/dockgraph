@@ -53,6 +53,7 @@ export function SearchFilter({ search }: Props) {
         <input
           ref={inputRef}
           type="text"
+          aria-label="Search containers, images, and labels"
           value={search.query}
           onChange={(e) => search.setQuery(e.target.value)}
           onFocus={() => setFocused(true)}

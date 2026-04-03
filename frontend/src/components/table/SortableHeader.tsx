@@ -34,7 +34,11 @@ export const SortableHeader = memo(function SortableHeader({
             key={col.key}
             onClick={() => onSort(col.key)}
             style={{
-              all: "unset",
+              background: "none",
+              border: "none",
+              padding: 0,
+              margin: 0,
+              font: "inherit",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
