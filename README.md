@@ -20,16 +20,20 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 ## Features
 
 - **Live topology graph** — containers, networks, and volumes rendered as an interactive, zoomable graph
+- **Table view** — alternative tabular view with sortable columns, grouping by compose project / network / status / driver, and collapsible groups
+- **Detail panels** — click any resource to inspect stats, ports, mounts, environment, labels, logs, health checks, and network configuration
 - **Real-time updates** — watches the Docker event stream; the graph reflects changes within seconds
 - **Compose-aware** — parses compose files to show services that haven't started yet
 - **Network grouping** — containers are visually grouped by their primary network
 - **Dependency visualization** — `depends_on` edges with animated flow dots for running services
 - **Volume relationships** — named volume mounts shown as edges between volumes and containers
 - **Multi-network support** — secondary network connections rendered as cross-group edges
+- **Search and filter** — filter resources by name, type, or status with real-time results across both views
 - **Dark/light theme** — toggle between themes, persisted in localStorage
 - **Click-to-highlight** — click any node or edge to highlight its connections, fading unrelated elements
+- **Password protection** — optional authentication with Argon2id hashing and JWT sessions
 - **Single binary** — frontend is embedded into the Go binary; one container, no external dependencies
-- **Self-excluding** — DockGraph hides its own container from the graph
+- **Self-excluding** — DockGraph hides its own container, networks, and volumes from the graph
 
 ## Quick Start
 

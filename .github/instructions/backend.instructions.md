@@ -31,6 +31,17 @@ applyTo: "backend/**/*.go"
   (container create/start/stop/remove) — this is a read-only visualizer.
 - Use `client.WithAPIVersionNegotiation()` for Docker client creation.
 - Filter out DockGraph's own container using the `dockgraph.self=true` label.
+  Networks and volumes belonging to DockGraph's compose project are also excluded.
+- Only forward `com.docker.compose.project` from container, network, and volume
+  labels. Do not expose arbitrary labels — they may contain sensitive data.
+
+## Authentication
+
+- The `auth/` package handles optional password authentication.
+- Password hashing uses Argon2id with constant-time comparison.
+- JWT tokens are signed with an ephemeral HMAC-SHA256 key (regenerated on restart).
+- Rate limiting protects the login endpoint from brute-force attacks.
+- When `DG_PASSWORD` is set, all endpoints except `/healthz` require a valid token.
 
 ## WebSocket Protocol
 

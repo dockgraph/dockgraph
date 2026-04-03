@@ -8,8 +8,12 @@ an interactive topology graph over WebSocket.
 
 - **Backend (Go):** Two concurrent collectors (Docker API + Compose file watcher)
   feed a state manager that merges snapshots and broadcasts deltas over WebSocket.
-- **Frontend (React + TypeScript):** Receives WebSocket updates and renders the
-  graph using React Flow with ELK.js for automatic layout.
+  REST API endpoints serve container inspect, stats, logs, network, and volume
+  details. Optional password auth with Argon2id + JWT.
+- **Frontend (React + TypeScript):** Receives WebSocket updates and renders
+  infrastructure in two views — an interactive graph (React Flow + ELK.js) and
+  a sortable/groupable table view. Detail panels show stats, logs, ports, mounts,
+  env, labels, health checks, and compose config for any selected resource.
 - **Single binary:** The frontend is embedded into the Go binary at build time.
   One container, no external dependencies.
 
@@ -45,7 +49,12 @@ When reviewing, flag violations of these principles:
 - **Docker socket security** — the socket is mounted read-only. Flag any code that
   attempts write operations against the Docker API.
 - **Frontend performance** — unnecessary re-renders in React components, especially
-  in the graph rendering pipeline (`FlowCanvas`, `useDockGraph`).
+  in the graph rendering pipeline (`FlowCanvas`, `useDockGraph`) and table views
+  with large datasets (`GroupedTable`, `useTableSort`, `useTableGrouping`).
+- **Detail panel data** — ensure API hooks (`useContainerDetail`, `useVolumeDetail`,
+  `useNetworkDetail`) clean up properly and don't leak connections.
+- **Authentication** — auth middleware, JWT validation, and rate limiting in the
+  `auth/` package. Verify tokens are checked on all protected routes.
 - **Dependency additions** — new dependencies should be justified. This project
   values a small dependency footprint.
 

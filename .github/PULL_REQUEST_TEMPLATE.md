@@ -19,6 +19,7 @@ Fixes #
 
 - [ ] I have read the [contributing guide](CONTRIBUTING.md)
 - [ ] I ran `go test ./...` from the `backend/` directory and all tests pass
+- [ ] I ran `npx vitest run` from the `frontend/` directory and all tests pass (if frontend changes)
 - [ ] I ran `npm run lint` (if frontend changes) with no new warnings
 - [ ] I have self-reviewed my code
 - [ ] I tested this locally with a running Docker daemon
