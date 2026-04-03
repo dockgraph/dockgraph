@@ -38,7 +38,7 @@ export function DetailPanelHeader({ detail }: Props) {
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, display: 'inline-block', flexShrink: 0 }} />
         <span style={{ fontSize: 12, color: theme.panelText }}>{STATUS_LABELS[detail.status] ?? detail.status}</span>
         {uptime && <span style={{ fontSize: 11, color: theme.nodeSubtext }}>{detail.running ? `Up ${uptime}` : `Exited ${uptime} ago`}</span>}
-        {detail.oomKilled && <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 600 }}>OOM Killed</span>}
+        {detail.oomKilled && <span style={{ fontSize: 10, color: theme.danger, fontWeight: 600 }}>OOM Killed</span>}
         {!detail.running && detail.exitCode !== 0 && <span style={{ fontSize: 10, color: theme.nodeSubtext }}>code {detail.exitCode}</span>}
       </div>
     </div>

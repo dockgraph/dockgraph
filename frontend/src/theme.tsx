@@ -29,6 +29,16 @@ export interface Theme {
   groupBgAlpha: string;
   groupBorderAlpha: string;
   groupTextAlpha: string;
+  // Semantic status
+  danger: string;
+  warning: string;
+  success: string;
+  info: string;
+  // Log viewer
+  logBg: string;
+  logText: string;
+  logMuted: string;
+  logTimestamp: string;
 }
 
 const dark: Theme = {
@@ -54,6 +64,14 @@ const dark: Theme = {
   groupBgAlpha: '0a',
   groupBorderAlpha: '4a',
   groupTextAlpha: 'd4',
+  danger: '#ef4444',
+  warning: '#f59e0b',
+  success: '#22c55e',
+  info: '#3b82f6',
+  logBg: '#0f172a',
+  logText: '#e2e8f0',
+  logMuted: '#64748b',
+  logTimestamp: '#475569',
 };
 
 const light: Theme = {
@@ -79,6 +97,14 @@ const light: Theme = {
   groupBgAlpha: '0f',
   groupBorderAlpha: '3a',
   groupTextAlpha: 'b2',
+  danger: '#dc2626',
+  warning: '#d97706',
+  success: '#16a34a',
+  info: '#2563eb',
+  logBg: '#f1f5f9',
+  logText: '#1e293b',
+  logMuted: '#94a3b8',
+  logTimestamp: '#64748b',
 };
 
 interface ThemeContextValue {

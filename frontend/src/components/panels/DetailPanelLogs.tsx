@@ -93,7 +93,7 @@ export function DetailPanelLogs({ containerId, active }: Props) {
             width: 6,
             height: 6,
             borderRadius: "50%",
-            background: connected ? "#22c55e" : "#ef4444",
+            background: connected ? theme.success : theme.danger,
           }}
         />
       </div>
@@ -103,7 +103,7 @@ export function DetailPanelLogs({ containerId, active }: Props) {
         style={{
           height: 250,
           overflowY: "auto",
-          background: "#0f172a",
+          background: theme.logBg,
           borderRadius: 4,
           padding: 8,
           fontFamily: "monospace",
@@ -117,7 +117,7 @@ export function DetailPanelLogs({ containerId, active }: Props) {
             style={{
               textAlign: "center",
               padding: "4px 0 8px",
-              color: "#64748b",
+              color: theme.logMuted,
               fontSize: 10,
             }}
           >
@@ -129,7 +129,7 @@ export function DetailPanelLogs({ containerId, active }: Props) {
             style={{
               textAlign: "center",
               padding: "4px 0 8px",
-              color: "#475569",
+              color: theme.logTimestamp,
               fontSize: 10,
             }}
           >
@@ -138,14 +138,14 @@ export function DetailPanelLogs({ containerId, active }: Props) {
         )}
         {loading && lines.length === 0 && (
           <div
-            style={{ color: "#64748b", textAlign: "center", paddingTop: 20 }}
+            style={{ color: theme.logMuted, textAlign: "center", paddingTop: 20 }}
           >
             Loading logs...
           </div>
         )}
         {!loading && lines.length === 0 && (
           <div
-            style={{ color: "#64748b", textAlign: "center", paddingTop: 20 }}
+            style={{ color: theme.logMuted, textAlign: "center", paddingTop: 20 }}
           >
             {!active
               ? "Open panel to stream logs"
@@ -160,13 +160,13 @@ export function DetailPanelLogs({ containerId, active }: Props) {
             style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}
           >
             {line.timestamp && (
-              <span style={{ color: "#475569", marginRight: 6 }}>
+              <span style={{ color: theme.logTimestamp, marginRight: 6 }}>
                 {formatLogTimestamp(line.timestamp)}
               </span>
             )}
             <span
               style={{
-                color: line.stream === "stderr" ? "#ef4444" : "#e2e8f0",
+                color: line.stream === "stderr" ? theme.danger : theme.logText,
               }}
             >
               {line.text}

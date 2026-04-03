@@ -70,7 +70,7 @@ export function DetailPanel({ open, onClose, header, loading, error, children }:
       )}
       {error && (
         <div style={{ padding: 20, textAlign: 'center' }}>
-          <div style={{ color: '#ef4444', marginBottom: 8 }}>{error}</div>
+          <div style={{ color: theme.danger, marginBottom: 8 }}>{error}</div>
         </div>
       )}
       {!loading && !error && (
