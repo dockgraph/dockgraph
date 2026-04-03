@@ -23,6 +23,7 @@ import { SearchFilter } from "./SearchFilter";
 import { ViewTabs } from "./ViewTabs";
 import type { ViewKey } from "./ViewTabs";
 import { TableView } from "./table/TableView";
+import { Dashboard } from "./dashboard/Dashboard";
 import { DetailPanel } from "./panels/DetailPanel";
 import { DetailPanelHeader } from "./panels/DetailPanelHeader";
 import { DetailPanelStats } from "./panels/DetailPanelStats";
@@ -351,26 +352,8 @@ export function FlowCanvas({
             onRowClick={handleInfoClickWithSelect}
           />
         </div>
-      ) : activeView !== "graph" ? (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            top: 50,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <p style={{ color: theme.nodeSubtext, fontSize: 16, fontWeight: 600, margin: 0 }}>
-            Dashboard
-          </p>
-          <p style={{ color: theme.nodeSubtext, fontSize: 13, margin: 0, opacity: 0.6 }}>
-            Resource metrics and insights — coming soon
-          </p>
-        </div>
+      ) : activeView === "dashboard" ? (
+        <Dashboard nodes={dgNodes} statsMap={statsMap} />
       ) : (
       <>
       {showEmptyState && (
