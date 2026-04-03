@@ -23,6 +23,7 @@ import { StatusIndicator } from "./StatusIndicator";
 import { SearchFilter } from "./SearchFilter";
 import { ViewTabs } from "./ViewTabs";
 import type { ViewKey } from "./ViewTabs";
+import { TableView } from "./table/TableView";
 import { DetailPanel } from "./panels/DetailPanel";
 import { DetailPanelHeader } from "./panels/DetailPanelHeader";
 import { DetailPanelStats } from "./panels/DetailPanelStats";
@@ -35,9 +36,12 @@ import { DetailPanelNetwork } from "./panels/DetailPanelNetwork";
 import { DetailPanelSecurity } from "./panels/DetailPanelSecurity";
 import { DetailPanelHealth } from "./panels/DetailPanelHealth";
 import { DetailPanelLogs } from "./panels/DetailPanelLogs";
-import { DetailPanelCompose } from "./panels/DetailPanelCompose";
 import { DetailPanelVolume } from "./panels/DetailPanelVolume";
 import { DetailPanelNetworkInfo } from "./panels/DetailPanelNetworkInfo";
+import { GhostVolumePanel } from "./panels/GhostVolumePanel";
+import { GhostNetworkPanel } from "./panels/GhostNetworkPanel";
+import { GhostContainerPanel } from "./panels/GhostContainerPanel";
+import { navLinkStyle } from "./panels/panelStyles";
 import { useGraphLayout } from "../hooks/useGraphLayout";
 import { useSelectionHighlight } from "../hooks/useSelectionHighlight";
 import { useContainerDetail } from "../hooks/useContainerDetail";
@@ -104,10 +108,7 @@ function ContainerList({ containers, onNavigate, theme }: { containers: DGNode[]
             fontSize: 11,
             color: theme.panelText,
             padding: "4px 0",
-            cursor: "pointer",
-            textDecoration: "underline",
-            textDecorationColor: theme.panelBorder,
-            textUnderlineOffset: 2,
+            ...navLinkStyle(theme.panelBorder),
           }}
         >
           {c.name}
@@ -279,11 +280,34 @@ export function FlowCanvas({
     if (isGroupDetail) {
       return dgNodes.filter((n) => n.type === "container" && !n.source && !n.networkId);
     }
-    if (isNetworkDetail && isGhostResource && detailNodeId) {
-      return dgNodes.filter((n) => n.type === "container" && n.networkId === detailNodeId);
+    if (isNetworkDetail && detailNodeId) {
+      // Primary network membership.
+      const ids = new Set(
+        dgNodes.filter((n) => n.type === "container" && n.networkId === detailNodeId).map((n) => n.id),
+      );
+      // Secondary network edges.
+      for (const e of dgEdges) {
+        if (e.type === "secondary_network" && e.target === detailNodeId) {
+          ids.add(e.source);
+        }
+      }
+      return dgNodes.filter((n) => ids.has(n.id));
     }
     return [];
-  }, [isGroupDetail, isNetworkDetail, isGhostResource, detailNodeId, dgNodes]);
+  }, [isGroupDetail, isNetworkDetail, detailNodeId, dgNodes, dgEdges]);
+
+  // Containers using the selected volume with their mount paths.
+  const volumeMounts = useMemo(() => {
+    if (!isVolumeDetail || !detailNodeId) return [];
+    const mounts: { node: DGNode; mountPath: string }[] = [];
+    for (const e of dgEdges) {
+      if (e.type === "volume_mount" && e.source === detailNodeId) {
+        const node = dgNodes.find((n) => n.id === e.target);
+        if (node) mounts.push({ node, mountPath: e.mountPath ?? "" });
+      }
+    }
+    return mounts;
+  }, [isVolumeDetail, detailNodeId, dgEdges, dgNodes]);
 
   // Container detail derivation.
   const containerName = detailNodeId?.startsWith("container:")
@@ -445,32 +469,22 @@ export function FlowCanvas({
         }
       >
         {isGroupDetail ? (
-          <div style={{ padding: "0 16px 12px" }}>
+          <>
             <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 10 }}>
               Containers not assigned to a named network.
             </div>
             <ContainerList containers={groupContainers} onNavigate={handleNavigate} theme={theme} />
-          </div>
+          </>
+        ) : isGhostResource && isVolumeDetail && detailDgNode ? (
+          <GhostVolumePanel node={detailDgNode} mounts={volumeMounts} onNavigate={handleNavigate} />
+        ) : isGhostResource && isNetworkDetail && detailDgNode ? (
+          <GhostNetworkPanel node={detailDgNode} containers={groupContainers} onNavigate={handleNavigate} />
         ) : isGhostResource && detailDgNode ? (
-          <div style={{ padding: "0 16px 12px" }}>
-            {detailDgNode.compose && (
-              <DetailPanelCompose
-                compose={detailDgNode.compose}
-                image={detailDgNode.image}
-                onNavigate={handleNavigate}
-              />
-            )}
-            {detailDgNode.source && (
-              <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 10 }}>
-                Defined in {detailDgNode.source}
-              </div>
-            )}
-            <ContainerList containers={groupContainers} onNavigate={handleNavigate} theme={theme} />
-          </div>
+          <GhostContainerPanel node={detailDgNode} onNavigate={handleNavigate} />
         ) : isNetworkDetail && networkDetailData ? (
           <DetailPanelNetworkInfo network={networkDetailData} onNavigate={handleNavigate} />
         ) : isVolumeDetail && volumeDetailData ? (
-          <DetailPanelVolume volume={volumeDetailData} />
+          <DetailPanelVolume volume={volumeDetailData} mounts={volumeMounts} onNavigate={handleNavigate} />
         ) : detailData ? (
           <>
             <DetailPanelStats
@@ -518,25 +532,44 @@ export function FlowCanvas({
         }}
       >
         <ViewTabs activeView={activeView} onViewChange={setActiveView} />
-        <SearchFilter search={search} />
+        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
+          <SearchFilter search={search} />
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <LogoutButton />
           <StatusIndicator connected={connected} />
         </div>
       </div>
 
-      {activeView !== "graph" ? (
+      {activeView === "table" ? (
+        <div style={{ position: "absolute", inset: 0, top: 50, display: "flex", flexDirection: "column" }}>
+          <TableView
+            nodes={dgNodes}
+            edges={dgEdges}
+            statsMap={statsMap}
+            matchingNodeIds={search.matchingNodeIds}
+            selectedNodeId={detailNodeId}
+            onRowClick={handleInfoClick}
+          />
+        </div>
+      ) : activeView !== "graph" ? (
         <div
           style={{
             position: "absolute",
             inset: 0,
+            top: 50,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            flexDirection: "column",
+            gap: 12,
           }}
         >
-          <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
-            Coming soon
+          <p style={{ color: theme.nodeSubtext, fontSize: 16, fontWeight: 600, margin: 0 }}>
+            Dashboard
+          </p>
+          <p style={{ color: theme.nodeSubtext, fontSize: 13, margin: 0, opacity: 0.6 }}>
+            Resource metrics and insights — coming soon
           </p>
         </div>
       ) : (

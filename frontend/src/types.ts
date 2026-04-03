@@ -30,6 +30,8 @@ export interface DGNode {
   labels?: Record<string, string>;
   networkId?: string;
   driver?: string;
+  subnet?: string;
+  gateway?: string;
   source?: string;
   compose?: ComposeConfig;
 }
