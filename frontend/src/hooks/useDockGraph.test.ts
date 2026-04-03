@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { DGNode, DGEdge } from '../types';
-import { applyDelta, snapshotFingerprint } from './deltaUtils';
+import { applyDelta, snapshotFingerprint } from '../utils/deltaUtils';
 
 const web: DGNode = { id: 'container:web', type: 'container', name: 'web', status: 'running' };
 const db: DGNode = { id: 'container:db', type: 'container', name: 'db', status: 'running' };

@@ -7,7 +7,7 @@ import {
   resolveConnectedElements,
   styleNodesForSelection,
   styleEdgesForSelection,
-} from './selectionGraph';
+} from '../utils/selectionGraph';
 
 interface HighlightResult {
   styledNodes: RFNode[];

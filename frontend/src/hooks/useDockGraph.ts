@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DGNode, DGEdge, GraphSnapshot, WireMessage } from '../types';
 import type { StatsMessage } from '../types/stats';
 import { RECONNECT_MAX_DELAY } from '../utils/constants';
-import { snapshotFingerprint, applyDelta as applyDeltaFn } from './deltaUtils';
+import { snapshotFingerprint, applyDelta as applyDeltaFn } from '../utils/deltaUtils';
 
 interface DockGraphState {
   nodes: DGNode[];
