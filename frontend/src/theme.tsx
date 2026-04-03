@@ -19,6 +19,9 @@ export interface Theme {
   panelBg: string;
   panelBorder: string;
   panelText: string;
+  rowHover: string;
+  cardBg: string;
+  statsRowBg: string;
   // MiniMap
   minimapBg: string;
   minimapMask: string;
@@ -43,6 +46,9 @@ const dark: Theme = {
   panelBg: '#1e293b',
   panelBorder: '#334155',
   panelText: '#94a3b8',
+  rowHover: '#263044',
+  cardBg: '#1a1a2e',
+  statsRowBg: 'rgba(0, 0, 0, 0.15)',
   minimapBg: '#1e293b',
   minimapMask: 'rgba(15, 23, 42, 0.7)',
   groupBgAlpha: '0a',
@@ -65,6 +71,9 @@ const light: Theme = {
   panelBg: '#f7f5f1',
   panelBorder: '#d6d0c8',
   panelText: '#5c5448',
+  rowHover: '#e8e2d9',
+  cardBg: '#f7f5f1',
+  statsRowBg: 'rgba(0, 0, 0, 0.03)',
   minimapBg: '#f7f5f1',
   minimapMask: 'rgba(250, 248, 245, 0.7)',
   groupBgAlpha: '0f',

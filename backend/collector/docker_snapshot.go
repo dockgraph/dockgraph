@@ -170,10 +170,32 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		Edges: []Edge{},
 	}
 
+	// Collect compose projects that belong to self-excluded containers
+	// so we can also hide their auto-created networks and volumes.
+	selfProjects := make(map[string]bool)
+	for _, c := range res.containers {
+		if isSelfExcluded(c.Labels) {
+			if p := c.Labels["com.docker.compose.project"]; p != "" {
+				selfProjects[p] = true
+			}
+		}
+	}
+
 	networkIDToName := resolveNetworkNames(res.networks)
 	for _, n := range res.networks {
 		if networkIDToName[n.ID] != "" {
-			snap.Nodes = append(snap.Nodes, buildNetworkNode(n.Name, n.Driver))
+			if p := n.Labels["com.docker.compose.project"]; p != "" && selfProjects[p] {
+				continue
+			}
+			node := buildNetworkNode(n.Name, n.Driver)
+			if len(n.IPAM.Config) > 0 {
+				node.Subnet = n.IPAM.Config[0].Subnet
+				node.Gateway = n.IPAM.Config[0].Gateway
+			}
+			if project := n.Labels["com.docker.compose.project"]; project != "" {
+				node.Labels = map[string]string{"com.docker.compose.project": project}
+			}
+			snap.Nodes = append(snap.Nodes, node)
 		}
 	}
 
@@ -196,13 +218,23 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		if primary != "" {
 			node.NetworkID = "network:" + primary
 		}
+		if project := c.Labels["com.docker.compose.project"]; project != "" {
+			node.Labels = map[string]string{"com.docker.compose.project": project}
+		}
 		snap.Nodes = append(snap.Nodes, node)
 
 		snap.Edges = append(snap.Edges, buildContainerEdges(name, c, networkIDToName, serviceNames)...)
 	}
 
 	for _, v := range res.volumes {
-		snap.Nodes = append(snap.Nodes, buildVolumeNode(v.Name, v.Driver, "created"))
+		if p := v.Labels["com.docker.compose.project"]; p != "" && selfProjects[p] {
+			continue
+		}
+		node := buildVolumeNode(v.Name, v.Driver, "created")
+		if project := v.Labels["com.docker.compose.project"]; project != "" {
+			node.Labels = map[string]string{"com.docker.compose.project": project}
+		}
+		snap.Nodes = append(snap.Nodes, node)
 	}
 
 	// Deterministic ordering prevents false-positive diffs in the state manager's merge.

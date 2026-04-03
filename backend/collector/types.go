@@ -28,7 +28,7 @@ type PortMapping struct {
 // The Type field determines which optional fields are populated:
 //
 //	"container" — Image, Status, Ports, Labels, NetworkID
-//	"network"   — Driver
+//	"network"   — Driver, Subnet, Gateway
 //	"volume"    — Driver, Status
 type Node struct {
 	ID        string            `json:"id"`
@@ -39,6 +39,8 @@ type Node struct {
 	Ports     []PortMapping     `json:"ports,omitempty"`
 	Labels    map[string]string `json:"labels,omitempty"`
 	NetworkID string            `json:"networkId,omitempty"`
+	Subnet    string            `json:"subnet,omitempty"`
+	Gateway   string            `json:"gateway,omitempty"`
 	Driver    string            `json:"driver,omitempty"`
 	Source    string            `json:"source,omitempty"`
 	Compose   *ComposeConfig    `json:"compose,omitempty"`

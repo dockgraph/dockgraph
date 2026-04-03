@@ -3,6 +3,7 @@ import type { SearchFilterResult } from '../hooks/useSearchFilter';
 
 interface Props {
   search: SearchFilterResult;
+  visible?: boolean;
 }
 
 const STATUS_OPTIONS = ['running', 'exited', 'paused', 'unhealthy'] as const;
@@ -28,9 +29,9 @@ function Chip({ label, active, onClick, theme }: { label: string; active: boolea
   );
 }
 
-export function SearchFilterChips({ search }: Props) {
+export function SearchFilterChips({ search, visible }: Props) {
   const { theme } = useTheme();
-  if (!search.hasActiveFilter) return null;
+  if (!search.hasActiveFilter && !visible) return null;
 
   return (
     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>

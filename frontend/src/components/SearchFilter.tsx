@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useTheme } from "../theme";
 import type { SearchFilterResult } from "../hooks/useSearchFilter";
 import { SearchFilterChips } from "./SearchFilterChips";
@@ -10,6 +10,7 @@ interface Props {
 export function SearchFilter({ search }: Props) {
   const { theme } = useTheme();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -30,6 +31,12 @@ export function SearchFilter({ search }: Props) {
         alignItems: "center",
         gap: 4,
       }}
+      onMouseDown={(e) => {
+        // Prevent chip clicks from blurring the input.
+        if (e.target !== inputRef.current) {
+          e.preventDefault();
+        }
+      }}
     >
       <div
         style={{
@@ -48,6 +55,8 @@ export function SearchFilter({ search }: Props) {
           type="text"
           value={search.query}
           onChange={(e) => search.setQuery(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               search.clearAll();
@@ -86,7 +95,7 @@ export function SearchFilter({ search }: Props) {
           </>
         )}
       </div>
-      <SearchFilterChips search={search} />
+      <SearchFilterChips search={search} visible={focused} />
     </div>
   );
 }

@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { useTheme } from '../../theme';
 
-// Re-export navLinkStyle so existing imports from './shared' keep working.
+// Re-export panel styles so existing imports from './shared' keep working.
 // eslint-disable-next-line react-refresh/only-export-components
-export { navLinkStyle } from './panelStyles';
+export { navLinkStyle, monoStyle } from './panelStyles';
 
 /** Collapsible section with uppercase title. */
 export function Section({ title, children }: { title: string; children: ReactNode }) {

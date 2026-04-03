@@ -1,5 +1,5 @@
 import { useTheme } from '../../theme';
-import { Section, Row, navLinkStyle } from './shared';
+import { Section, Row, navLinkStyle, monoStyle } from './shared';
 import type { ContainerDetail } from '../../types/stats';
 
 interface Props {
@@ -10,7 +10,7 @@ interface Props {
 
 export function DetailPanelNetwork({ networkMode, networks, onNavigate }: Props) {
   const { theme } = useTheme();
-  const mono: React.CSSProperties = { fontFamily: 'monospace', fontSize: 11, color: theme.panelText, wordBreak: 'break-all' };
+  const mono = monoStyle(theme.panelText);
 
   return (
     <Section title="Networking">
