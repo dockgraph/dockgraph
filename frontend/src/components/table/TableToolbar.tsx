@@ -3,21 +3,21 @@ import { useTheme } from "../../theme";
 import { tableLayout } from "./tableStyles";
 import type { GroupByKey } from "../../hooks/useTableGrouping";
 
+export interface GroupOption {
+  key: GroupByKey;
+  label: string;
+}
+
 interface Props {
   groupBy: GroupByKey;
   onGroupByChange: (key: GroupByKey) => void;
+  options: GroupOption[];
 }
-
-const GROUP_OPTIONS: { key: GroupByKey; label: string }[] = [
-  { key: "compose", label: "Compose Project" },
-  { key: "network", label: "Network" },
-  { key: "status", label: "Status" },
-  { key: "none", label: "None" },
-];
 
 export const TableToolbar = memo(function TableToolbar({
   groupBy,
   onGroupByChange,
+  options,
 }: Props) {
   const { theme } = useTheme();
   const styles = tableLayout(theme);
@@ -25,7 +25,7 @@ export const TableToolbar = memo(function TableToolbar({
   const [hoveredKey, setHoveredKey] = useState<GroupByKey | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
-  const activeLabel = GROUP_OPTIONS.find((o) => o.key === groupBy)?.label ?? groupBy;
+  const activeLabel = options.find((o) => o.key === groupBy)?.label ?? groupBy;
 
   useEffect(() => {
     if (!open) return;
@@ -96,7 +96,7 @@ export const TableToolbar = memo(function TableToolbar({
                 : "0 4px 12px rgba(0,0,0,0.1)",
             }}
           >
-            {GROUP_OPTIONS.map((opt) => {
+            {options.map((opt) => {
               const isActive = opt.key === groupBy;
               const isHovered = opt.key === hoveredKey;
               let bg = "transparent";
