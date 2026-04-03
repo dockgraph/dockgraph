@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DGNode } from '../types';
 import { SEARCH_DEBOUNCE_MS } from '../utils/constants';
 
@@ -53,6 +53,8 @@ export function useSearchFilter(dgNodes: DGNode[]): SearchFilterResult {
     setDebouncedQuery('');
     setFilters({ statuses: new Set<string>(), types: new Set<string>() });
   }, []);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   const hasActiveFilter = debouncedQuery.length > 0 || filters.statuses.size > 0 || filters.types.size > 0;
 

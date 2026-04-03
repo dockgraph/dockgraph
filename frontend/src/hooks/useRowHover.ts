@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import type { Theme } from "../theme";
 
 interface RowHoverResult {
@@ -13,10 +13,10 @@ interface RowHoverResult {
 export function useRowHover(): RowHoverResult {
   const [hovered, setHovered] = useState(false);
 
-  const handlers = {
-    onMouseEnter: useCallback(() => setHovered(true), []),
-    onMouseLeave: useCallback(() => setHovered(false), []),
-  };
+  const handlers = useMemo(() => ({
+    onMouseEnter: () => setHovered(true),
+    onMouseLeave: () => setHovered(false),
+  }), []);
 
   const rowStyle = useCallback(
     (theme: Theme, selected: boolean, base?: React.CSSProperties): React.CSSProperties => ({
