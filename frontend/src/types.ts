@@ -33,6 +33,7 @@ export interface DGNode {
   subnet?: string;
   gateway?: string;
   source?: string;
+  createdAt?: string;
   compose?: ComposeConfig;
 }
 
