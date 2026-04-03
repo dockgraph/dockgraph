@@ -13,7 +13,7 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 [![GitHub last commit (branch)](https://img.shields.io/github/last-commit/dockgraph/dockgraph/main?logo=github)](https://github.com/dockgraph/dockgraph/commits/main/)
 [![codecov](https://codecov.io/github/dockgraph/dockgraph/graph/badge.svg?token=TGEJFE4CMY)](https://codecov.io/github/dockgraph/dockgraph)
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/P5P61X5CND)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/artemkozak)
 
 <div align="center" width="100%">
     <img src="https://raw.githubusercontent.com/dockgraph/dockgraph/main/.github/assets/screenshot.png" width="1280" alt="DockGraph screenshot" />
