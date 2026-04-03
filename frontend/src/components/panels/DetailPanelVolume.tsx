@@ -1,14 +1,11 @@
 import { useTheme } from '../../theme';
 import { Section, Row } from './shared';
-import { monoStyle, navLinkStyle } from './panelStyles';
+import { monoStyle } from './panelStyles';
+import { KeyValueList } from './KeyValueList';
+import { ContainerLink } from './ContainerLink';
 import { formatBytes } from '../../utils/formatBytes';
 import type { VolumeDetail } from '../../types/stats';
-import type { DGNode } from '../../types';
-
-interface VolumeMount {
-  node: DGNode;
-  mountPath: string;
-}
+import type { VolumeMount } from '../../types';
 
 interface Props {
   volume: VolumeDetail;
@@ -43,19 +40,7 @@ export function DetailPanelVolume({ volume, mounts, onNavigate }: Props) {
         <Section title={`Containers (${mounts.length})`}>
           {mounts.map(({ node, mountPath }) => (
             <div key={node.id} style={{ marginBottom: 6 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: theme.panelText,
-                  marginBottom: 4,
-                  ...(onNavigate ? navLinkStyle(theme.panelBorder) : {}),
-                }}
-                onClick={onNavigate ? () => onNavigate(`container:${node.name}`) : undefined}
-                title={onNavigate ? `Inspect ${node.name}` : undefined}
-              >
-                {node.name}
-              </div>
+              <ContainerLink name={node.name} onNavigate={onNavigate} />
               {mountPath && <Row label="Mount" value={mountPath} mono={mono} subtext={theme.nodeSubtext} />}
             </div>
           ))}
@@ -64,34 +49,19 @@ export function DetailPanelVolume({ volume, mounts, onNavigate }: Props) {
 
       {volume.options && Object.keys(volume.options).length > 0 && (
         <Section title="Options">
-          {Object.entries(volume.options).map(([k, v]) => (
-            <div key={k} style={{ fontSize: 11, marginBottom: 2 }}>
-              <span style={{ color: theme.nodeSubtext }}>{k}=</span>
-              <span style={mono}>{v}</span>
-            </div>
-          ))}
+          <KeyValueList entries={volume.options} />
         </Section>
       )}
 
       {volume.labels && Object.keys(volume.labels).length > 0 && (
         <Section title="Labels">
-          {Object.entries(volume.labels).map(([k, v]) => (
-            <div key={k} style={{ fontSize: 11, marginBottom: 2 }}>
-              <span style={{ color: theme.nodeSubtext }}>{k}=</span>
-              <span style={mono}>{v}</span>
-            </div>
-          ))}
+          <KeyValueList entries={volume.labels} />
         </Section>
       )}
 
       {volume.status && Object.keys(volume.status).length > 0 && (
         <Section title="Status">
-          {Object.entries(volume.status).map(([k, v]) => (
-            <div key={k} style={{ fontSize: 11, marginBottom: 2 }}>
-              <span style={{ color: theme.nodeSubtext }}>{k}=</span>
-              <span style={mono}>{v}</span>
-            </div>
-          ))}
+          <KeyValueList entries={volume.status} />
         </Section>
       )}
     </>

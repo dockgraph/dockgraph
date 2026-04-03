@@ -83,6 +83,12 @@ export interface NetworkGroupData {
   onInfoClick?: (networkId: string) => void;
 }
 
+/** A container using a named volume, with its mount path. */
+export interface VolumeMount {
+  node: DGNode;
+  mountPath: string;
+}
+
 /** Typed payload for ELK-routed edges. */
 export interface ElkEdgeData {
   path?: string;

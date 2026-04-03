@@ -1,17 +1,11 @@
 import { memo } from 'react';
 import type { ContainerStatsData } from '../types/stats';
 import { formatBytesShort } from '../utils/formatBytes';
-import { STATS_CPU_WARN, STATS_CPU_CRIT, STATS_THROTTLE_CRIT } from '../utils/constants';
+import { cpuColor } from '../utils/colors';
 import { useTheme } from '../theme';
 
 interface StatsMiniProps {
   stats: ContainerStatsData | undefined;
-}
-
-function cpuColor(cpu: number, throttle: number): string {
-  if (cpu >= STATS_CPU_CRIT || throttle >= STATS_THROTTLE_CRIT) return '#ef4444';
-  if (cpu >= STATS_CPU_WARN || throttle > 0) return '#f59e0b';
-  return '#22c55e';
 }
 
 export const StatsMini = memo(function StatsMini({ stats }: StatsMiniProps) {

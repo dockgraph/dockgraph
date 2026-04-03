@@ -1,3 +1,5 @@
+import { STATS_CPU_WARN, STATS_CPU_CRIT, STATS_THROTTLE_CRIT } from './constants';
+
 const PALETTE = [
   '#3b82f6',
   '#a855f7',
@@ -42,6 +44,13 @@ export const STATUS_COLORS: Record<string, string> = {
   created: '#06b6d4',
   not_running: '#64748b',
 };
+
+/** Returns a semantic color for CPU usage: green (ok), amber (warn), red (critical). */
+export function cpuColor(cpu: number, throttle: number): string {
+  if (cpu >= STATS_CPU_CRIT || throttle >= STATS_THROTTLE_CRIT) return '#ef4444';
+  if (cpu >= STATS_CPU_WARN || throttle > 0) return '#f59e0b';
+  return '#22c55e';
+}
 
 export const STATUS_LABELS: Record<string, string> = {
   running: 'Running',

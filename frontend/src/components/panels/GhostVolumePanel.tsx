@@ -1,12 +1,8 @@
 import { useTheme } from '../../theme';
 import { Section } from './shared';
-import { monoStyle, navLinkStyle } from './panelStyles';
-import type { DGNode } from '../../types';
-
-interface VolumeMount {
-  node: DGNode;
-  mountPath: string;
-}
+import { monoStyle } from './panelStyles';
+import { ContainerLink } from './ContainerLink';
+import type { DGNode, VolumeMount } from '../../types';
 
 interface Props {
   node: DGNode;
@@ -24,19 +20,7 @@ export function GhostVolumePanel({ node, mounts, onNavigate }: Props) {
         <Section title={`Containers (${mounts.length})`}>
           {mounts.map(({ node: container, mountPath }) => (
             <div key={container.id} style={{ marginBottom: 6 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: theme.panelText,
-                  marginBottom: 4,
-                  ...navLinkStyle(theme.panelBorder),
-                }}
-                onClick={() => onNavigate(`container:${container.name}`)}
-                title={`Inspect ${container.name}`}
-              >
-                {container.name}
-              </div>
+              <ContainerLink name={container.name} onNavigate={onNavigate} />
               {mountPath && (
                 <div style={{ fontSize: 11, marginBottom: 3 }}>
                   <span style={{ color: theme.nodeSubtext }}>Mount: </span>
