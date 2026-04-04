@@ -36,8 +36,8 @@ export const Dashboard = memo(function Dashboard({ nodes, statsMap }: Props) {
   const { data: historyData } = useStatsHistory(timeRange);
   const narrow = useIsNarrow();
 
-  const columns = narrow ? "1fr" : "repeat(4, 1fr)";
-  const wideSpan = narrow ? "span 1" : "span 2";
+  const cols4 = narrow ? "1fr" : "repeat(4, 1fr)";
+  const cols2 = narrow ? "1fr" : "1fr 1fr";
 
   return (
     <div style={{
@@ -46,48 +46,42 @@ export const Dashboard = memo(function Dashboard({ nodes, statsMap }: Props) {
       top: 50,
       overflowY: "auto",
       background: theme.canvasBg,
-      padding: "16px 24px",
+      fontFamily: "system-ui, -apple-system, sans-serif",
     }}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-        <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
-      </div>
+      <div style={{ maxWidth: 1440, margin: "0 auto", padding: "20px 24px 32px" }}>
 
-      <div style={{ display: "grid", gridTemplateColumns: columns, gap: 16 }}>
-        {/* Row 1: Summary cards */}
-        <StatusSummaryCard nodes={nodes} />
-        <HostInfoCard />
-        <DiskUsageCard />
-        <ImagesCard />
+        {/* Header row */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 20,
+        }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: theme.nodeText }}>Dashboard</span>
+          <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
+        </div>
 
-        {/* Row 2: CPU and Memory charts */}
-        <div style={{ gridColumn: wideSpan }}>
+        {/* Row 1: 4 summary cards — equal height */}
+        <div style={{ display: "grid", gridTemplateColumns: cols4, gap: 12, marginBottom: 12 }}>
+          <StatusSummaryCard nodes={nodes} />
+          <HostInfoCard />
+          <DiskUsageCard />
+          <ImagesCard />
+        </div>
+
+        {/* Row 2–3: Charts in 2-col grid */}
+        <div style={{ display: "grid", gridTemplateColumns: cols2, gap: 12, marginBottom: 12 }}>
           <ResourceChart title="CPU Usage" metric="cpu" data={historyData} />
-        </div>
-        <div style={{ gridColumn: wideSpan }}>
           <ResourceChart title="Memory Usage" metric="mem" data={historyData} />
-        </div>
-
-        {/* Row 3: Network and Disk I/O */}
-        <div style={{ gridColumn: wideSpan }}>
           <ResourceChart title="Network I/O" metric="netIO" data={historyData} />
-        </div>
-        <div style={{ gridColumn: wideSpan }}>
           <ResourceChart title="Disk I/O" metric="diskIO" data={historyData} />
         </div>
 
-        {/* Row 4: Top consumers and alerts */}
-        <div style={{ gridColumn: wideSpan }}>
+        {/* Row 4–5: Tables and lists */}
+        <div style={{ display: "grid", gridTemplateColumns: cols2, gap: 12 }}>
           <TopConsumersCard statsMap={statsMap} />
-        </div>
-        <div style={{ gridColumn: wideSpan }}>
           <AlertsCard nodes={nodes} statsMap={statsMap} />
-        </div>
-
-        {/* Row 5: Compose projects and events */}
-        <div style={{ gridColumn: wideSpan }}>
           <ComposeProjectsCard nodes={nodes} />
-        </div>
-        <div style={{ gridColumn: wideSpan }}>
           <EventTimelineCard />
         </div>
       </div>

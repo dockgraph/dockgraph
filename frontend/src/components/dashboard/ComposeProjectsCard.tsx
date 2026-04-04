@@ -1,6 +1,8 @@
 import { useMemo, memo } from "react";
 import { useTheme } from "../../theme";
 import { DashboardCard } from "./DashboardCard";
+import { ProgressBar } from "./ProgressBar";
+import { STATUS_COLORS } from "./palette";
 import type { DGNode } from "../../types";
 
 interface Props {
@@ -32,23 +34,40 @@ export const ComposeProjectsCard = memo(function ComposeProjectsCard({ nodes }: 
   }, [nodes]);
 
   return (
-    <DashboardCard title="Compose Projects">
+    <DashboardCard title="Compose Projects" emptyMessage={projects.length === 0 ? "No containers" : undefined}>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {projects.length === 0 && (
-          <span style={{ fontSize: 12, color: theme.nodeSubtext }}>No containers</span>
-        )}
         {projects.map(p => {
           const allRunning = p.running === p.total;
           const allStopped = p.running === 0;
-          const statusColor = allRunning ? "#22c55e" : allStopped ? "#ef4444" : "#f59e0b";
-          const statusLabel = allRunning ? "all running" : allStopped ? "all stopped" : "partial";
+          const statusColor = allRunning ? STATUS_COLORS.green : allStopped ? STATUS_COLORS.red : STATUS_COLORS.amber;
+          const pct = p.total > 0 ? (p.running / p.total) * 100 : 0;
 
           return (
-            <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor, flexShrink: 0 }} />
-              <span style={{ color: theme.nodeText, flex: 1, fontWeight: 500 }}>{p.name}</span>
-              <span style={{ color: theme.nodeSubtext, fontFamily: "monospace" }}>{p.running}/{p.total}</span>
-              <span style={{ color: theme.nodeSubtext, fontSize: 11 }}>{statusLabel}</span>
+            <div key={p.name}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: statusColor,
+                  flexShrink: 0,
+                }} />
+                <span style={{
+                  fontSize: 12,
+                  color: theme.nodeText,
+                  fontWeight: 500,
+                  flex: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}>
+                  {p.name}
+                </span>
+                <span style={{ fontSize: 11, color: theme.nodeSubtext, fontFamily: "monospace", flexShrink: 0 }}>
+                  {p.running}/{p.total}
+                </span>
+              </div>
+              <ProgressBar percent={pct} color={statusColor} />
             </div>
           );
         })}

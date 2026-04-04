@@ -1,5 +1,5 @@
-import { useEffect, useRef, memo } from "react";
-import { useTheme } from "../../theme";
+import { useEffect, useRef, memo, useMemo } from "react";
+import { useTheme, type Theme } from "../../theme";
 import { DashboardCard } from "./DashboardCard";
 import { formatBytes, formatPercent } from "../../utils/format";
 import type { StatsHistoryData } from "../../hooks/useStatsHistory";
@@ -15,8 +15,8 @@ interface Props {
 }
 
 const CHART_COLORS = [
-  "#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6",
-  "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#6366f1",
+  "#64b5f6", "#4ade80", "#fbbf24", "#f87171", "#c084fc",
+  "#f472b6", "#22d3ee", "#fb923c", "#a3e635", "#818cf8",
 ];
 
 function hashCode(str: string): number {
@@ -30,6 +30,30 @@ function hashCode(str: string): number {
 function colorForName(name: string): string {
   return CHART_COLORS[hashCode(name) % CHART_COLORS.length];
 }
+
+/** CSS overrides for uPlot to match the current theme. Re-injected on theme change. */
+const CHART_CSS_ID = "dg-uplot-overrides";
+function injectChartCSS(theme: Theme) {
+  let style = document.getElementById(CHART_CSS_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = CHART_CSS_ID;
+    document.head.appendChild(style);
+  }
+  style.textContent = `
+    .dg-chart .u-legend { font-size: 10px; padding: 4px 0 0; }
+    .dg-chart .u-legend .u-series { padding: 1px 6px; }
+    .dg-chart .u-legend .u-label { color: ${theme.nodeSubtext}; }
+    .dg-chart .u-legend .u-value { color: ${theme.nodeText}; font-family: monospace; font-size: 10px; }
+    .dg-chart .u-legend .u-series > * { vertical-align: middle; }
+    .dg-chart .u-legend .u-marker { width: 8px !important; height: 3px !important; border-radius: 1px !important; }
+    .dg-chart .u-cursor-x,
+    .dg-chart .u-cursor-y { border-color: ${theme.panelBorder} !important; }
+    .dg-chart .u-select { background: rgba(59,130,246,0.08) !important; }
+  `;
+}
+
+const CHART_HEIGHT = 160;
 
 function buildSeries(
   metric: Metric,
@@ -58,12 +82,14 @@ function buildSeries(
         break;
     }
 
+    const color = colorForName(name);
     values.push(vals);
     seriesOpts.push({
       label: name,
-      stroke: colorForName(name),
+      stroke: color,
       width: 1.5,
-      fill: metric === "netIO" || metric === "diskIO" ? colorForName(name) + "20" : undefined,
+      fill: (metric === "netIO" || metric === "diskIO") ? color + "18" : undefined,
+      points: { show: false },
     });
   });
 
@@ -78,13 +104,16 @@ export const ResourceChart = memo(function ResourceChart({ title, metric, data }
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
 
-  useEffect(() => {
-    if (!containerRef.current || !data || data.timestamps.length === 0) {
-      return;
-    }
+  // Inject/update CSS on theme change.
+  useEffect(() => { injectChartCSS(theme); }, [theme]);
 
-    const names = Object.keys(data.containers);
-    if (names.length === 0) return;
+  const hasData = useMemo(
+    () => data != null && data.timestamps.length > 0 && Object.keys(data.containers).length > 0,
+    [data],
+  );
+
+  useEffect(() => {
+    if (!containerRef.current || !hasData || !data) return;
 
     const { uData, seriesOpts } = buildSeries(metric, data);
 
@@ -94,18 +123,34 @@ export const ResourceChart = memo(function ResourceChart({ title, metric, data }
 
     const opts: uPlot.Options = {
       width: containerRef.current.clientWidth,
-      height: 200,
+      height: CHART_HEIGHT,
+      padding: [8, 8, 0, 0],
       series: seriesOpts,
       axes: [
-        { stroke: theme.nodeSubtext, grid: { stroke: theme.panelBorder } },
         {
           stroke: theme.nodeSubtext,
-          grid: { stroke: theme.panelBorder },
+          grid: { stroke: theme.panelBorder, width: 1 },
+          ticks: { stroke: theme.panelBorder, width: 1 },
+          font: "10px system-ui",
+          gap: 4,
+        },
+        {
+          stroke: theme.nodeSubtext,
+          grid: { stroke: theme.panelBorder, width: 1 },
+          ticks: { show: false },
+          font: "10px monospace",
+          gap: 4,
+          size: 54,
           values: (_u: uPlot, vals: number[]) => vals.map(v => valueFn(v)),
         },
       ],
-      cursor: { show: true },
-      legend: { show: true },
+      cursor: {
+        show: true,
+        x: true,
+        y: false,
+        drag: { x: false, y: false },
+      },
+      legend: { show: true, live: true },
       scales: { x: { time: true } },
     };
 
@@ -116,7 +161,7 @@ export const ResourceChart = memo(function ResourceChart({ title, metric, data }
       plotRef.current?.destroy();
       plotRef.current = null;
     };
-  }, [data, metric, theme]);
+  }, [data, metric, theme, hasData]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -124,7 +169,7 @@ export const ResourceChart = memo(function ResourceChart({ title, metric, data }
     const observer = new ResizeObserver(entries => {
       const entry = entries[0];
       if (entry && plotRef.current) {
-        plotRef.current.setSize({ width: entry.contentRect.width, height: 200 });
+        plotRef.current.setSize({ width: entry.contentRect.width, height: CHART_HEIGHT });
       }
     });
     observer.observe(el);
@@ -133,17 +178,18 @@ export const ResourceChart = memo(function ResourceChart({ title, metric, data }
 
   return (
     <DashboardCard title={title}>
-      <div ref={containerRef} style={{ width: "100%", minHeight: 200 }}>
-        {(!data || data.timestamps.length === 0) && (
+      <div ref={containerRef} className="dg-chart" style={{ width: "100%", minHeight: CHART_HEIGHT }}>
+        {!hasData && (
           <div style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            height: 200,
-            fontSize: 12,
+            height: CHART_HEIGHT,
+            fontSize: 11,
             color: theme.nodeSubtext,
+            opacity: 0.6,
           }}>
-            Collecting data...
+            Waiting for data...
           </div>
         )}
       </div>

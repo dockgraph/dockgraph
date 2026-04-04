@@ -1,16 +1,20 @@
 import { memo } from "react";
 import { useTheme } from "../../theme";
 import { DashboardCard } from "./DashboardCard";
+import { STATUS_COLORS } from "./palette";
 import { useRecentEvents, type DockerEvent } from "../../hooks/useRecentEvents";
 
 const ACTION_COLORS: Record<string, string> = {
-  start: "#22c55e",
-  stop: "#ef4444",
-  create: "#3b82f6",
-  destroy: "#ef4444",
-  die: "#ef4444",
-  connect: "#8b5cf6",
-  disconnect: "#f59e0b",
+  start: STATUS_COLORS.green,
+  stop: STATUS_COLORS.red,
+  create: STATUS_COLORS.blue,
+  destroy: STATUS_COLORS.red,
+  die: STATUS_COLORS.red,
+  connect: STATUS_COLORS.purple,
+  disconnect: STATUS_COLORS.amber,
+  kill: STATUS_COLORS.red,
+  pause: STATUS_COLORS.amber,
+  unpause: STATUS_COLORS.green,
 };
 
 function formatTime(timestamp: string): string {
@@ -24,34 +28,53 @@ export const EventTimelineCard = memo(function EventTimelineCard() {
   const events = data?.events ?? [];
 
   return (
-    <DashboardCard title="Event Timeline">
+    <DashboardCard title="Events" emptyMessage={events.length === 0 ? "No recent events" : undefined}>
       <div style={{
         display: "flex",
         flexDirection: "column",
-        gap: 4,
-        maxHeight: 240,
+        gap: 1,
+        maxHeight: 220,
         overflowY: "auto",
-        fontSize: 12,
       }}>
-        {events.length === 0 && (
-          <span style={{ color: theme.nodeSubtext, padding: 8 }}>No recent events</span>
-        )}
-        {events.map((e: DockerEvent, i: number) => (
-          <div key={`${e.timestamp}-${e.name}-${e.action}-${i}`} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ color: theme.nodeSubtext, fontFamily: "monospace", flexShrink: 0, fontSize: 11 }}>
-              {formatTime(e.timestamp)}
-            </span>
-            <span style={{
-              color: ACTION_COLORS[e.action] ?? theme.nodeText,
-              fontWeight: 500,
-              minWidth: 70,
-            }}>
-              {e.action}
-            </span>
-            <span style={{ color: theme.nodeSubtext }}>{e.type}</span>
-            <span style={{ color: theme.nodeText }}>{e.name}</span>
-          </div>
-        ))}
+        {events.map((e: DockerEvent, i: number) => {
+          const actionColor = ACTION_COLORS[e.action] ?? theme.nodeSubtext;
+          return (
+            <div
+              key={`${e.timestamp}-${e.name}-${e.action}-${i}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "64px 72px 1fr",
+                gap: 8,
+                padding: "4px 6px",
+                borderRadius: 3,
+                fontSize: 11,
+                alignItems: "center",
+              }}
+            >
+              <span style={{ color: theme.nodeSubtext, fontFamily: "monospace", fontSize: 10 }}>
+                {formatTime(e.timestamp)}
+              </span>
+              <span style={{
+                color: actionColor,
+                fontWeight: 600,
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: "0.02em",
+              }}>
+                {e.action}
+              </span>
+              <span style={{
+                color: theme.nodeText,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}>
+                {e.name}
+                <span style={{ color: theme.nodeSubtext, marginLeft: 6 }}>{e.type}</span>
+              </span>
+            </div>
+          );
+        })}
       </div>
     </DashboardCard>
   );
