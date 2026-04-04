@@ -8,17 +8,17 @@ interface Props {
   stats: ContainerStatsData | undefined;
 }
 
-function StatBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+function StatBar({ label, value, max, color, displayValue }: { label: string; value: number; max: number; color: string; displayValue?: string }) {
   const { theme } = useTheme();
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  const barPct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: theme.panelText, marginBottom: 2 }}>
         <span>{label}</span>
-        <span>{pct.toFixed(1)}%</span>
+        <span>{displayValue ?? `${barPct.toFixed(1)}%`}</span>
       </div>
       <div style={{ height: 4, background: theme.portBg, borderRadius: 2 }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+        <div style={{ width: `${barPct}%`, height: '100%', background: color, borderRadius: 2 }} />
       </div>
     </div>
   );
@@ -37,6 +37,7 @@ export function DetailPanelStats({ stats }: Props) {
         value={stats.cpuPercent}
         max={100}
         color={color}
+        displayValue={`${stats.cpuPercent.toFixed(1)}%`}
       />
       {stats.memUsage > 0 ? (
         <>
