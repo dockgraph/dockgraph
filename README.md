@@ -23,6 +23,7 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 
 - **Live topology graph** — containers, networks, and volumes rendered as an interactive, zoomable graph
 - **Table view** — alternative tabular view with sortable columns, grouping by compose project / network / status / driver, and collapsible groups
+- **Dashboard view** — 13-card monitoring dashboard with resource charts, top consumers, event timeline, alerts, disk usage, images, and compose project overview
 - **Detail panels** — click any resource to inspect stats, ports, mounts, environment, labels, logs, health checks, and network configuration
 - **Real-time updates** — watches the Docker event stream; the graph reflects changes within seconds
 - **Compose-aware** — parses compose files to show services that haven't started yet
@@ -110,6 +111,8 @@ environment:
 | `DG_POLL_INTERVAL` | `30s`           | Docker API polling interval                                                          |
 | `DG_COMPOSE_PATH`  | _(auto-detect)_ | Override: comma-separated list of compose files or directories to scan               |
 | `DG_PASSWORD`      | _(disabled)_    | Password for UI and WebSocket access; when set, requires login to view the dashboard |
+| `DG_STATS_INTERVAL`| `3s`            | Container stats poll interval (Go duration)                                          |
+| `DG_STATS_WORKERS` | `50`            | Max concurrent stats API calls                                                       |
 
 ## Security Considerations
 

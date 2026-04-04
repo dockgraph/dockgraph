@@ -27,6 +27,8 @@ All configuration is via environment variables:
 | `DG_POLL_INTERVAL` | `30s` | Docker API polling interval (Go duration) |
 | `DG_COMPOSE_PATH` | _(auto-detect)_ | Override: comma-separated compose files or directories to scan |
 | `DG_PASSWORD` | _(disabled)_ | Password for UI and WebSocket access |
+| `DG_STATS_INTERVAL` | `3s` | Container stats poll interval (Go duration) |
+| `DG_STATS_WORKERS` | `50` | Max concurrent stats API calls |
 
 Compose paths are auto-detected from the container's own bind mounts (excluding the Docker socket). Set `DG_COMPOSE_PATH` only if you need to override this behavior.
 
@@ -43,7 +45,11 @@ backend/
 │   ├── containers_detail.go # Container inspect endpoint
 │   ├── networks.go          # Network inspect endpoint
 │   ├── volumes.go           # Volume inspect endpoint
-│   ├── logs.go              # Container log streaming endpoint
+│   ├── logs.go              # Container log history and SSE streaming endpoints
+│   ├── events.go            # Recent Docker events endpoint
+│   ├── stats_history.go     # Stats time-series endpoint for dashboard charts
+│   ├── system.go            # System info, disk usage, and image list endpoints
+│   ├── system_cache.go      # Caching wrapper for system API calls
 │   └── validation.go        # Request validation helpers
 ├── auth/
 │   ├── handlers.go          # Login/logout HTTP handlers
@@ -64,7 +70,10 @@ backend/
 │   ├── stats_collector.go   # Container stats collection orchestrator
 │   ├── stats_worker.go      # Per-container stats polling worker
 │   ├── stats_calc.go        # CPU/memory/network stats calculation
-│   └── stats_types.go       # Stats data types
+│   ├── stats_types.go       # Stats data types
+│   ├── stats_history.go     # Ring buffer for stats time-series (dashboard charts)
+│   ├── event_history.go     # Ring buffer for recent Docker events
+│   └── debounce.go          # Timer-based debounce helper
 ├── state/
 │   ├── manager.go           # Merges Docker + Compose snapshots, notifies subscribers
 │   └── diff.go              # Snapshot diffing for incremental delta updates
@@ -141,13 +150,20 @@ When `DG_PASSWORD` is set, all endpoints (except `/healthz`) require a valid JWT
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/healthz` | Returns `200 ok` if Docker daemon is reachable |
-| `POST` | `/login` | Authenticate with password, returns JWT token |
+| `POST` | `/api/login` | Authenticate with password, returns JWT token |
+| `POST` | `/api/logout` | Invalidate current session |
+| `GET` | `/api/auth/check` | Verify session validity |
 | `GET` | `/ws` | WebSocket upgrade for live graph and stats updates |
-| `GET` | `/api/containers` | List containers with basic stats |
-| `GET` | `/api/containers/:name` | Container inspect (detailed info) |
-| `GET` | `/api/containers/:name/logs` | Stream container logs (SSE) |
+| `GET` | `/api/containers/:id` | Container inspect (detailed info) |
+| `GET` | `/api/containers/:id/logs` | Stream container logs (SSE) |
+| `GET` | `/api/containers/:id/logs/history` | Paginated log history (JSON) |
 | `GET` | `/api/networks/:name` | Network inspect (IPAM, containers) |
 | `GET` | `/api/volumes/:name` | Volume inspect (driver, usage, labels) |
+| `GET` | `/api/system/info` | Docker host system information |
+| `GET` | `/api/system/disk-usage` | Docker disk usage breakdown |
+| `GET` | `/api/images` | Docker image list |
+| `GET` | `/api/stats/history` | Stats time-series for dashboard charts |
+| `GET` | `/api/events/recent` | Recent Docker events |
 | `GET` | `/*` | Serves embedded frontend SPA with client-side routing fallback |
 
 ## Testing
