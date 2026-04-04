@@ -53,8 +53,8 @@ export function DetailPanelLogs({ containerId, active }: Props) {
     const { scrollTop, scrollHeight, clientHeight } = el;
     setAutoScroll(scrollHeight - scrollTop - clientHeight < 20);
 
-    // Load more when scrolled near the top.
-    if (scrollTop < 40 && hasMore && !loadingMore) {
+    // Load more when scrolled near the top (only if content is actually scrollable).
+    if (scrollTop < 40 && scrollHeight > clientHeight && hasMore && !loadingMore) {
       prevScrollHeightRef.current = el.scrollHeight;
       loadMore();
     }
