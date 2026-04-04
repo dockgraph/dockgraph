@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -250,13 +251,26 @@ func pipeEvents(ctx context.Context, cli *client.Client, history *collector.Even
 	for {
 		select {
 		case msg := <-msgCh:
+			action := string(msg.Action)
+			// Skip exec and health_status events — healthcheck noise.
+			if strings.HasPrefix(action, "exec_") || strings.HasPrefix(action, "health_status") {
+				continue
+			}
+			// Skip events from dockgraph's own container.
+			if msg.Actor.Attributes[collector.SelfExcludeLabel] == "true" {
+				continue
+			}
 			name := msg.Actor.Attributes["name"]
 			if name == "" {
 				name = msg.Actor.ID
 			}
+			ts := time.Unix(0, msg.TimeNano)
+			if msg.TimeNano == 0 {
+				ts = time.Unix(msg.Time, 0)
+			}
 			history.Add(collector.DockerEvent{
-				Timestamp:  time.Unix(msg.Time, msg.TimeNano),
-				Action:     string(msg.Action),
+				Timestamp:  ts,
+				Action:     action,
 				Type:       string(msg.Type),
 				Name:       name,
 				Attributes: msg.Actor.Attributes,
