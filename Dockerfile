@@ -1,5 +1,5 @@
 # ── Stage 1: Build frontend ──────────────────────────────────
-FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS frontend
+FROM node:26-alpine@sha256:30f5a66e7265ef70aac56b4753ffa7905e54eca1084bc25503893ad8e9273f05 AS frontend
 WORKDIR /app/frontend
 
 # Install dependencies first (cached layer — only re-runs when lockfile changes)
