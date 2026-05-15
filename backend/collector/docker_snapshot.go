@@ -57,7 +57,7 @@ func fetchResources(ctx context.Context, cli DockerClient) (dockerResources, err
 func resolveNetworkNames(networks []networktypes.Summary) map[string]string {
 	idToName := make(map[string]string)
 	for _, n := range networks {
-		if n.Name == "bridge" || n.Name == "host" || n.Name == "none" {
+		if n.Name == networkBridge || n.Name == "host" || n.Name == "none" {
 			continue
 		}
 		idToName[n.ID] = n.Name
@@ -79,7 +79,7 @@ func resolveServiceNames(containers []containertypes.Summary) map[serviceKey]str
 		if len(c.Names) == 0 {
 			continue
 		}
-		project := c.Labels["com.docker.compose.project"]
+		project := c.Labels[composeProjectLabel]
 		service := c.Labels["com.docker.compose.service"]
 		if project != "" && service != "" {
 			m[serviceKey{project, service}] = strings.TrimPrefix(c.Names[0], "/")
@@ -106,7 +106,7 @@ func buildContainerEdges(name string, c containertypes.Summary, networkIDToName 
 
 	// Volume mounts
 	for _, m := range c.Mounts {
-		if m.Type == "volume" {
+		if m.Type == mountTypeVolume {
 			edges = append(edges, Edge{
 				ID:        "e:vol:" + m.Name + ":" + name,
 				Type:      "volume_mount",
@@ -120,7 +120,7 @@ func buildContainerEdges(name string, c containertypes.Summary, networkIDToName 
 	// Depends-on edges derived from compose labels.
 	// The label format is comma-separated entries of "service:condition:restart",
 	// e.g. "db:service_healthy:false,redis:service_started:false".
-	project := c.Labels["com.docker.compose.project"]
+	project := c.Labels[composeProjectLabel]
 	depsLabel := c.Labels["com.docker.compose.depends_on"]
 	if project != "" && depsLabel != "" {
 		for _, entry := range strings.Split(depsLabel, ",") {
@@ -176,7 +176,7 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 	selfProjects := make(map[string]bool)
 	for _, c := range res.containers {
 		if isSelfExcluded(c.Labels) {
-			if p := c.Labels["com.docker.compose.project"]; p != "" {
+			if p := c.Labels[composeProjectLabel]; p != "" {
 				selfProjects[p] = true
 			}
 		}
@@ -185,7 +185,7 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 	networkIDToName := resolveNetworkNames(res.networks)
 	for _, n := range res.networks {
 		if networkIDToName[n.ID] != "" {
-			if p := n.Labels["com.docker.compose.project"]; p != "" && selfProjects[p] {
+			if p := n.Labels[composeProjectLabel]; p != "" && selfProjects[p] {
 				continue
 			}
 			node := buildNetworkNode(n.Name, n.Driver)
@@ -193,8 +193,8 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 				node.Subnet = n.IPAM.Config[0].Subnet
 				node.Gateway = n.IPAM.Config[0].Gateway
 			}
-			if project := n.Labels["com.docker.compose.project"]; project != "" {
-				node.Labels = map[string]string{"com.docker.compose.project": project}
+			if project := n.Labels[composeProjectLabel]; project != "" {
+				node.Labels = map[string]string{composeProjectLabel: project}
 			}
 			snap.Nodes = append(snap.Nodes, node)
 		}
@@ -222,8 +222,8 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		if primary != "" {
 			node.NetworkID = "network:" + primary
 		}
-		if project := c.Labels["com.docker.compose.project"]; project != "" {
-			node.Labels = map[string]string{"com.docker.compose.project": project}
+		if project := c.Labels[composeProjectLabel]; project != "" {
+			node.Labels = map[string]string{composeProjectLabel: project}
 		}
 		snap.Nodes = append(snap.Nodes, node)
 
@@ -231,12 +231,12 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 	}
 
 	for _, v := range res.volumes {
-		if p := v.Labels["com.docker.compose.project"]; p != "" && selfProjects[p] {
+		if p := v.Labels[composeProjectLabel]; p != "" && selfProjects[p] {
 			continue
 		}
 		node := buildVolumeNode(v.Name, v.Driver, "created")
-		if project := v.Labels["com.docker.compose.project"]; project != "" {
-			node.Labels = map[string]string{"com.docker.compose.project": project}
+		if project := v.Labels[composeProjectLabel]; project != "" {
+			node.Labels = map[string]string{composeProjectLabel: project}
 		}
 		snap.Nodes = append(snap.Nodes, node)
 	}

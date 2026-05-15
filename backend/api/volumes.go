@@ -42,7 +42,7 @@ func HandleVolumeInspect(inspector VolumeInspector) http.HandlerFunc {
 
 func buildVolumeResponse(vol volumetypes.Volume) map[string]any {
 	resp := map[string]any{
-		"name":       vol.Name,
+		fieldName:    vol.Name,
 		"driver":     vol.Driver,
 		"mountpoint": vol.Mountpoint,
 		"createdAt":  vol.CreatedAt,

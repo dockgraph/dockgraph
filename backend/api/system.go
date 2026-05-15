@@ -17,6 +17,14 @@ type SystemInfoProvider interface {
 	Info(ctx context.Context) (systemtypes.Info, error)
 }
 
+// diskUsageBucket is one resource group's slice of the disk-usage report:
+// total bytes used, item count, and reclaimable bytes (idle/dangling).
+type diskUsageBucket struct {
+	Total       int64 `json:"total"`
+	Count       int   `json:"count"`
+	Reclaimable int64 `json:"reclaimable"`
+}
+
 // SystemDiskUsageProvider fetches Docker disk usage statistics.
 type SystemDiskUsageProvider interface {
 	DiskUsage(ctx context.Context, options dockertypes.DiskUsageOptions) (dockertypes.DiskUsage, error)
@@ -72,7 +80,7 @@ func HandleSystemDiskUsage(provider SystemDiskUsageProvider) http.HandlerFunc {
 		var imgTotal, imgReclaimable int64
 		for _, img := range du.Images {
 			imgTotal += img.Size
-			if len(img.RepoTags) == 0 || (len(img.RepoTags) == 1 && img.RepoTags[0] == "<none>:<none>") {
+			if len(img.RepoTags) == 0 || (len(img.RepoTags) == 1 && img.RepoTags[0] == untaggedImageTag) {
 				imgReclaimable += img.Size
 			}
 		}
@@ -80,7 +88,7 @@ func HandleSystemDiskUsage(provider SystemDiskUsageProvider) http.HandlerFunc {
 		var ctrTotal, ctrReclaimable int64
 		for _, c := range du.Containers {
 			ctrTotal += c.SizeRw
-			if c.State != "running" {
+			if c.State != stateRunning {
 				ctrReclaimable += c.SizeRw
 			}
 		}
@@ -103,11 +111,11 @@ func HandleSystemDiskUsage(provider SystemDiskUsageProvider) http.HandlerFunc {
 			}
 		}
 
-		resp := map[string]any{
-			"images":     map[string]any{"total": imgTotal, "count": len(du.Images), "reclaimable": imgReclaimable},
-			"containers": map[string]any{"total": ctrTotal, "count": len(du.Containers), "reclaimable": ctrReclaimable},
-			"volumes":    map[string]any{"total": volTotal, "count": len(du.Volumes), "reclaimable": volReclaimable},
-			"buildCache": map[string]any{"total": cacheTotal, "count": len(du.BuildCache), "reclaimable": cacheReclaimable},
+		resp := map[string]diskUsageBucket{
+			"images":     {Total: imgTotal, Count: len(du.Images), Reclaimable: imgReclaimable},
+			"containers": {Total: ctrTotal, Count: len(du.Containers), Reclaimable: ctrReclaimable},
+			"volumes":    {Total: volTotal, Count: len(du.Volumes), Reclaimable: volReclaimable},
+			"buildCache": {Total: cacheTotal, Count: len(du.BuildCache), Reclaimable: cacheReclaimable},
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -135,13 +143,13 @@ func HandleImages(lister ImageLister) http.HandlerFunc {
 
 		for _, img := range images {
 			totalSize += img.Size
-			isDangling := len(img.RepoTags) == 0 || (len(img.RepoTags) == 1 && img.RepoTags[0] == "<none>:<none>")
+			isDangling := len(img.RepoTags) == 0 || (len(img.RepoTags) == 1 && img.RepoTags[0] == untaggedImageTag)
 			if isDangling {
 				dangling++
 				danglingSize += img.Size
 			}
 			for _, tag := range img.RepoTags {
-				if tag != "<none>:<none>" {
+				if tag != untaggedImageTag {
 					tags[tag] = true
 				}
 			}

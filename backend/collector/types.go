@@ -104,12 +104,12 @@ type WireMessage struct {
 
 // NewSnapshotMessage wraps a full graph snapshot for WebSocket transmission.
 func NewSnapshotMessage(s GraphSnapshot) WireMessage {
-	return WireMessage{Type: "snapshot", Version: 1, Data: s}
+	return WireMessage{Type: MsgTypeSnapshot, Version: 1, Data: s}
 }
 
 // NewDeltaMessage wraps an incremental update for WebSocket transmission.
 func NewDeltaMessage(d DeltaUpdate) WireMessage {
-	return WireMessage{Type: "delta", Version: 1, Data: d}
+	return WireMessage{Type: MsgTypeDelta, Version: 1, Data: d}
 }
 
 // StateMessage is an internal message passed from the state manager to the

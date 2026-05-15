@@ -45,10 +45,10 @@ func buildInspectResponse(info containertypes.InspectResponse) map[string]any {
 	name := strings.TrimPrefix(info.Name, "/")
 
 	resp := map[string]any{
-		"name":          name,
+		fieldName:       name,
 		"image":         info.Config.Image,
 		"status":        info.State.Status,
-		"running":       info.State.Running,
+		stateRunning:    info.State.Running,
 		"paused":        info.State.Paused,
 		"restarting":    info.State.Restarting,
 		"oomKilled":     info.State.OOMKilled,
