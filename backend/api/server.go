@@ -105,7 +105,7 @@ func spaHandler(fsys fs.FS) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if path == "/" {
-			path = "index.html"
+			path = indexHTMLPath
 		} else {
 			path = strings.TrimPrefix(path, "/")
 		}

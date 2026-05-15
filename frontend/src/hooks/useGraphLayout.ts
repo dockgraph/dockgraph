@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useNodesState,
   useEdgesState,
@@ -47,54 +47,47 @@ export function useGraphLayout(
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
 
   const topoKey = useMemo(() => topologyKey(dgNodes, dgEdges), [dgNodes, dgEdges]);
-  const prevTopoKeyRef = useRef('');
-  const layoutInFlightRef = useRef(false);
-  const [layoutBusy, setLayoutBusy] = useState(false);
-  const [layoutError, setLayoutError] = useState(false);
+  // settledTopoKey: fingerprint of the topology currently positioned on screen.
+  // errorTopoKey:   fingerprint of the topology whose most recent attempt failed.
+  // Tracking these as state lets layoutBusy/layoutError be derived during render
+  // instead of being assigned via setState inside the effect body.
+  const [settledTopoKey, setSettledTopoKey] = useState('');
+  const [errorTopoKey, setErrorTopoKey] = useState<string | null>(null);
+  const layoutBusy = dgNodes.length > 0 && topoKey !== settledTopoKey && errorTopoKey !== topoKey;
+  const layoutError = errorTopoKey === topoKey;
 
   // Full ELK layout — only when topology (node/edge set) changes.
   useEffect(() => {
     if (dgNodes.length === 0) return;
     let cancelled = false;
-    layoutInFlightRef.current = true;
 
-    setLayoutBusy(true);
-    setLayoutError(false);
     const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
     const rfEdges = toReactFlowEdges(dgEdges, dgNodes, edgeStroke);
 
     computeLayout(rfNodes, rfEdges)
       .then((layout) => {
         if (cancelled) return;
-        prevTopoKeyRef.current = topoKey;
         setNodes(layout.nodes);
         setEdges(layout.edges);
+        setErrorTopoKey(null);
+        setSettledTopoKey(topoKey);
       })
       .catch((err) => {
         console.error('layout computation failed:', err);
-        if (!cancelled) setLayoutError(true);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLayoutBusy(false);
-          layoutInFlightRef.current = false;
-        }
+        if (!cancelled) setErrorTopoKey(topoKey);
       });
 
-    return () => {
-      cancelled = true;
-      layoutInFlightRef.current = false;
-    };
-  // topoKey captures the identity of dgNodes/dgEdges — when it changes, the
-  // full layout runs. edgeStroke is excluded because color-only changes are
-  // handled by the lightweight update below.
+    return () => { cancelled = true; };
+  // edgeStroke is excluded — color-only changes are handled by the
+  // lightweight update below without re-running ELK.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topoKey, setNodes, setEdges]);
 
   // Lightweight update — apply status/style changes without relayout.
+  // settledTopoKey is in deps so this re-runs after a fresh layout completes,
+  // catching data that arrived while the layout was in flight.
   useEffect(() => {
-    if (dgNodes.length === 0 || topoKey !== prevTopoKeyRef.current) return;
-    if (layoutInFlightRef.current) return;
+    if (dgNodes.length === 0 || topoKey !== settledTopoKey) return;
 
     const rfEdges = toReactFlowEdges(dgEdges, dgNodes, edgeStroke);
     const rfEdgeMap = new Map(rfEdges.map((e) => [e.id, e]));
@@ -109,16 +102,7 @@ export function useGraphLayout(
       const updated = rfNodeMap.get(n.id);
       return updated ? { ...n, data: { ...n.data, ...updated.data } } : n;
     }));
-  // dgNodes/dgEdges trigger this on every data change. When the topology
-  // also changed, the guard (topoKey !== prevTopoKeyRef) skips this effect
-  // in favour of the full layout above.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dgNodes, dgEdges, edgeStroke, setNodes, setEdges]);
+  }, [dgNodes, dgEdges, edgeStroke, topoKey, settledTopoKey, setNodes, setEdges]);
 
-  // Cover the render gap between "input nodes arrived" and "effect sets
-  // layoutBusy=true": if we have input but no positioned output yet and
-  // no error, the layout is effectively pending.
-  const effectiveBusy = layoutBusy || (dgNodes.length > 0 && nodes.length === 0 && !layoutError);
-
-  return { nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, layoutBusy: effectiveBusy, layoutError };
+  return { nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, layoutBusy, layoutError };
 }

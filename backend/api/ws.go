@@ -170,9 +170,9 @@ func (c *wsClient) readPump(h *Hub) {
 func (h *Hub) Broadcast(msg collector.StateMessage) {
 	var wire collector.WireMessage
 	switch {
-	case msg.Type == "snapshot" && msg.Snapshot != nil:
+	case msg.Type == collector.MsgTypeSnapshot && msg.Snapshot != nil:
 		wire = collector.NewSnapshotMessage(*msg.Snapshot)
-	case msg.Type == "delta" && msg.Delta != nil:
+	case msg.Type == collector.MsgTypeDelta && msg.Delta != nil:
 		wire = collector.NewDeltaMessage(*msg.Delta)
 	default:
 		return

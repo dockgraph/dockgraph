@@ -48,7 +48,7 @@ func (m *Manager) Subscribe() (<-chan collector.StateMessage, func()) {
 	if len(m.merged.Nodes) > 0 {
 		snap := m.merged
 		ch <- collector.StateMessage{
-			Type:     "snapshot",
+			Type:     collector.MsgTypeSnapshot,
 			Snapshot: &snap,
 		}
 	}
@@ -113,7 +113,7 @@ func (m *Manager) HandleUpdate(name string, runtime bool, update collector.State
 	var msg collector.StateMessage
 	if !hadState {
 		msg = collector.StateMessage{
-			Type:     "snapshot",
+			Type:     collector.MsgTypeSnapshot,
 			Snapshot: &snapshot,
 		}
 	} else {
@@ -123,7 +123,7 @@ func (m *Manager) HandleUpdate(name string, runtime bool, update collector.State
 			return
 		}
 		msg = collector.StateMessage{
-			Type:     "delta",
+			Type:     collector.MsgTypeDelta,
 			Delta:    &delta,
 			Snapshot: &snapshot,
 		}
