@@ -29,7 +29,7 @@ func buildMounts(info containertypes.InspectResponse) []map[string]any {
 			"propagation": string(m.Propagation),
 		}
 		if m.Name != "" {
-			entry["name"] = m.Name
+			entry[fieldName] = m.Name
 		}
 		mounts = append(mounts, entry)
 	}
@@ -43,7 +43,7 @@ func buildNetworks(info containertypes.InspectResponse) []map[string]any {
 	}
 	for name, ns := range info.NetworkSettings.Networks {
 		nets = append(nets, map[string]any{
-			"name":        name,
+			fieldName:     name,
 			"ipAddress":   ns.IPAddress,
 			"gateway":     ns.Gateway,
 			"macAddress":  ns.MacAddress,

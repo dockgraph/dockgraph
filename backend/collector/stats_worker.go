@@ -28,7 +28,7 @@ func pollAllStats(ctx context.Context, cli DockerClient, maxWorkers int) StatsSn
 	)
 
 	for _, c := range containers {
-		if c.State != "running" {
+		if c.State != StateRunning {
 			continue
 		}
 		if isSelfExcluded(c.Labels) {

@@ -23,9 +23,10 @@ func isSelfExcluded(labels map[string]string) bool {
 // in the container/network/volume topology.
 func isTopologyEvent(action events.Action) bool {
 	switch string(action) {
-	case "start", "stop", "die", "kill", "create", "destroy", "rename",
-		"pause", "unpause", "health_status",
-		"connect", "disconnect":
+	case eventStart, eventStop, eventDie, eventKill,
+		eventCreate, eventDestroy, eventRename,
+		eventPause, eventUnpause, eventHealthStatus,
+		eventConnect, eventDisconnect:
 		return true
 	}
 	return false

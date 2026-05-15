@@ -6,7 +6,7 @@ import "sort"
 func buildContainerNode(name, image, status string, ports []PortMapping) Node {
 	return Node{
 		ID:     "container:" + name,
-		Type:   "container",
+		Type:   nodeTypeContainer,
 		Name:   name,
 		Image:  image,
 		Status: status,
@@ -28,7 +28,7 @@ func buildNetworkNode(name, driver string) Node {
 func buildVolumeNode(name, driver, status string) Node {
 	return Node{
 		ID:     "volume:" + name,
-		Type:   "volume",
+		Type:   nodeTypeVolume,
 		Name:   name,
 		Driver: driver,
 		Status: status,

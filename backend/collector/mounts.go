@@ -27,7 +27,7 @@ func DetectComposePaths(ctx context.Context, cli DockerClient) ([]string, error)
 
 	var paths []string
 	for _, m := range containers[0].Mounts {
-		if m.Type != "bind" {
+		if m.Type != mountTypeBind {
 			continue
 		}
 		if strings.HasSuffix(m.Destination, "docker.sock") {

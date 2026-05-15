@@ -42,7 +42,7 @@ func HandleNetworkInspect(inspector NetworkInspector) http.HandlerFunc {
 
 func buildNetworkInspectResponse(network networktypes.Inspect) map[string]any {
 	resp := map[string]any{
-		"name":       network.Name,
+		fieldName:    network.Name,
 		"id":         network.ID,
 		"driver":     network.Driver,
 		"scope":      network.Scope,
@@ -75,7 +75,7 @@ func buildNetworkInspectResponse(network networktypes.Inspect) map[string]any {
 		for id, ep := range network.Containers {
 			containers = append(containers, map[string]string{
 				"id":          id,
-				"name":        ep.Name,
+				fieldName:     ep.Name,
 				"ipv4Address": ep.IPv4Address,
 				"ipv6Address": ep.IPv6Address,
 				"macAddress":  ep.MacAddress,
