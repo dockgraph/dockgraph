@@ -63,9 +63,9 @@ func sumNetworkIO(networks map[string]containertypes.NetworkStats) (rx, tx, rxEr
 func sumBlockIO(blkio containertypes.BlkioStats) (read, write uint64) {
 	for _, entry := range blkio.IoServiceBytesRecursive {
 		switch entry.Op {
-		case "read", "Read":
+		case blkIOOpRead, "Read":
 			read += entry.Value
-		case "write", "Write":
+		case blkIOOpWrite, "Write":
 			write += entry.Value
 		}
 	}

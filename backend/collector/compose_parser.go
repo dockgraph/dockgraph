@@ -138,7 +138,7 @@ func buildServiceEdges(svc composetypes.ServiceConfig, naming composeNaming, svc
 	}
 
 	for _, v := range svc.Volumes {
-		if v.Type == "volume" {
+		if v.Type == mountTypeVolume {
 			fullVolName := naming.volume(v.Source)
 			edges = append(edges, Edge{
 				ID:        "e:vol:" + fullVolName + ":" + svcName,
