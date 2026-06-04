@@ -13,10 +13,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@xyflow/react": "^12.10.2",
+    "@xyflow/react": "^12.11.0",
     "elkjs": "^0.11.1",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "uplot": "^1.6.32"
   },
   "devDependencies": {
@@ -25,10 +25,10 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.9.1",
-    "@types/react": "^19.2.15",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.8",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -36,7 +36,7 @@
     "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.4",
-    "vite": "^8.0.14",
+    "vite": "^8.0.16",
     "vitest": "^4.1.2"
   }
 }
