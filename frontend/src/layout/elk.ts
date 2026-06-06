@@ -1,11 +1,21 @@
-import ELK, { type ElkNode } from 'elkjs/lib/elk.bundled';
+import type { ElkNode } from 'elkjs/lib/elk.bundled';
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import { findComponents } from './components';
 import { extractEdgePaths } from './edgePaths';
 import { classifyNodes, buildElkChildren, wrapComponents } from './elkGraph';
 import { applyElkPositions } from './elkPositions';
 
-const elk = new ELK();
+// ELK's runtime (~1.6 MB) is the single largest dependency, but it only runs
+// once graph data has arrived. Load it lazily on first layout so it lands in
+// its own chunk instead of the initial bundle.
+type ElkInstance = InstanceType<typeof import('elkjs/lib/elk.bundled').default>;
+let elkPromise: Promise<ElkInstance> | null = null;
+function getElk(): Promise<ElkInstance> {
+  if (!elkPromise) {
+    elkPromise = import('elkjs/lib/elk.bundled').then((m) => new m.default());
+  }
+  return elkPromise;
+}
 
 const MIN_NODE_WIDTH = 140;
 const MAX_NODE_WIDTH = 250;
@@ -96,6 +106,7 @@ export async function computeLayout(
     edges: wrappedEdges,
   };
 
+  const elk = await getElk();
   const layout = await elk.layout(elkGraph);
   applyElkPositions(layout, nodeMap);
 

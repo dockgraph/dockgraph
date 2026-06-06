@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import {
   ReactFlow,
   MiniMap,
@@ -23,8 +23,7 @@ import { StatusIndicator } from "./StatusIndicator";
 import { SearchFilter } from "./SearchFilter";
 import { ViewTabs } from "./ViewTabs";
 import type { ViewKey } from "./ViewTabs";
-import { TableView } from "./table/TableView";
-import { Dashboard } from "./dashboard/Dashboard";
+import { Spinner } from "./StateDisplay";
 import { DetailPanel } from "./panels/DetailPanel";
 import { DetailPanelHeader } from "./panels/DetailPanelHeader";
 import { DetailPanelStats } from "./panels/DetailPanelStats";
@@ -53,6 +52,19 @@ import { networkColor } from "../utils/colors";
 import { useTheme } from "../theme";
 import type { DGNode, DGEdge, ContainerStatsData } from "../types";
 import type { ReactNode } from "react";
+
+// Code-split the Table and Dashboard views (the latter pulls in uPlot) so the
+// default Graph view doesn't pay for them on first load.
+const TableView = lazy(() => import("./table/TableView").then((m) => ({ default: m.TableView })));
+const Dashboard = lazy(() => import("./dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
+
+function ViewFallback() {
+  return (
+    <div style={{ position: "absolute", inset: 0, top: 50, display: "grid", placeItems: "center" }}>
+      <Spinner />
+    </div>
+  );
+}
 
 function Overlay({ children }: { children: ReactNode }) {
   return (
@@ -353,17 +365,21 @@ export function FlowCanvas({
 
       {activeView === "table" ? (
         <div style={{ position: "absolute", inset: 0, top: 50, display: "flex", flexDirection: "column" }}>
-          <TableView
-            nodes={dgNodes}
-            edges={dgEdges}
-            statsMap={statsMap}
-            matchingNodeIds={search.matchingNodeIds}
-            selectedNodeId={detailNodeId}
-            onRowClick={handleInfoClickWithSelect}
-          />
+          <Suspense fallback={<ViewFallback />}>
+            <TableView
+              nodes={dgNodes}
+              edges={dgEdges}
+              statsMap={statsMap}
+              matchingNodeIds={search.matchingNodeIds}
+              selectedNodeId={detailNodeId}
+              onRowClick={handleInfoClickWithSelect}
+            />
+          </Suspense>
         </div>
       ) : activeView === "dashboard" ? (
-        <Dashboard nodes={dgNodes} statsMap={statsMap} />
+        <Suspense fallback={<ViewFallback />}>
+          <Dashboard nodes={dgNodes} statsMap={statsMap} />
+        </Suspense>
       ) : (
       <>
       {showEmptyState && (
