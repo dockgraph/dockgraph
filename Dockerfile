@@ -4,8 +4,7 @@ WORKDIR /app/frontend
 
 # Install dependencies first (cached layer — only re-runs when lockfile changes)
 COPY frontend/package.json frontend/package-lock.json ./
-# TODO: remove --legacy-peer-deps once typescript-eslint supports TypeScript 6
-RUN --mount=type=cache,target=/root/.npm npm ci --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Copy source and build the production bundle
 COPY frontend/ ./
