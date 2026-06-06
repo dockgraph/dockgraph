@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTheme } from "../theme";
 
 const VIEWS = [
@@ -15,13 +16,15 @@ interface Props {
 
 export function ViewTabs({ activeView, onViewChange }: Props) {
   const { theme } = useTheme();
+  const [hovered, setHovered] = useState<ViewKey | null>(null);
 
   return (
     <div
       style={{
         display: "flex",
         alignItems: "center",
-        background: theme.panelBg,
+        // Recessed track, a shade below the top bar so the active chip reads as raised.
+        background: theme.canvasBg,
         border: `1px solid ${theme.panelBorder}`,
         borderRadius: 8,
         padding: 3,
@@ -30,20 +33,27 @@ export function ViewTabs({ activeView, onViewChange }: Props) {
     >
       {VIEWS.map(({ key, label }) => {
         const active = key === activeView;
+        const hot = !active && hovered === key;
         return (
           <button
             key={key}
             onClick={active ? undefined : () => onViewChange(key)}
+            onMouseEnter={() => setHovered(key)}
+            onMouseLeave={() => setHovered((h) => (h === key ? null : h))}
             aria-current={active ? "page" : undefined}
             style={{
-              padding: "5px 14px",
+              padding: "6px 14px",
               borderRadius: 6,
               border: "none",
-              background: active ? theme.panelBorder : "transparent",
-              color: active ? theme.nodeText : theme.nodeSubtext,
-              fontSize: 11,
-              fontWeight: active ? 500 : 400,
+              fontFamily: "var(--dg-font-ui)",
+              fontSize: 12,
+              fontWeight: active ? 600 : 500,
               cursor: active ? "default" : "pointer",
+              background: active ? theme.nodeBg : hot ? theme.rowHover : "transparent",
+              color: active ? theme.accent : hot ? theme.nodeText : theme.nodeSubtext,
+              boxShadow: active
+                ? `inset 0 0 0 1px ${theme.accentSoft}, 0 1px 2px rgba(0, 0, 0, 0.25)`
+                : "none",
               transition: "background 0.15s, color 0.15s",
             }}
           >

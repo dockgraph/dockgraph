@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useTheme } from '../theme';
 
 export function LogoutButton() {
-  const { theme } = useTheme();
   const [visible, setVisible] = useState(false);
 
   // When auth is disabled, /api/auth/check falls through to the SPA handler
@@ -34,21 +32,13 @@ export function LogoutButton() {
       onClick={handleLogout}
       title="Sign out"
       aria-label="Sign out"
-      style={{
-        background: theme.panelBg,
-        border: `1px solid ${theme.panelBorder}`,
-        borderRadius: 8,
-        padding: '8px 8px',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        fontSize: 12,
-        lineHeight: 1,
-        color: theme.panelText,
-      }}
+      className="dg-iconbtn"
     >
-      <span>Sign out</span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <polyline points="16 17 21 12 16 7" />
+        <line x1="21" y1="12" x2="9" y2="12" />
+      </svg>
     </button>
   );
 }
