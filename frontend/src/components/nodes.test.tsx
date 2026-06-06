@@ -15,7 +15,8 @@ vi.mock('@xyflow/react', () => ({
 const darkTheme = {
   mode: 'dark' as const,
   canvasBg: '#0f172a',
-  dotColor: '#2d3a4d',
+  dotColor: 'rgba(122, 162, 204, 0.10)',
+  dotColorMajor: 'rgba(122, 162, 204, 0.22)',
   nodeBg: '#1e293b',
   nodeBorder: '#334155',
   nodeGhostBorder: '#475569',
@@ -24,6 +25,7 @@ const darkTheme = {
   portBg: '#0f172a',
   portText: '#94a3b8',
   edgeStroke: '#475569',
+  edgeSignal: '#1f9488',
   panelBg: '#1e293b',
   panelBorder: '#334155',
   panelText: '#94a3b8',
@@ -182,15 +184,15 @@ describe('NetworkGroup', () => {
 // --- StatusIndicator ---
 
 describe('StatusIndicator', () => {
-  it('shows Live when connected', () => {
+  it('shows LIVE when connected', () => {
     render(<StatusIndicator connected />);
-    expect(screen.getByText('Live')).toBeDefined();
+    expect(screen.getByText('LIVE')).toBeDefined();
     expect(screen.getByRole('status')).toBeDefined();
   });
 
-  it('shows Disconnected when not connected', () => {
+  it('shows OFFLINE when not connected', () => {
     render(<StatusIndicator connected={false} />);
-    expect(screen.getByText('Disconnected')).toBeDefined();
+    expect(screen.getByText('OFFLINE')).toBeDefined();
   });
 });
 

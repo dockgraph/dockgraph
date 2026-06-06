@@ -1,5 +1,5 @@
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
-import { networkColor } from './colors';
+import { networkColor, VOLUME_COLOR } from './colors';
 import type { DGNode, DGEdge } from '../types';
 import { ANIMATION_NODE_LIMIT, DEFAULT_EDGE_STROKE_WIDTH } from './constants';
 
@@ -144,15 +144,21 @@ export function toReactFlowNodes(dgNodes: DGNode[], dgEdges: DGEdge[]): RFNode[]
  * Converts domain edges (DGEdge) into React Flow edges with appropriate
  * stroke colors and active/inactive state based on endpoint container status.
  */
-export function toReactFlowEdges(dgEdges: DGEdge[], dgNodes: DGNode[], defaultStroke: string): RFEdge[] {
+export function toReactFlowEdges(
+  dgEdges: DGEdge[],
+  dgNodes: DGNode[],
+  defaultStroke: string,
+  accentStroke: string = defaultStroke,
+): RFEdge[] {
   const nodeMap = new Map(dgNodes.map((n) => [n.id, n]));
 
   return dgEdges.filter((e) => nodeMap.has(e.source) && nodeMap.has(e.target)).map((e) => {
     const isVolume = e.type === 'volume_mount';
     const isSecondary = e.type === 'secondary_network';
 
-    let stroke = defaultStroke;
-    if (isVolume) stroke = '#f97316';
+    // Dependency wires carry the live signal flow — render them in the accent.
+    let stroke = e.type === 'depends_on' ? accentStroke : defaultStroke;
+    if (isVolume) stroke = VOLUME_COLOR;
     if (isSecondary) {
       const targetNet = nodeMap.get(e.target);
       stroke = targetNet ? networkColor(targetNet.name) : defaultStroke;

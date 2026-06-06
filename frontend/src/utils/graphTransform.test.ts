@@ -121,6 +121,18 @@ describe('toReactFlowEdges', () => {
     expect(result[0].data?.active).toBe(true);
   });
 
+  it('uses the accent stroke for depends_on edges', () => {
+    const nodes: DGNode[] = [
+      { id: 'container:web', type: 'container', name: 'web', status: 'running' },
+      { id: 'container:db', type: 'container', name: 'db', status: 'running' },
+    ];
+    const edges: DGEdge[] = [
+      { id: 'e:dep:web:db', type: 'depends_on', source: 'container:web', target: 'container:db' },
+    ];
+    const result = toReactFlowEdges(edges, nodes, defaultStroke, '#2dd4bf');
+    expect(result[0].style?.stroke).toBe('#2dd4bf');
+  });
+
   it('marks edges as inactive when an endpoint is not running', () => {
     const nodes: DGNode[] = [
       { id: 'container:web', type: 'container', name: 'web', status: 'running' },

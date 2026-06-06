@@ -18,24 +18,36 @@ export const NetworkGroup = memo(function NetworkGroup({ data }: NodeProps) {
         height: '100%',
         boxSizing: 'border-box',
         border: `1px solid ${color}${theme.groupBorderAlpha}`,
-        borderRadius: 6,
+        borderRadius: 10,
         background: `${color}${theme.groupBgAlpha}`,
         position: 'relative',
       }}
     >
       <NodeHandles />
 
+      {/* Legend tab hanging from the top border: its top edge is collinear with
+          the group's top border (square top corners), dropping into the box. */}
       <div
         style={{
-          padding: '3px 8px',
+          position: 'absolute',
+          top: -1,
+          left: 12,
+          zIndex: 1,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 5,
+          maxWidth: 'calc(100% - 24px)',
+          padding: '2px 8px',
+          background: theme.canvasBg,
+          border: `1px solid ${color}${theme.groupBorderAlpha}`,
+          borderRadius: '0 0 6px 6px',
+          fontFamily: 'var(--dg-font-mono)',
           fontSize: 10,
+          lineHeight: 1.5,
           fontWeight: 600,
           color: `${color}${theme.groupTextAlpha}`,
-          letterSpacing: '0.3px',
+          letterSpacing: '0.04em',
           textTransform: 'uppercase' as const,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
         }}
       >
         {onInfoClick && (
@@ -47,13 +59,23 @@ export const NetworkGroup = memo(function NetworkGroup({ data }: NodeProps) {
           />
         )}
         <span
+          aria-hidden="true"
+          style={{ width: 6, height: 6, borderRadius: '50%', background: color, flex: '0 0 auto' }}
+        />
+        <span
           onClick={onInfoClick ? () => onInfoClick(dgNode.id) : undefined}
-          style={onInfoClick ? { cursor: 'pointer' } : undefined}
+          title={dgNode.name}
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            minWidth: 0,
+            ...(onInfoClick ? { cursor: 'pointer' } : null),
+          }}
         >
           {dgNode.name}
         </span>
       </div>
-
     </div>
   );
 });

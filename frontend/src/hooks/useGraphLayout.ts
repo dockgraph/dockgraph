@@ -42,6 +42,7 @@ export function useGraphLayout(
   dgNodes: DGNode[],
   dgEdges: DGEdge[],
   edgeStroke: string,
+  accentStroke: string,
 ): GraphLayoutResult {
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>([]);
@@ -62,7 +63,7 @@ export function useGraphLayout(
     let cancelled = false;
 
     const rfNodes = toReactFlowNodes(dgNodes, dgEdges);
-    const rfEdges = toReactFlowEdges(dgEdges, dgNodes, edgeStroke);
+    const rfEdges = toReactFlowEdges(dgEdges, dgNodes, edgeStroke, accentStroke);
 
     computeLayout(rfNodes, rfEdges)
       .then((layout) => {
@@ -89,7 +90,7 @@ export function useGraphLayout(
   useEffect(() => {
     if (dgNodes.length === 0 || topoKey !== settledTopoKey) return;
 
-    const rfEdges = toReactFlowEdges(dgEdges, dgNodes, edgeStroke);
+    const rfEdges = toReactFlowEdges(dgEdges, dgNodes, edgeStroke, accentStroke);
     const rfEdgeMap = new Map(rfEdges.map((e) => [e.id, e]));
     setEdges((prev) => prev.map((e) => {
       const updated = rfEdgeMap.get(e.id);
@@ -102,7 +103,7 @@ export function useGraphLayout(
       const updated = rfNodeMap.get(n.id);
       return updated ? { ...n, data: { ...n.data, ...updated.data } } : n;
     }));
-  }, [dgNodes, dgEdges, edgeStroke, topoKey, settledTopoKey, setNodes, setEdges]);
+  }, [dgNodes, dgEdges, edgeStroke, accentStroke, topoKey, settledTopoKey, setNodes, setEdges]);
 
   return { nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange, layoutBusy, layoutError };
 }

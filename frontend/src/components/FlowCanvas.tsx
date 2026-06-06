@@ -17,6 +17,7 @@ import { VolumeNode } from "./VolumeNode";
 import { ElkEdge } from "./ElkEdge";
 import { CanvasEdgeLayer, type CanvasEdgeLayerHandle } from "./CanvasEdgeLayer";
 import { ThemeToggle } from "./ThemeToggle";
+import { Brand } from "./Brand";
 import { LogoutButton } from "./LogoutButton";
 import { StatusIndicator } from "./StatusIndicator";
 import { SearchFilter } from "./SearchFilter";
@@ -109,7 +110,7 @@ export function FlowCanvas({
     onEdgesChange,
     layoutBusy,
     layoutError,
-  } = useGraphLayout(dgNodes, dgEdges, theme.edgeStroke);
+  } = useGraphLayout(dgNodes, dgEdges, theme.edgeStroke, theme.edgeSignal);
 
   const hasVisibleNodes = dgNodes.some(
     (n) => n.type === "container" || n.type === "volume",
@@ -322,20 +323,29 @@ export function FlowCanvas({
       <div
         style={{
           position: "absolute",
-          top: 10,
-          left: 10,
-          right: 10,
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 50,
           zIndex: 10,
           display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          padding: "0 12px",
+          background: theme.panelBg,
+          borderBottom: `1px solid ${theme.panelBorder}`,
         }}
       >
+        <Brand />
+        <span
+          aria-hidden="true"
+          style={{ width: 1, height: 20, background: theme.panelBorder, flex: "0 0 auto" }}
+        />
         <ViewTabs activeView={activeView} onViewChange={setActiveView} />
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
           <SearchFilter search={search} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
           <LogoutButton />
           <StatusIndicator connected={connected} />
         </div>
@@ -405,11 +415,22 @@ export function FlowCanvas({
         style={{ background: theme.canvasBg }}
       >
         {!largeGraph && (
-          <Background
-            variant={BackgroundVariant.Dots}
-            color={theme.dotColor}
-            gap={20}
-          />
+          <>
+            <Background
+              id="dots-minor"
+              variant={BackgroundVariant.Dots}
+              color={theme.dotColor}
+              gap={20}
+              size={1}
+            />
+            <Background
+              id="dots-major"
+              variant={BackgroundVariant.Dots}
+              color={theme.dotColorMajor}
+              gap={100}
+              size={2}
+            />
+          </>
         )}
         <Panel
           position="bottom-left"
@@ -424,12 +445,7 @@ export function FlowCanvas({
           <Controls
             showInteractive={false}
             position="bottom-left"
-            style={{
-              position: "relative",
-              background: theme.panelBg,
-              border: `1px solid ${theme.panelBorder}`,
-              borderRadius: 6,
-            }}
+            style={{ position: "relative" }}
           />
           <ThemeToggle />
         </Panel>

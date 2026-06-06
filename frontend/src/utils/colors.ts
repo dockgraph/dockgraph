@@ -11,6 +11,9 @@ const PALETTE = [
   '#f97316',
 ];
 
+/** Identity color for volumes — shared by volume nodes and volume_mount edges. */
+export const VOLUME_COLOR = '#f97316';
+
 const MAX_CACHE_SIZE = 256;
 const cache = new Map<string, string>();
 
