@@ -31,7 +31,7 @@ export const HostInfoCard = memo(function HostInfoCard() {
             <span style={{
               fontSize: 11,
               color: theme.nodeText,
-              fontFamily: "monospace",
+              fontFamily: "var(--dg-font-mono)",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",

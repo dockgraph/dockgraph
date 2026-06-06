@@ -35,7 +35,7 @@ export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes }: Prop
   }, [nodes]);
 
   const totalBadge = (
-    <span style={{ fontSize: 18, fontWeight: 700, color: theme.nodeText, fontFamily: "monospace", lineHeight: 1 }}>
+    <span style={{ fontSize: 18, fontWeight: 700, color: theme.nodeText, fontFamily: "var(--dg-font-mono)", lineHeight: 1 }}>
       {total}
     </span>
   );
@@ -53,7 +53,7 @@ export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes }: Prop
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 }} />
                   <span style={{ fontSize: 12, color: theme.nodeSubtext }}>{label}</span>
                 </div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: theme.nodeText, fontFamily: "monospace" }}>{count}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: theme.nodeText, fontFamily: "var(--dg-font-mono)" }}>{count}</span>
               </div>
               <ProgressBar percent={pct} color={color} />
             </div>
@@ -73,7 +73,7 @@ export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes }: Prop
             { label: "Volumes", count: volumes },
           ].map(r => (
             <div key={r.label} style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: theme.nodeText, fontFamily: "monospace" }}>{r.count}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: theme.nodeText, fontFamily: "var(--dg-font-mono)" }}>{r.count}</span>
               <span style={{ fontSize: 11, color: theme.nodeSubtext }}>{r.label}</span>
             </div>
           ))}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, memo, useMemo } from "react";
 import { useTheme, type Theme } from "../../theme";
 import { DashboardCard } from "./DashboardCard";
+import { StateDisplay } from "../StateDisplay";
 import { formatBytes, formatPercent } from "../../utils/format";
 import type { StatsHistoryData } from "../../hooks/useStatsHistory";
 import uPlot from "uplot";
@@ -44,12 +45,12 @@ function injectChartCSS(theme: Theme) {
     .dg-chart .u-legend { font-size: 10px; padding: 4px 0 0; }
     .dg-chart .u-legend .u-series { padding: 1px 6px; }
     .dg-chart .u-legend .u-label { color: ${theme.nodeSubtext}; }
-    .dg-chart .u-legend .u-value { color: ${theme.nodeText}; font-family: monospace; font-size: 10px; }
+    .dg-chart .u-legend .u-value { color: ${theme.nodeText}; font-family: var(--dg-font-mono); font-size: 10px; display: inline-block; min-width: 8ch; text-align: right; white-space: nowrap; }
     .dg-chart .u-legend .u-series > * { vertical-align: middle; }
     .dg-chart .u-legend .u-marker { width: 8px !important; height: 3px !important; border-radius: 1px !important; }
     .dg-chart .u-cursor-x,
     .dg-chart .u-cursor-y { border-color: ${theme.panelBorder} !important; }
-    .dg-chart .u-select { background: rgba(59,130,246,0.08) !important; }
+    .dg-chart .u-select { background: ${theme.accent}14 !important; }
   `;
 }
 
@@ -131,14 +132,14 @@ export const ResourceChart = memo(function ResourceChart({ title, metric, data }
           stroke: theme.nodeSubtext,
           grid: { stroke: theme.panelBorder, width: 1 },
           ticks: { stroke: theme.panelBorder, width: 1 },
-          font: "10px system-ui",
+          font: "10px 'Geist Variable', system-ui, sans-serif",
           gap: 4,
         },
         {
           stroke: theme.nodeSubtext,
           grid: { stroke: theme.panelBorder, width: 1 },
           ticks: { show: false },
-          font: "10px monospace",
+          font: "10px 'JetBrains Mono Variable', ui-monospace, monospace",
           gap: 4,
           size: 54,
           values: (_u: uPlot, vals: number[]) => vals.map(v => valueFn(v)),
@@ -180,16 +181,8 @@ export const ResourceChart = memo(function ResourceChart({ title, metric, data }
     <DashboardCard title={title}>
       <div ref={containerRef} className="dg-chart" style={{ width: "100%", minHeight: CHART_HEIGHT }}>
         {!hasData && (
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: CHART_HEIGHT,
-            fontSize: 11,
-            color: theme.nodeSubtext,
-            opacity: 0.6,
-          }}>
-            Waiting for data...
+          <div style={{ height: CHART_HEIGHT }}>
+            <StateDisplay loading message="Waiting for data" />
           </div>
         )}
       </div>

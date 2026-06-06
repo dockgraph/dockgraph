@@ -23,6 +23,7 @@ export const AlertsCard = memo(function AlertsCard({ nodes, statsMap }: Props) {
 
   const badge = alerts.length > 0 ? (
     <span style={{
+      fontFamily: "var(--dg-font-mono)",
       fontSize: 10,
       fontWeight: 600,
       color: SEVERITY_STYLES[alerts[0].severity].color,
@@ -53,6 +54,7 @@ export const AlertsCard = memo(function AlertsCard({ nodes, statsMap }: Props) {
               }}
             >
               <span style={{
+                fontFamily: "var(--dg-font-mono)",
                 fontSize: 9,
                 fontWeight: 700,
                 color: sev.color,
@@ -63,6 +65,7 @@ export const AlertsCard = memo(function AlertsCard({ nodes, statsMap }: Props) {
                 {sev.label}
               </span>
               <span style={{
+                fontFamily: "var(--dg-font-mono)",
                 fontSize: 12,
                 color: theme.nodeText,
                 fontWeight: 500,

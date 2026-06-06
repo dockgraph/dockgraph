@@ -46,7 +46,7 @@ export const Dashboard = memo(function Dashboard({ nodes, statsMap }: Props) {
       top: 50,
       overflowY: "auto",
       background: theme.canvasBg,
-      fontFamily: "system-ui, -apple-system, sans-serif",
+      fontFamily: "var(--dg-font-ui)",
     }}>
       <div style={{ maxWidth: 1440, margin: "0 auto", padding: "20px 24px 32px" }}>
 

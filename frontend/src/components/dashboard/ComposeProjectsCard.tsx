@@ -63,7 +63,7 @@ export const ComposeProjectsCard = memo(function ComposeProjectsCard({ nodes }: 
                 }}>
                   {p.name}
                 </span>
-                <span style={{ fontSize: 11, color: theme.nodeSubtext, fontFamily: "monospace", flexShrink: 0 }}>
+                <span style={{ fontSize: 11, color: theme.nodeSubtext, fontFamily: "var(--dg-font-mono)", flexShrink: 0 }}>
                   {p.running}/{p.total}
                 </span>
               </div>

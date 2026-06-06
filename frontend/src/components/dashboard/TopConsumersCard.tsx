@@ -56,7 +56,7 @@ export const TopConsumersCard = memo(function TopConsumersCard({ statsMap }: Pro
         borderBottom: `1px solid ${theme.panelBorder}`,
         marginBottom: 4,
       }}>
-        <span style={{ fontSize: 10, color: theme.nodeSubtext, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        <span style={{ fontFamily: "var(--dg-font-mono)", fontSize: 10, color: theme.nodeSubtext, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
           Container
         </span>
         {columns.map(col => (
@@ -64,9 +64,10 @@ export const TopConsumersCard = memo(function TopConsumersCard({ statsMap }: Pro
             key={col.key}
             onClick={() => setSortBy(col.key)}
             style={{
+              fontFamily: "var(--dg-font-mono)",
               fontSize: 10,
               textAlign: "right",
-              color: sortBy === col.key ? theme.nodeText : theme.nodeSubtext,
+              color: sortBy === col.key ? theme.accent : theme.nodeSubtext,
               fontWeight: 600,
               textTransform: "uppercase",
               letterSpacing: "0.04em",
@@ -91,6 +92,7 @@ export const TopConsumersCard = memo(function TopConsumersCard({ statsMap }: Pro
               alignItems: "center",
             }}>
               <span style={{
+                fontFamily: "var(--dg-font-mono)",
                 fontSize: 12,
                 color: theme.nodeText,
                 fontWeight: 500,
@@ -104,7 +106,7 @@ export const TopConsumersCard = memo(function TopConsumersCard({ statsMap }: Pro
                 <span key={col.key} style={{
                   textAlign: "right",
                   fontSize: 11,
-                  fontFamily: "monospace",
+                  fontFamily: "var(--dg-font-mono)",
                   color: sortBy === col.key ? METRIC_COLORS[col.key] : theme.nodeText,
                 }}>
                   {col.format(row[col.key])}

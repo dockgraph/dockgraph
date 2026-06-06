@@ -51,10 +51,11 @@ export const EventTimelineCard = memo(function EventTimelineCard() {
                 alignItems: "center",
               }}
             >
-              <span style={{ color: theme.nodeSubtext, fontFamily: "monospace", fontSize: 10 }}>
+              <span style={{ color: theme.nodeSubtext, fontFamily: "var(--dg-font-mono)", fontSize: 10 }}>
                 {formatTime(e.timestamp)}
               </span>
               <span style={{
+                fontFamily: "var(--dg-font-mono)",
                 color: actionColor,
                 fontWeight: 600,
                 fontSize: 10,
@@ -64,6 +65,7 @@ export const EventTimelineCard = memo(function EventTimelineCard() {
                 {e.action}
               </span>
               <span style={{
+                fontFamily: "var(--dg-font-mono)",
                 color: theme.nodeText,
                 overflow: "hidden",
                 textOverflow: "ellipsis",

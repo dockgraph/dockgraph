@@ -1,5 +1,6 @@
 import { type ReactNode, memo } from "react";
 import { useTheme, type Theme } from "../../theme";
+import { StateDisplay } from "../StateDisplay";
 
 interface Props {
   title: string;
@@ -31,11 +32,12 @@ const styles = (theme: Theme) => ({
     flexShrink: 0,
   },
   title: {
-    fontSize: 11,
+    fontFamily: "var(--dg-font-mono)",
+    fontSize: 10,
     fontWeight: 600,
     color: theme.nodeSubtext,
     textTransform: "uppercase" as const,
-    letterSpacing: "0.05em",
+    letterSpacing: "0.07em",
     margin: 0,
     lineHeight: 1,
   },
@@ -43,15 +45,6 @@ const styles = (theme: Theme) => ({
     padding: 14,
     flex: 1,
     minHeight: 0,
-  },
-  placeholder: {
-    display: "flex",
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    height: "100%",
-    fontSize: 11,
-    color: theme.nodeSubtext,
-    opacity: 0.6,
   },
 });
 
@@ -69,7 +62,7 @@ export const DashboardCard = memo(function DashboardCard({ title, badge, childre
       </div>
       <div style={s.body}>
         {showPlaceholder
-          ? <div style={s.placeholder}>{loading ? "Loading\u2026" : emptyMessage}</div>
+          ? <StateDisplay loading={loading} message={loading ? "Loading" : (emptyMessage ?? "")} />
           : children}
       </div>
     </div>

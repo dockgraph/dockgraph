@@ -25,7 +25,7 @@ export const DiskUsageCard = memo(function DiskUsageCard() {
   const reclaimable = SEGMENTS.reduce((sum, s) => sum + data[s.key].reclaimable, 0);
 
   const totalBadge = (
-    <span style={{ fontSize: 12, fontWeight: 600, color: theme.nodeText, fontFamily: "monospace", lineHeight: 1 }}>
+    <span style={{ fontSize: 12, fontWeight: 600, color: theme.nodeText, fontFamily: "var(--dg-font-mono)", lineHeight: 1 }}>
       {formatBytes(total)}
     </span>
   );
@@ -48,7 +48,7 @@ export const DiskUsageCard = memo(function DiskUsageCard() {
             <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ width: 7, height: 7, borderRadius: 2, background: s.color, flexShrink: 0 }} />
               <span style={{ fontSize: 11, color: theme.nodeSubtext, flex: 1 }}>{s.label}</span>
-              <span style={{ fontSize: 11, color: theme.nodeText, fontFamily: "monospace" }}>{formatBytes(s.value)}</span>
+              <span style={{ fontSize: 11, color: theme.nodeText, fontFamily: "var(--dg-font-mono)" }}>{formatBytes(s.value)}</span>
             </div>
           ))}
         </div>

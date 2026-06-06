@@ -14,7 +14,7 @@ export const ImagesCard = memo(function ImagesCard() {
   }
 
   const totalBadge = (
-    <span style={{ fontSize: 18, fontWeight: 700, color: theme.nodeText, fontFamily: "monospace", lineHeight: 1 }}>
+    <span style={{ fontSize: 18, fontWeight: 700, color: theme.nodeText, fontFamily: "var(--dg-font-mono)", lineHeight: 1 }}>
       {data.total}
     </span>
   );
@@ -24,15 +24,15 @@ export const ImagesCard = memo(function ImagesCard() {
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 11, color: theme.nodeSubtext }}>Total size</span>
-          <span style={{ fontSize: 11, color: theme.nodeText, fontFamily: "monospace" }}>{formatBytes(data.totalSize)}</span>
+          <span style={{ fontSize: 11, color: theme.nodeText, fontFamily: "var(--dg-font-mono)" }}>{formatBytes(data.totalSize)}</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 11, color: theme.nodeSubtext }}>Tags</span>
-          <span style={{ fontSize: 11, color: theme.nodeText, fontFamily: "monospace" }}>{data.uniqueTags}</span>
+          <span style={{ fontSize: 11, color: theme.nodeText, fontFamily: "var(--dg-font-mono)" }}>{data.uniqueTags}</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 11, color: theme.nodeSubtext }}>Dangling</span>
-          <span style={{ fontSize: 11, color: data.dangling > 0 ? STATUS_COLORS.amber : theme.nodeText, fontFamily: "monospace" }}>
+          <span style={{ fontSize: 11, color: data.dangling > 0 ? STATUS_COLORS.amber : theme.nodeText, fontFamily: "var(--dg-font-mono)" }}>
             {data.dangling}
           </span>
         </div>
