@@ -5,6 +5,7 @@ export interface Theme {
   // Canvas
   canvasBg: string;
   dotColor: string;
+  dotColorMajor: string;
   // Nodes
   nodeBg: string;
   nodeBorder: string;
@@ -15,6 +16,10 @@ export interface Theme {
   portText: string;
   // Edges
   edgeStroke: string;
+  edgeSignal: string;
+  // Signature accent
+  accent: string;
+  accentSoft: string;
   // Controls / UI
   panelBg: string;
   panelBorder: string;
@@ -41,43 +46,49 @@ export interface Theme {
   logTimestamp: string;
 }
 
+// Technical Blueprint — deep slate-navy canvas, fine grid, teal signal accent.
 const dark: Theme = {
   mode: 'dark',
-  canvasBg: '#0f172a',
-  dotColor: '#2d3a4d',
-  nodeBg: '#1e293b',
-  nodeBorder: '#334155',
-  nodeGhostBorder: '#475569',
-  nodeText: '#e2e8f0',
-  nodeSubtext: '#64748b',
-  portBg: '#0f172a',
-  portText: '#94a3b8',
-  edgeStroke: '#475569',
-  panelBg: '#1e293b',
-  panelBorder: '#334155',
-  panelText: '#94a3b8',
-  rowHover: '#263044',
-  cardBg: '#1a1a2e',
-  statsRowBg: 'rgba(0, 0, 0, 0.15)',
-  minimapBg: '#1e293b',
-  minimapMask: 'rgba(15, 23, 42, 0.7)',
-  groupBgAlpha: '0a',
-  groupBorderAlpha: '4a',
-  groupTextAlpha: 'd4',
-  danger: '#ef4444',
-  warning: '#f59e0b',
-  success: '#22c55e',
-  info: '#3b82f6',
-  logBg: '#0f172a',
-  logText: '#e2e8f0',
-  logMuted: '#64748b',
-  logTimestamp: '#475569',
+  canvasBg: '#0d1420',
+  dotColor: 'rgba(122, 162, 204, 0.10)',
+  dotColorMajor: 'rgba(122, 162, 204, 0.22)',
+  nodeBg: '#131e30',
+  nodeBorder: '#213046',
+  nodeGhostBorder: '#2f425c',
+  nodeText: '#e6edf5',
+  nodeSubtext: '#7889a0',
+  portBg: '#0f1929',
+  portText: '#8aa0b5',
+  edgeStroke: '#365070',
+  edgeSignal: '#1f9488',
+  accent: '#2dd4bf',
+  accentSoft: 'rgba(45, 212, 191, 0.12)',
+  panelBg: '#101928',
+  panelBorder: '#213046',
+  panelText: '#8aa0b5',
+  rowHover: '#172538',
+  cardBg: '#111c2c',
+  statsRowBg: 'rgba(56, 189, 248, 0.05)',
+  minimapBg: '#101928',
+  minimapMask: 'rgba(13, 20, 32, 0.7)',
+  groupBgAlpha: '12',
+  groupBorderAlpha: '66',
+  groupTextAlpha: 'f0',
+  danger: '#f87171',
+  warning: '#fbbf24',
+  success: '#34d399',
+  info: '#38bdf8',
+  logBg: '#0d141d',
+  logText: '#e6edf5',
+  logMuted: '#5a7088',
+  logTimestamp: '#465d75',
 };
 
 const light: Theme = {
   mode: 'light',
   canvasBg: '#f0ece6',
-  dotColor: '#c2bbb0',
+  dotColor: 'rgba(120, 100, 70, 0.14)',
+  dotColorMajor: 'rgba(120, 100, 70, 0.28)',
   nodeBg: '#f7f5f1',
   nodeBorder: '#d6d0c8',
   nodeGhostBorder: '#b8b0a4',
@@ -86,6 +97,9 @@ const light: Theme = {
   portBg: '#f3f0eb',
   portText: '#5c5448',
   edgeStroke: '#a09888',
+  edgeSignal: '#0d9488',
+  accent: '#0d9488',
+  accentSoft: 'rgba(13, 148, 136, 0.10)',
   panelBg: '#f7f5f1',
   panelBorder: '#d6d0c8',
   panelText: '#5c5448',
