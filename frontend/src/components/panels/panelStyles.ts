@@ -5,5 +5,5 @@ export function navLinkStyle(borderColor: string): React.CSSProperties {
 
 /** Monospace text style used across detail panel values. */
 export function monoStyle(panelText: string): React.CSSProperties {
-  return { fontFamily: 'monospace', fontSize: 11, color: panelText, wordBreak: 'break-all' };
+  return { fontFamily: 'var(--dg-font-mono)', fontSize: 11, color: panelText, wordBreak: 'break-all' };
 }

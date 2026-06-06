@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { useTheme } from '../../theme';
+import { StateDisplay } from '../StateDisplay';
 import { DETAIL_PANEL_WIDTH } from '../../utils/constants';
 
 interface DetailPanelProps {
@@ -47,17 +48,8 @@ export function DetailPanel({ open, onClose, header, loading, error, children }:
           <button
             onClick={onClose}
             aria-label="Close panel"
-            style={{
-              background: 'none',
-              border: 'none',
-              color: theme.panelText,
-              fontSize: 18,
-              cursor: 'pointer',
-              lineHeight: 1,
-              padding: 4,
-              flexShrink: 0,
-              marginLeft: 8,
-            }}
+            className="dg-panel-close"
+            style={{ flexShrink: 0, marginLeft: 8 }}
           >
             ✕
           </button>
@@ -66,7 +58,9 @@ export function DetailPanel({ open, onClose, header, loading, error, children }:
 
       {/* Scrollable body */}
       {loading && (
-        <div style={{ padding: 20, color: theme.nodeSubtext, textAlign: 'center' }}>Loading…</div>
+        <div style={{ padding: 24 }}>
+          <StateDisplay loading message="Loading" />
+        </div>
       )}
       {error && (
         <div style={{ padding: 20, textAlign: 'center' }}>

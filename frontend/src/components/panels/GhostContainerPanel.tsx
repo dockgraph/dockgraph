@@ -24,9 +24,9 @@ export function GhostContainerPanel({ node, onNavigate }: Props) {
         <Section title="Ports">
           {node.ports.map((p, i) => (
             <div key={i} style={{ fontSize: 11, color: theme.panelText, marginBottom: 2 }}>
-              <span style={{ fontFamily: 'monospace' }}>{p.host}</span>
+              <span style={{ fontFamily: 'var(--dg-font-mono)' }}>{p.host}</span>
               <span style={{ color: theme.nodeSubtext }}> → </span>
-              <span style={{ fontFamily: 'monospace' }}>{p.container}</span>
+              <span style={{ fontFamily: 'var(--dg-font-mono)' }}>{p.container}</span>
             </div>
           ))}
         </Section>

@@ -1,5 +1,6 @@
 import { useTheme } from '../../theme';
 import { STATUS_COLORS, STATUS_LABELS } from '../../utils/colors';
+import { Copyable } from './Copyable';
 import type { ContainerDetail } from '../../types/stats';
 
 interface Props {
@@ -28,18 +29,35 @@ export function DetailPanelHeader({ detail }: Props) {
 
   return (
     <div>
-      <div style={{ fontSize: 16, fontWeight: 600, color: theme.nodeText, marginBottom: 2, wordBreak: 'break-all' }}>
-        {detail.name}
+      <div style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', color: theme.nodeText, marginBottom: 3, wordBreak: 'break-all' }}>
+        <Copyable value={detail.name}>{detail.name}</Copyable>
       </div>
-      <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 6, wordBreak: 'break-all' }}>
-        {detail.image}
+      <div style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 11, color: theme.nodeSubtext, marginBottom: 8, wordBreak: 'break-all' }}>
+        <Copyable value={detail.image}>{detail.image}</Copyable>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, display: 'inline-block', flexShrink: 0 }} />
-        <span style={{ fontSize: 12, color: theme.panelText }}>{STATUS_LABELS[detail.status] ?? detail.status}</span>
-        {uptime && <span style={{ fontSize: 11, color: theme.nodeSubtext }}>{detail.running ? `Up ${uptime}` : `Exited ${uptime} ago`}</span>}
-        {detail.oomKilled && <span style={{ fontSize: 10, color: theme.danger, fontWeight: 600 }}>OOM Killed</span>}
-        {!detail.running && detail.exitCode !== 0 && <span style={{ fontSize: 10, color: theme.nodeSubtext }}>code {detail.exitCode}</span>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '3px 9px',
+            borderRadius: 999,
+            background: `${statusColor}22`,
+            fontFamily: 'var(--dg-font-mono)',
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            color: statusColor,
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0, boxShadow: detail.running ? `0 0 6px ${statusColor}` : 'none' }} />
+          {STATUS_LABELS[detail.status] ?? detail.status}
+        </span>
+        {uptime && <span style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 11, color: theme.nodeSubtext }}>{detail.running ? `up ${uptime}` : `exited ${uptime} ago`}</span>}
+        {detail.oomKilled && <span style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 10, color: theme.danger, fontWeight: 600 }}>OOM KILLED</span>}
+        {!detail.running && detail.exitCode !== 0 && <span style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 10, color: theme.nodeSubtext }}>code {detail.exitCode}</span>}
       </div>
     </div>
   );

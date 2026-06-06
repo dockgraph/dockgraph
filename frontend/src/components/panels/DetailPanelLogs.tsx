@@ -79,11 +79,12 @@ export function DetailPanelLogs({ containerId, active }: Props) {
       >
         <span
           style={{
-            fontSize: 11,
+            fontFamily: "var(--dg-font-mono)",
+            fontSize: 10,
             fontWeight: 600,
             color: theme.nodeSubtext,
             textTransform: "uppercase",
-            letterSpacing: 0.5,
+            letterSpacing: "0.08em",
           }}
         >
           Logs
@@ -94,6 +95,7 @@ export function DetailPanelLogs({ containerId, active }: Props) {
             height: 6,
             borderRadius: "50%",
             background: connected ? theme.success : theme.danger,
+            boxShadow: connected ? `0 0 6px ${theme.success}` : "none",
           }}
         />
       </div>
@@ -104,9 +106,10 @@ export function DetailPanelLogs({ containerId, active }: Props) {
           height: 250,
           overflowY: "auto",
           background: theme.logBg,
-          borderRadius: 4,
+          borderRadius: 6,
+          border: `1px solid ${theme.panelBorder}`,
           padding: 8,
-          fontFamily: "monospace",
+          fontFamily: "var(--dg-font-mono)",
           fontSize: 10,
           lineHeight: 1.5,
           position: "relative",

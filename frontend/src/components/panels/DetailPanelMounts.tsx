@@ -20,7 +20,7 @@ export function DetailPanelMounts({ mounts, onNavigate }: Props) {
           <div key={i} style={{ fontSize: 11, color: theme.panelText, marginBottom: 4 }}>
             <div
               style={{
-                fontFamily: 'monospace',
+                fontFamily: 'var(--dg-font-mono)',
                 wordBreak: 'break-all',
                 ...(clickable ? navLinkStyle(theme.panelBorder) : {}),
               }}

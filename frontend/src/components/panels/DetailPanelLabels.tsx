@@ -1,5 +1,6 @@
 import { useTheme } from '../../theme';
 import { Section } from './shared';
+import { Copyable } from './Copyable';
 
 interface Props {
   labels: Record<string, string> | undefined;
@@ -15,7 +16,7 @@ export function DetailPanelLabels({ labels }: Props) {
       {entries.map(([key, value]) => (
         <div key={key} style={{ fontSize: 11, marginBottom: 3 }}>
           <span style={{ color: theme.nodeSubtext }}>{key}: </span>
-          <span style={{ fontFamily: 'monospace', color: theme.panelText, wordBreak: 'break-all' }}>{value}</span>
+          <Copyable value={value} style={{ fontFamily: 'var(--dg-font-mono)', color: theme.panelText, wordBreak: 'break-all' }}>{value}</Copyable>
         </div>
       ))}
     </Section>

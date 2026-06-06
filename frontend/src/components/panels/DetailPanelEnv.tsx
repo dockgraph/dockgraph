@@ -1,5 +1,6 @@
 import { useTheme } from '../../theme';
 import { Section } from './shared';
+import { Copyable } from './Copyable';
 import type { ContainerDetail } from '../../types/stats';
 
 interface Props {
@@ -17,9 +18,9 @@ export function DetailPanelEnv({ env }: Props) {
         return (
           <div key={i} style={{ fontSize: 11, marginBottom: 3, display: 'flex', gap: 4, alignItems: 'baseline' }}>
             <span style={{ color: theme.nodeSubtext, flexShrink: 0 }}>{e.key}=</span>
-            <span style={{ fontFamily: 'monospace', color: masked ? theme.nodeSubtext : theme.panelText, wordBreak: 'break-all', minWidth: 0 }}>
+            <Copyable value={e.value} style={{ fontFamily: 'var(--dg-font-mono)', color: masked ? theme.nodeSubtext : theme.panelText, wordBreak: 'break-all', minWidth: 0 }}>
               {masked ? '••••••••' : e.value}
-            </span>
+            </Copyable>
           </div>
         );
       })}

@@ -21,7 +21,7 @@ export function DetailPanelHealth({ health }: Props) {
         {health.failingStreak > 0 && <span style={{ fontSize: 10, color: theme.warning }}>({health.failingStreak} failing)</span>}
       </div>
       {health.log?.slice(-5).map((entry, i) => (
-        <div key={i} style={{ fontSize: 10, color: entry.exitCode === 0 ? theme.nodeSubtext : theme.danger, marginBottom: 2, fontFamily: 'monospace' }}>
+        <div key={i} style={{ fontSize: 10, color: entry.exitCode === 0 ? theme.nodeSubtext : theme.danger, marginBottom: 2, fontFamily: 'var(--dg-font-mono)' }}>
           exit {entry.exitCode}{entry.output ? `: ${entry.output.slice(0, 80)}` : ''}
         </div>
       ))}

@@ -1,5 +1,6 @@
 import { useTheme } from '../../theme';
 import { Section } from './shared';
+import { Copyable } from './Copyable';
 import type { ContainerDetail } from '../../types/stats';
 
 interface Props {
@@ -13,11 +14,15 @@ export function DetailPanelPorts({ ports }: Props) {
   return (
     <Section title="Ports">
       {ports.map((p, i) => (
-        <div key={i} style={{ fontSize: 11, color: theme.panelText, marginBottom: 2 }}>
-          <span style={{ fontFamily: 'monospace' }}>{p.hostPort}</span>
+        <Copyable
+          key={i}
+          value={`${p.hostPort}:${p.containerPort}/${p.protocol}`}
+          style={{ display: 'block', fontSize: 11, color: theme.panelText, marginBottom: 2 }}
+        >
+          <span style={{ fontFamily: 'var(--dg-font-mono)' }}>{p.hostPort}</span>
           <span style={{ color: theme.nodeSubtext }}> → </span>
-          <span style={{ fontFamily: 'monospace' }}>{p.containerPort}/{p.protocol}</span>
-        </div>
+          <span style={{ fontFamily: 'var(--dg-font-mono)' }}>{p.containerPort}/{p.protocol}</span>
+        </Copyable>
       ))}
     </Section>
   );

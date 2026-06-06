@@ -34,7 +34,7 @@ export function DetailPanelCompose({ compose, image, onNavigate }: Props) {
                 fontSize: 11,
                 color: theme.panelText,
                 marginBottom: 2,
-                fontFamily: 'monospace',
+                fontFamily: 'var(--dg-font-mono)',
                 ...(onNavigate ? navLinkStyle(theme.panelBorder) : {}),
               }}
               onClick={onNavigate ? () => onNavigate(`container:${dep}`) : undefined}
@@ -49,7 +49,7 @@ export function DetailPanelCompose({ compose, image, onNavigate }: Props) {
       {compose.volumes && compose.volumes.length > 0 && (
         <Section title="Volumes">
           {compose.volumes.map((v, i) => (
-            <div key={i} style={{ fontSize: 11, color: theme.panelText, marginBottom: 2, fontFamily: 'monospace', wordBreak: 'break-all' }}>{v}</div>
+            <div key={i} style={{ fontSize: 11, color: theme.panelText, marginBottom: 2, fontFamily: 'var(--dg-font-mono)', wordBreak: 'break-all' }}>{v}</div>
           ))}
         </Section>
       )}
@@ -63,7 +63,7 @@ export function DetailPanelCompose({ compose, image, onNavigate }: Props) {
                 fontSize: 11,
                 color: theme.panelText,
                 marginBottom: 2,
-                fontFamily: 'monospace',
+                fontFamily: 'var(--dg-font-mono)',
                 ...(onNavigate ? navLinkStyle(theme.panelBorder) : {}),
               }}
               onClick={onNavigate ? () => onNavigate(`network:${n}`) : undefined}
