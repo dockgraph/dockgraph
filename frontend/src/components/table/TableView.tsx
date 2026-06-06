@@ -77,15 +77,16 @@ export const TableView = memo(function TableView({
         {TABS.map((tab) => (
           <button
             key={tab.key}
+            className={activeTab === tab.key ? "dg-resource-tab dg-resource-tab--active" : "dg-resource-tab"}
             onClick={() => setActiveTab(tab.key)}
             style={tabStyles.tab(activeTab === tab.key)}
           >
             {tab.label}
             <span style={{
-              marginLeft: 6,
+              marginLeft: 7,
+              fontFamily: "var(--dg-font-mono)",
               fontSize: 11,
               color: theme.nodeSubtext,
-              opacity: 0.7,
             }}>
               {counts[tab.key]}
             </span>

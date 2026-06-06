@@ -2,6 +2,7 @@ import { memo } from "react";
 import { useTheme } from "../../theme";
 import { useRowHover } from "../../hooks/useRowHover";
 import { STATUS_COLORS, networkColor } from "../../utils/colors";
+import { METRIC_COLORS } from "../dashboard/palette";
 import { formatBytes } from "../../utils/formatBytes";
 import { INACTIVE_OPACITY } from "../../utils/constants";
 import { tableRow } from "./tableStyles";
@@ -62,24 +63,29 @@ export const ContainerRow = memo(function ContainerRow({
           ...(isGhost ? { borderBottomStyle: "dashed" as const } : {}),
         })}
       >
-        <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={node.name}>
+        <span style={{ fontFamily: "var(--dg-font-mono)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={node.name}>
           {node.name}
         </span>
-        <span style={{ color: theme.nodeSubtext, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={node.image}>
+        <span style={{ color: theme.nodeSubtext, fontFamily: "var(--dg-font-mono)", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={node.image}>
           {node.image ?? "\u2014"}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span
             data-testid="status-dot"
-            style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor, flexShrink: 0 }}
+            style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor, flexShrink: 0, boxShadow: isActive ? `0 0 6px ${statusColor}` : "none" }}
           />
           {node.status ?? "unknown"}
         </span>
-        <span style={{ color: theme.nodeSubtext, fontFamily: "monospace", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ color: theme.nodeSubtext, fontFamily: "var(--dg-font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {formatPorts(node)}
         </span>
-        <span style={{ color: node.networkId ? networkColor(formatNetwork(node)) : theme.nodeSubtext, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {formatNetwork(node)}
+        <span style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+          {node.networkId && (
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: networkColor(formatNetwork(node)), flexShrink: 0 }} />
+          )}
+          <span style={{ color: node.networkId ? networkColor(formatNetwork(node)) : theme.nodeSubtext, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {formatNetwork(node)}
+          </span>
         </span>
       </div>
       <div style={styles.statsRow}>
@@ -87,22 +93,22 @@ export const ContainerRow = memo(function ContainerRow({
           <>
             <span>
               CPU{" "}
-              <span style={styles.statsValue("#64b5f6")}>
+              <span style={styles.statsValue(METRIC_COLORS.cpu)}>
                 {stats.cpuPercent.toFixed(1)}%
               </span>
             </span>
             <span>
               MEM{" "}
-              <span style={styles.statsValue("#c084fc")}>
+              <span style={styles.statsValue(METRIC_COLORS.mem)}>
                 {formatBytes(stats.memUsage)} / {formatBytes(stats.memLimit)}
               </span>
             </span>
             <span>
               NET{" "}
-              <span style={styles.statsValue("#4ade80")}>
+              <span style={styles.statsValue(METRIC_COLORS.net)}>
                 &#8595;{formatBytes(stats.netRx)}
               </span>{" "}
-              <span style={styles.statsValue("#f97316")}>
+              <span style={styles.statsValue(METRIC_COLORS.disk)}>
                 &#8593;{formatBytes(stats.netTx)}
               </span>
             </span>

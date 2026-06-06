@@ -7,7 +7,7 @@ export const tableLayout = (theme: Theme) => ({
     height: "100%",
     background: theme.canvasBg,
     color: theme.panelText,
-    fontFamily: "system-ui, -apple-system, sans-serif",
+    fontFamily: "var(--dg-font-ui)",
   },
   scrollBody: {
     flex: 1,
@@ -33,12 +33,13 @@ export const tableLayout = (theme: Theme) => ({
 export const tableRow = (theme: Theme) => ({
     header: {
       display: "grid",
-      padding: "10px 16px",
-      fontSize: 11,
+      padding: "9px 16px",
+      fontFamily: "var(--dg-font-mono)",
+      fontSize: 10.5,
       fontWeight: 600 as const,
       color: theme.nodeSubtext,
       textTransform: "uppercase" as const,
-      letterSpacing: 0.5,
+      letterSpacing: "0.06em",
       borderBottom: `1px solid ${theme.panelBorder}`,
       position: "sticky" as const,
       top: 0,
@@ -66,7 +67,7 @@ export const tableRow = (theme: Theme) => ({
     },
     statsValue: (color: string) => ({
       color,
-      fontFamily: "monospace",
+      fontFamily: "var(--dg-font-mono)",
     }),
 });
 
@@ -107,13 +108,14 @@ export const resourceTabs = (theme: Theme) => ({
   tab: (active: boolean) => ({
     padding: "10px 16px",
     fontSize: 13,
-    fontWeight: active ? 600 : 400,
-    color: active ? theme.nodeText : theme.nodeSubtext,
+    fontWeight: active ? 600 : 500,
+    color: active ? theme.accent : theme.nodeSubtext,
     background: "transparent",
     border: "none",
-    borderBottom: active ? `2px solid ${theme.nodeText}` : "2px solid transparent",
+    borderBottom: active ? `2px solid ${theme.accent}` : "2px solid transparent",
+    marginBottom: -1,
     cursor: active ? "default" : "pointer",
-    transition: "color 0.15s",
+    transition: "color 0.15s, border-color 0.15s",
   }),
 });
 

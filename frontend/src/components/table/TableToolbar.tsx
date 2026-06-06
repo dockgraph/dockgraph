@@ -114,8 +114,9 @@ export const TableToolbar = memo(function TableToolbar({
                   style={{
                     padding: "6px 12px",
                     fontSize: 12,
+                    fontWeight: isActive ? 600 : 400,
                     cursor: "pointer",
-                    color: isActive ? theme.nodeText : theme.panelText,
+                    color: isActive ? theme.accent : theme.panelText,
                     background: bg,
                     whiteSpace: "nowrap",
                   }}
