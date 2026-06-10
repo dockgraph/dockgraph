@@ -184,6 +184,27 @@ export function FlowCanvas({
   // Search & filter.
   const search = useSearchFilter(dgNodes);
 
+  // Dashboard drill-downs: jump to the table view with a single filter applied.
+  // The table and the search bar share this `search` state, so the active
+  // filter (and its match count) surface in the search bar automatically.
+  const { clearAll, toggleStatus, toggleType } = search;
+  const handleStatusFilter = useCallback(
+    (status: string) => {
+      clearAll();
+      toggleStatus(status);
+      setActiveView("table");
+    },
+    [clearAll, toggleStatus],
+  );
+  const handleTypeFilter = useCallback(
+    (type: string) => {
+      clearAll();
+      toggleType(type);
+      setActiveView("table");
+    },
+    [clearAll, toggleType],
+  );
+
   const {
     styledNodes,
     styledEdges,
@@ -378,7 +399,13 @@ export function FlowCanvas({
         </div>
       ) : activeView === "dashboard" ? (
         <Suspense fallback={<ViewFallback />}>
-          <Dashboard nodes={dgNodes} statsMap={statsMap} />
+          <Dashboard
+            nodes={dgNodes}
+            statsMap={statsMap}
+            onStatusFilter={handleStatusFilter}
+            onTypeFilter={handleTypeFilter}
+            onInspect={handleInfoClickWithSelect}
+          />
         </Suspense>
       ) : (
       <>

@@ -8,6 +8,8 @@ import type { ContainerStatsData } from "../../types/stats";
 
 interface Props {
   statsMap: Map<string, ContainerStatsData>;
+  /** Open the detail panel for the clicked container. */
+  onInspect: (nodeId: string) => void;
 }
 
 type SortKey = "cpu" | "mem" | "net" | "disk";
@@ -20,9 +22,10 @@ interface Row {
   disk: number;
 }
 
-export const TopConsumersCard = memo(function TopConsumersCard({ statsMap }: Props) {
+export const TopConsumersCard = memo(function TopConsumersCard({ statsMap, onInspect }: Props) {
   const { theme } = useTheme();
   const [sortBy, setSortBy] = useState<SortKey>("cpu");
+  const [hovered, setHovered] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     const entries: Row[] = Array.from(statsMap.entries()).map(([name, s]) => ({
@@ -83,7 +86,24 @@ export const TopConsumersCard = memo(function TopConsumersCard({ statsMap }: Pro
       {/* Rows */}
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {rows.map(row => (
-          <div key={row.name}>
+          <div
+            key={row.name}
+            role="button"
+            tabIndex={0}
+            onClick={() => onInspect(`container:${row.name}`)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onInspect(`container:${row.name}`); } }}
+            onMouseEnter={() => setHovered(row.name)}
+            onMouseLeave={() => setHovered(null)}
+            title={`Inspect ${row.name}`}
+            style={{
+              cursor: "pointer",
+              borderRadius: 5,
+              margin: "0 -6px",
+              padding: "0 6px",
+              background: hovered === row.name ? theme.rowHover : "transparent",
+              transition: "background 0.12s",
+            }}
+          >
             <div style={{
               display: "grid",
               gridTemplateColumns: "1.5fr repeat(4, 1fr)",

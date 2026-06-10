@@ -1,4 +1,4 @@
-import { useMemo, memo } from "react";
+import { useMemo, useState, memo } from "react";
 import { useTheme } from "../../theme";
 import { DashboardCard } from "./DashboardCard";
 import { ProgressBar } from "./ProgressBar";
@@ -7,7 +7,22 @@ import type { DGNode } from "../../types";
 
 interface Props {
   nodes: DGNode[];
+  /** Open the table filtered to the clicked container status. */
+  onStatusFilter: (status: string) => void;
+  /** Open the table filtered to the clicked resource type. */
+  onTypeFilter: (type: string) => void;
 }
+
+/** Shared reset so the clickable rows read as plain content, not buttons. */
+const drillButton: React.CSSProperties = {
+  appearance: "none",
+  border: "none",
+  background: "transparent",
+  font: "inherit",
+  color: "inherit",
+  textAlign: "left",
+  cursor: "pointer",
+};
 
 const STATUS_CONFIG = [
   { key: "running", label: "Running", color: STATUS_COLORS.green },
@@ -16,8 +31,9 @@ const STATUS_CONFIG = [
   { key: "not_running", label: "Pending", color: STATUS_COLORS.gray },
 ] as const;
 
-export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes }: Props) {
+export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes, onStatusFilter, onTypeFilter }: Props) {
   const { theme } = useTheme();
+  const [hovered, setHovered] = useState<string | null>(null);
 
   const { counts, networks, volumes, total } = useMemo(() => {
     const containers = nodes.filter(n => n.type === "container");
@@ -47,7 +63,24 @@ export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes }: Prop
           const count = counts[key] ?? 0;
           const pct = total > 0 ? (count / total) * 100 : 0;
           return (
-            <div key={key}>
+            <button
+              key={key}
+              type="button"
+              onClick={() => onStatusFilter(key)}
+              onMouseEnter={() => setHovered(key)}
+              onMouseLeave={() => setHovered(null)}
+              title={`Show ${label.toLowerCase()} containers in the table`}
+              style={{
+                ...drillButton,
+                display: "block",
+                width: "calc(100% + 12px)",
+                margin: "0 -6px",
+                padding: "2px 6px",
+                borderRadius: 5,
+                background: hovered === key ? theme.rowHover : "transparent",
+                transition: "background 0.12s",
+              }}
+            >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 }} />
@@ -56,7 +89,7 @@ export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes }: Prop
                 <span style={{ fontSize: 12, fontWeight: 600, color: theme.nodeText, fontFamily: "var(--dg-font-mono)" }}>{count}</span>
               </div>
               <ProgressBar percent={pct} color={color} />
-            </div>
+            </button>
           );
         })}
 
@@ -69,13 +102,31 @@ export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes }: Prop
           marginTop: 2,
         }}>
           {[
-            { label: "Networks", count: networks },
-            { label: "Volumes", count: volumes },
+            { type: "network", label: "Networks", count: networks },
+            { type: "volume", label: "Volumes", count: volumes },
           ].map(r => (
-            <div key={r.label} style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+            <button
+              key={r.label}
+              type="button"
+              onClick={() => onTypeFilter(r.type)}
+              onMouseEnter={() => setHovered(r.type)}
+              onMouseLeave={() => setHovered(null)}
+              title={`Show ${r.label.toLowerCase()} in the table`}
+              style={{
+                ...drillButton,
+                display: "flex",
+                alignItems: "baseline",
+                gap: 4,
+                padding: "2px 6px",
+                margin: "-2px -6px",
+                borderRadius: 5,
+                background: hovered === r.type ? theme.rowHover : "transparent",
+                transition: "background 0.12s",
+              }}
+            >
               <span style={{ fontSize: 14, fontWeight: 600, color: theme.nodeText, fontFamily: "var(--dg-font-mono)" }}>{r.count}</span>
               <span style={{ fontSize: 11, color: theme.nodeSubtext }}>{r.label}</span>
-            </div>
+            </button>
           ))}
         </div>
       </div>

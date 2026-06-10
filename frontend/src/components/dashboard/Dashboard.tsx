@@ -17,6 +17,12 @@ import type { ContainerStatsData } from "../../types/stats";
 interface Props {
   nodes: DGNode[];
   statsMap: Map<string, ContainerStatsData>;
+  /** Open the table view filtered to a single container status. */
+  onStatusFilter: (status: string) => void;
+  /** Open the table view filtered to a single resource type. */
+  onTypeFilter: (type: string) => void;
+  /** Open the detail panel for the given graph node id. */
+  onInspect: (nodeId: string) => void;
 }
 
 function useIsNarrow(breakpoint = 900): boolean {
@@ -30,7 +36,7 @@ function useIsNarrow(breakpoint = 900): boolean {
   return narrow;
 }
 
-export const Dashboard = memo(function Dashboard({ nodes, statsMap }: Props) {
+export const Dashboard = memo(function Dashboard({ nodes, statsMap, onStatusFilter, onTypeFilter, onInspect }: Props) {
   const { theme } = useTheme();
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
   const { data: historyData } = useStatsHistory(timeRange);
@@ -63,7 +69,7 @@ export const Dashboard = memo(function Dashboard({ nodes, statsMap }: Props) {
 
         {/* Row 1: 4 summary cards — equal height */}
         <div style={{ display: "grid", gridTemplateColumns: cols4, gap: 12, marginBottom: 12 }}>
-          <StatusSummaryCard nodes={nodes} />
+          <StatusSummaryCard nodes={nodes} onStatusFilter={onStatusFilter} onTypeFilter={onTypeFilter} />
           <HostInfoCard />
           <DiskUsageCard />
           <ImagesCard />
@@ -79,10 +85,10 @@ export const Dashboard = memo(function Dashboard({ nodes, statsMap }: Props) {
 
         {/* Row 4–5: Tables and lists */}
         <div style={{ display: "grid", gridTemplateColumns: cols2, gap: 12 }}>
-          <TopConsumersCard statsMap={statsMap} />
+          <TopConsumersCard statsMap={statsMap} onInspect={onInspect} />
           <AlertsCard nodes={nodes} statsMap={statsMap} />
           <ComposeProjectsCard nodes={nodes} />
-          <EventTimelineCard />
+          <EventTimelineCard nodes={nodes} onInspect={onInspect} />
         </div>
       </div>
     </div>
