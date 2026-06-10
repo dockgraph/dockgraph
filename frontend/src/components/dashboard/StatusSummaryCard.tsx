@@ -3,14 +3,15 @@ import { useTheme } from "../../theme";
 import { DashboardCard } from "./DashboardCard";
 import { ProgressBar } from "./ProgressBar";
 import { STATUS_COLORS } from "./palette";
+import type { ResourceTab } from "../table/TableView";
 import type { DGNode } from "../../types";
 
 interface Props {
   nodes: DGNode[];
   /** Open the table filtered to the clicked container status. */
   onStatusFilter: (status: string) => void;
-  /** Open the table filtered to the clicked resource type. */
-  onTypeFilter: (type: string) => void;
+  /** Open the table on the clicked resource's subtab. */
+  onResourceTab: (tab: ResourceTab) => void;
 }
 
 /** Shared reset so the clickable rows read as plain content, not buttons. */
@@ -31,7 +32,7 @@ const STATUS_CONFIG = [
   { key: "not_running", label: "Pending", color: STATUS_COLORS.gray },
 ] as const;
 
-export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes, onStatusFilter, onTypeFilter }: Props) {
+export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes, onStatusFilter, onResourceTab }: Props) {
   const { theme } = useTheme();
   const [hovered, setHovered] = useState<string | null>(null);
 
@@ -102,14 +103,14 @@ export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes, onStat
           marginTop: 2,
         }}>
           {[
-            { type: "network", label: "Networks", count: networks },
-            { type: "volume", label: "Volumes", count: volumes },
+            { tab: "networks" as const, label: "Networks", count: networks },
+            { tab: "volumes" as const, label: "Volumes", count: volumes },
           ].map(r => (
             <button
               key={r.label}
               type="button"
-              onClick={() => onTypeFilter(r.type)}
-              onMouseEnter={() => setHovered(r.type)}
+              onClick={() => onResourceTab(r.tab)}
+              onMouseEnter={() => setHovered(r.tab)}
               onMouseLeave={() => setHovered(null)}
               title={`Show ${r.label.toLowerCase()} in the table`}
               style={{
@@ -120,7 +121,7 @@ export const StatusSummaryCard = memo(function StatusSummaryCard({ nodes, onStat
                 padding: "2px 6px",
                 margin: "-2px -6px",
                 borderRadius: 5,
-                background: hovered === r.type ? theme.rowHover : "transparent",
+                background: hovered === r.tab ? theme.rowHover : "transparent",
                 transition: "background 0.12s",
               }}
             >

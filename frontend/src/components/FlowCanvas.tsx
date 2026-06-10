@@ -23,6 +23,7 @@ import { StatusIndicator } from "./StatusIndicator";
 import { SearchFilter } from "./SearchFilter";
 import { ViewTabs } from "./ViewTabs";
 import type { ViewKey } from "./ViewTabs";
+import type { ResourceTab } from "./table/TableView";
 import { Spinner } from "./StateDisplay";
 import { DetailPanel } from "./panels/DetailPanel";
 import { DetailPanelHeader } from "./panels/DetailPanelHeader";
@@ -132,6 +133,7 @@ export function FlowCanvas({
 
   // View navigation state.
   const [activeView, setActiveView] = useState<ViewKey>("graph");
+  const [tableTab, setTableTab] = useState<ResourceTab>("containers");
 
   // Detail panel state.
   const {
@@ -184,25 +186,29 @@ export function FlowCanvas({
   // Search & filter.
   const search = useSearchFilter(dgNodes);
 
-  // Dashboard drill-downs: jump to the table view with a single filter applied.
-  // The table and the search bar share this `search` state, so the active
-  // filter (and its match count) surface in the search bar automatically.
-  const { clearAll, toggleStatus, toggleType } = search;
+  // Dashboard drill-downs into the table view. Each clears any stale selection
+  // and filter first so the destination is predictable. The table and the
+  // search bar share this `search` state, so an applied status filter (and its
+  // match count) surface in the search bar automatically.
+  const { clearAll, toggleStatus } = search;
   const handleStatusFilter = useCallback(
     (status: string) => {
+      closeDetail();
       clearAll();
       toggleStatus(status);
+      setTableTab("containers");
       setActiveView("table");
     },
-    [clearAll, toggleStatus],
+    [closeDetail, clearAll, toggleStatus],
   );
-  const handleTypeFilter = useCallback(
-    (type: string) => {
+  const handleResourceTab = useCallback(
+    (tab: ResourceTab) => {
+      closeDetail();
       clearAll();
-      toggleType(type);
+      setTableTab(tab);
       setActiveView("table");
     },
-    [clearAll, toggleType],
+    [closeDetail, clearAll],
   );
 
   const {
@@ -394,6 +400,8 @@ export function FlowCanvas({
               matchingNodeIds={search.matchingNodeIds}
               selectedNodeId={detailNodeId}
               onRowClick={handleInfoClickWithSelect}
+              activeTab={tableTab}
+              onTabChange={setTableTab}
             />
           </Suspense>
         </div>
@@ -403,7 +411,7 @@ export function FlowCanvas({
             nodes={dgNodes}
             statsMap={statsMap}
             onStatusFilter={handleStatusFilter}
-            onTypeFilter={handleTypeFilter}
+            onResourceTab={handleResourceTab}
             onInspect={handleInfoClickWithSelect}
           />
         </Suspense>

@@ -11,6 +11,7 @@ import { AlertsCard } from "./AlertsCard";
 import { ComposeProjectsCard } from "./ComposeProjectsCard";
 import { EventTimelineCard } from "./EventTimelineCard";
 import { useStatsHistory, type TimeRange } from "../../hooks/useStatsHistory";
+import type { ResourceTab } from "../table/TableView";
 import type { DGNode } from "../../types";
 import type { ContainerStatsData } from "../../types/stats";
 
@@ -19,8 +20,8 @@ interface Props {
   statsMap: Map<string, ContainerStatsData>;
   /** Open the table view filtered to a single container status. */
   onStatusFilter: (status: string) => void;
-  /** Open the table view filtered to a single resource type. */
-  onTypeFilter: (type: string) => void;
+  /** Open the table view on a specific resource subtab. */
+  onResourceTab: (tab: ResourceTab) => void;
   /** Open the detail panel for the given graph node id. */
   onInspect: (nodeId: string) => void;
 }
@@ -36,7 +37,7 @@ function useIsNarrow(breakpoint = 900): boolean {
   return narrow;
 }
 
-export const Dashboard = memo(function Dashboard({ nodes, statsMap, onStatusFilter, onTypeFilter, onInspect }: Props) {
+export const Dashboard = memo(function Dashboard({ nodes, statsMap, onStatusFilter, onResourceTab, onInspect }: Props) {
   const { theme } = useTheme();
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
   const { data: historyData } = useStatsHistory(timeRange);
@@ -69,7 +70,7 @@ export const Dashboard = memo(function Dashboard({ nodes, statsMap, onStatusFilt
 
         {/* Row 1: 4 summary cards — equal height */}
         <div style={{ display: "grid", gridTemplateColumns: cols4, gap: 12, marginBottom: 12 }}>
-          <StatusSummaryCard nodes={nodes} onStatusFilter={onStatusFilter} onTypeFilter={onTypeFilter} />
+          <StatusSummaryCard nodes={nodes} onStatusFilter={onStatusFilter} onResourceTab={onResourceTab} />
           <HostInfoCard />
           <DiskUsageCard />
           <ImagesCard />

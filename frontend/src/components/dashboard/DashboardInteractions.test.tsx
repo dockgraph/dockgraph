@@ -48,18 +48,18 @@ function makeStats(): ContainerStatsData {
 describe("StatusSummaryCard interactions", () => {
   it("filters the table by status when a status row is clicked", () => {
     const onStatusFilter = vi.fn();
-    render(<StatusSummaryCard nodes={containers} onStatusFilter={onStatusFilter} onTypeFilter={vi.fn()} />);
+    render(<StatusSummaryCard nodes={containers} onStatusFilter={onStatusFilter} onResourceTab={vi.fn()} />);
     fireEvent.click(screen.getByText("Running"));
     expect(onStatusFilter).toHaveBeenCalledWith("running");
   });
 
-  it("filters the table by type when a resource total is clicked", () => {
-    const onTypeFilter = vi.fn();
-    render(<StatusSummaryCard nodes={containers} onStatusFilter={vi.fn()} onTypeFilter={onTypeFilter} />);
+  it("opens the matching subtab when a resource total is clicked", () => {
+    const onResourceTab = vi.fn();
+    render(<StatusSummaryCard nodes={containers} onStatusFilter={vi.fn()} onResourceTab={onResourceTab} />);
     fireEvent.click(screen.getByText("Networks"));
-    expect(onTypeFilter).toHaveBeenCalledWith("network");
+    expect(onResourceTab).toHaveBeenCalledWith("networks");
     fireEvent.click(screen.getByText("Volumes"));
-    expect(onTypeFilter).toHaveBeenCalledWith("volume");
+    expect(onResourceTab).toHaveBeenCalledWith("volumes");
   });
 });
 

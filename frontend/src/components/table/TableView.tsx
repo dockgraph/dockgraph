@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from "react";
+import { useMemo, useEffect, memo } from "react";
 import { useTheme } from "../../theme";
 import { ContainerTable } from "./ContainerTable";
 import { NetworkTable } from "./NetworkTable";
@@ -7,7 +7,7 @@ import { tableLayout, resourceTabs } from "./tableStyles";
 import type { DGNode, DGEdge } from "../../types";
 import type { ContainerStatsData } from "../../types/stats";
 
-type ResourceTab = "containers" | "networks" | "volumes";
+export type ResourceTab = "containers" | "networks" | "volumes";
 
 const TABS: { key: ResourceTab; label: string }[] = [
   { key: "containers", label: "Containers" },
@@ -30,6 +30,9 @@ interface Props {
   matchingNodeIds: Set<string> | null;
   selectedNodeId: string | null;
   onRowClick: (nodeId: string) => void;
+  /** Active resource subtab — controlled by the parent so other views can drive it. */
+  activeTab: ResourceTab;
+  onTabChange: (tab: ResourceTab) => void;
 }
 
 export const TableView = memo(function TableView({
@@ -39,19 +42,17 @@ export const TableView = memo(function TableView({
   matchingNodeIds,
   selectedNodeId,
   onRowClick,
+  activeTab,
+  onTabChange,
 }: Props) {
   const { theme } = useTheme();
-  const [activeTab, setActiveTab] = useState<ResourceTab>("containers");
-  const [prevSelection, setPrevSelection] = useState<string | null>(null);
 
-  // Auto-switch tab when selection changes to a different resource type.
-  // Uses the "setState during render" pattern documented by React for
-  // adjusting state based on changed props without an extra render pass.
-  if (selectedNodeId !== prevSelection) {
-    setPrevSelection(selectedNodeId);
+  // Follow the selection: when a resource is selected (e.g. from the graph or
+  // a cross-reference), surface it by switching to its subtab.
+  useEffect(() => {
     const target = tabForSelection(selectedNodeId);
-    if (target && target !== activeTab) setActiveTab(target);
-  }
+    if (target) onTabChange(target);
+  }, [selectedNodeId, onTabChange]);
 
   const styles = tableLayout(theme);
   const tabStyles = resourceTabs(theme);
@@ -78,7 +79,7 @@ export const TableView = memo(function TableView({
           <button
             key={tab.key}
             className={activeTab === tab.key ? "dg-resource-tab dg-resource-tab--active" : "dg-resource-tab"}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => onTabChange(tab.key)}
             style={tabStyles.tab(activeTab === tab.key)}
           >
             {tab.label}
