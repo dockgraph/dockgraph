@@ -27,6 +27,7 @@ vi.mock("../../hooks/useRecentEvents", () => ({
 import { StatusSummaryCard } from "./StatusSummaryCard";
 import { TopConsumersCard } from "./TopConsumersCard";
 import { EventTimelineCard } from "./EventTimelineCard";
+import { AlertsCard } from "./AlertsCard";
 import type { DGNode } from "../../types";
 import type { ContainerStatsData } from "../../types/stats";
 
@@ -92,5 +93,16 @@ describe("EventTimelineCard interactions", () => {
     render(<EventTimelineCard nodes={containers} onInspect={onInspect} />);
     fireEvent.click(screen.getByText("nginx:latest"));
     expect(onInspect).not.toHaveBeenCalled();
+  });
+});
+
+describe("AlertsCard interactions", () => {
+  it("inspects the container an alert refers to", () => {
+    const onInspect = vi.fn();
+    // The exited "db" container produces a "Container exited" alert.
+    const statsMap = new Map<string, ContainerStatsData>();
+    render(<AlertsCard nodes={containers} statsMap={statsMap} onInspect={onInspect} />);
+    fireEvent.click(screen.getByText("Container exited"));
+    expect(onInspect).toHaveBeenCalledWith("container:db");
   });
 });

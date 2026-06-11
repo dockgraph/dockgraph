@@ -1,4 +1,4 @@
-import { useMemo, memo } from "react";
+import { useMemo, useState, memo } from "react";
 import { useTheme } from "../../theme";
 import { DashboardCard } from "./DashboardCard";
 import { STATUS_COLORS } from "./palette";
@@ -9,6 +9,8 @@ import type { ContainerStatsData } from "../../types/stats";
 interface Props {
   nodes: DGNode[];
   statsMap: Map<string, ContainerStatsData>;
+  /** Open the detail panel for the container the alert refers to. */
+  onInspect: (nodeId: string) => void;
 }
 
 const SEVERITY_STYLES: Record<Alert["severity"], { color: string; bg: string; label: string }> = {
@@ -17,9 +19,10 @@ const SEVERITY_STYLES: Record<Alert["severity"], { color: string; bg: string; la
   info:    { color: STATUS_COLORS.blue,  bg: "rgba(59,130,246,0.08)", label: "INF" },
 };
 
-export const AlertsCard = memo(function AlertsCard({ nodes, statsMap }: Props) {
+export const AlertsCard = memo(function AlertsCard({ nodes, statsMap, onInspect }: Props) {
   const { theme } = useTheme();
   const alerts = useMemo(() => evaluateAlerts(nodes, statsMap), [nodes, statsMap]);
+  const [hovered, setHovered] = useState<number | null>(null);
 
   const badge = alerts.length > 0 ? (
     <span style={{
@@ -41,9 +44,17 @@ export const AlertsCard = memo(function AlertsCard({ nodes, statsMap }: Props) {
       <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 220, overflowY: "auto" }}>
         {alerts.map((alert, i) => {
           const sev = SEVERITY_STYLES[alert.severity];
+          const nodeId = `container:${alert.container}`;
           return (
             <div
               key={`${alert.container}-${alert.message}-${i}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => onInspect(nodeId)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onInspect(nodeId); } }}
+              onMouseEnter={() => setHovered(i)}
+              onMouseLeave={() => setHovered(null)}
+              title={`Inspect ${alert.container}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -51,6 +62,9 @@ export const AlertsCard = memo(function AlertsCard({ nodes, statsMap }: Props) {
                 padding: "5px 8px",
                 borderRadius: 4,
                 background: sev.bg,
+                cursor: "pointer",
+                boxShadow: hovered === i ? `inset 0 0 0 1px ${sev.color}` : "none",
+                transition: "box-shadow 0.12s",
               }}
             >
               <span style={{

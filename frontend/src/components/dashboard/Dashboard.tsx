@@ -87,7 +87,7 @@ export const Dashboard = memo(function Dashboard({ nodes, statsMap, onStatusFilt
         {/* Row 4–5: Tables and lists */}
         <div style={{ display: "grid", gridTemplateColumns: cols2, gap: 12 }}>
           <TopConsumersCard statsMap={statsMap} onInspect={onInspect} />
-          <AlertsCard nodes={nodes} statsMap={statsMap} />
+          <AlertsCard nodes={nodes} statsMap={statsMap} onInspect={onInspect} />
           <ComposeProjectsCard nodes={nodes} />
           <EventTimelineCard nodes={nodes} onInspect={onInspect} />
         </div>
