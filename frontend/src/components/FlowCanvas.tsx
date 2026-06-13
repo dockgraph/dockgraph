@@ -416,7 +416,7 @@ export function FlowCanvas({
           />
         </Suspense>
       ) : (
-      <>
+      <div style={{ position: "absolute", inset: 0, top: 50 }}>
       {showEmptyState && (
         <Overlay>
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
@@ -522,7 +522,7 @@ export function FlowCanvas({
           />
         )}
       </ReactFlow>
-      </>
+      </div>
       )}
       </div>
     </div>
