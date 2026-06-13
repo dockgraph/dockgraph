@@ -146,47 +146,51 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
       return () => cancelAnimationFrame(id);
     }
 
-    // Reset state for new fetch cycle.
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    // Reset state and start the fetch in the same deferred callback. Starting
+    // the fetch only after the reset guarantees its result is applied after the
+    // reset — otherwise a fast history response (local backend answers in ~1ms,
+    // well under a frame) resolves first and the reset clobbers the lines,
+    // leaving the panel stuck on "Loading logs...".
     const resetId = requestAnimationFrame(() => {
       setConnected(false);
       setLines([]);
       setHasMore(true);
       setLoading(true);
+
+      const url = appendParam(historyUrl, `limit=${pageSize}`);
+
+      fetchHistory(url, abort.signal)
+        .then((fetched) => {
+          if (abort.signal.aborted) return;
+
+          linesRef.current = fetched;
+          setLines([...fetched]);
+          setHasMore(fetched.length >= pageSize);
+          setLoading(false);
+
+          // Open SSE for live tail, starting after the newest timestamp.
+          if (streamUrl) {
+            const newest = fetched.length > 0 ? fetched[fetched.length - 1].timestamp : undefined;
+            const sseUrl = newest
+              ? appendParam(streamUrl, `since=${encodeURIComponent(newest)}`)
+              : streamUrl;
+            openSSE(sseUrl);
+          }
+        })
+        .catch((err) => {
+          if (abort.signal.aborted) return;
+          console.error('Failed to fetch log history:', err);
+          setLoading(false);
+
+          // Fall back to SSE-only if history fetch fails.
+          if (streamUrl) {
+            openSSE(streamUrl);
+          }
+        });
     });
-
-    const abort = new AbortController();
-    abortRef.current = abort;
-
-    const url = appendParam(historyUrl, `limit=${pageSize}`);
-
-    fetchHistory(url, abort.signal)
-      .then((fetched) => {
-        if (abort.signal.aborted) return;
-
-        linesRef.current = fetched;
-        setLines([...fetched]);
-        setHasMore(fetched.length >= pageSize);
-        setLoading(false);
-
-        // Open SSE for live tail, starting after the newest timestamp.
-        if (streamUrl) {
-          const newest = fetched.length > 0 ? fetched[fetched.length - 1].timestamp : undefined;
-          const sseUrl = newest
-            ? appendParam(streamUrl, `since=${encodeURIComponent(newest)}`)
-            : streamUrl;
-          openSSE(sseUrl);
-        }
-      })
-      .catch((err) => {
-        if (abort.signal.aborted) return;
-        console.error('Failed to fetch log history:', err);
-        setLoading(false);
-
-        // Fall back to SSE-only if history fetch fails.
-        if (streamUrl) {
-          openSSE(streamUrl);
-        }
-      });
 
     return () => {
       cancelAnimationFrame(resetId);
