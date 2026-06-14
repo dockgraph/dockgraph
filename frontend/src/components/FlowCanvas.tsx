@@ -9,7 +9,7 @@ import {
   type Node as RFNode,
   type Edge as RFEdge,
 } from "@xyflow/react";
-import { ANIMATION_NODE_LIMIT, DETAIL_PANEL_WIDTH } from "../utils/constants";
+import { ANIMATION_NODE_LIMIT, DETAIL_PANEL_WIDTH, Z } from "../utils/constants";
 
 import { ContainerNode } from "./ContainerNode";
 import { NetworkGroup } from "./NetworkGroup";
@@ -48,6 +48,7 @@ import { ContainerList } from "./panels/ContainerList";
 import { useGraphLayout } from "../hooks/useGraphLayout";
 import { useSelectionHighlight } from "../hooks/useSelectionHighlight";
 import { useDetailPanel } from "../hooks/useDetailPanel";
+import { useLogWindows } from "../hooks/useLogWindows";
 import { useSearchFilter } from "../hooks/useSearchFilter";
 import { networkColor } from "../utils/colors";
 import { useTheme } from "../theme";
@@ -59,6 +60,8 @@ import type { ReactNode } from "react";
 const TableView = lazy(() => import("./table/TableView").then((m) => ({ default: m.TableView })));
 const Dashboard = lazy(() => import("./dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
 const CommonLogs = lazy(() => import("./logs/CommonLogs").then((m) => ({ default: m.CommonLogs })));
+// Code-split the floating log windows so they cost nothing until first opened.
+const LogWindowLayer = lazy(() => import("./logwindow/LogWindowLayer"));
 
 function ViewFallback() {
   return (
@@ -163,8 +166,9 @@ export function FlowCanvas({
     [handleInfoClick],
   );
 
-  // Re-open the side panel for a container. The global logs view passes the
-  // bare container name; the detail panel expects a node id.
+  // Floating log windows. `openContainerInfo` re-opens the side panel for a
+  // container (windows store the bare name; the panel expects a node id).
+  const logWindows = useLogWindows();
   const openContainerInfo = useCallback(
     (containerId: string) => handleInfoClickWithSelect(`container:${containerId}`),
     [handleInfoClickWithSelect],
@@ -350,7 +354,15 @@ export function FlowCanvas({
             <DetailPanelEnv env={containerData.env} />
             <DetailPanelLabels labels={containerData.labels} />
             <DetailPanelHealth health={containerData.health} />
-            <DetailPanelLogs containerId={variant.kind === 'container' ? variant.containerName : null} active={detailOpen} />
+            <DetailPanelLogs
+              containerId={variant.kind === 'container' ? variant.containerName : null}
+              active={detailOpen}
+              onPopOut={
+                variant.kind === 'container'
+                  ? () => logWindows.openLogs(variant.containerName, containerData?.name ?? variant.containerName)
+                  : undefined
+              }
+            />
           </>
         ) : null}
       </DetailPanel>
@@ -374,7 +386,7 @@ export function FlowCanvas({
           left: 0,
           right: 0,
           height: 50,
-          zIndex: 10,
+          zIndex: Z.header,
           display: "flex",
           alignItems: "center",
           gap: 12,
@@ -537,6 +549,12 @@ export function FlowCanvas({
       </div>
       )}
       </div>
+
+      <Suspense fallback={null}>
+        {logWindows.windows.length > 0 && (
+          <LogWindowLayer controller={logWindows} onOpenInfo={openContainerInfo} />
+        )}
+      </Suspense>
     </div>
   );
 }
