@@ -23,7 +23,7 @@ src/
 │   ├── CanvasEdgeLayer.tsx      # Canvas-based edge renderer for large graphs
 │   ├── ErrorBoundary.tsx        # React error boundary with fallback UI
 │   ├── NodeHandles.tsx          # Shared source/target handles for nodes
-│   ├── ViewTabs.tsx             # Graph / Table / Dashboard navigation tabs
+│   ├── ViewTabs.tsx             # Graph / Table / Dashboard / Logs navigation tabs
 │   ├── SearchFilter.tsx         # Search input with type/status filter chips
 │   ├── SearchFilterChips.tsx    # Filter chip buttons (type, status)
 │   ├── InspectButton.tsx        # Node inspect action button
@@ -71,7 +71,7 @@ src/
 │   │   ├── TableGroupHeader.tsx     # Collapsible group header with chevron
 │   │   ├── TableToolbar.tsx         # Group-by dropdown toolbar
 │   │   └── tableStyles.ts          # Shared table style constants
-│   └── dashboard/               # Dashboard view components
+│   ├── dashboard/               # Dashboard view components
 │       ├── Dashboard.tsx            # Dashboard layout with responsive grid
 │       ├── DashboardCard.tsx        # Base card with loading/empty states
 │       ├── StatusSummaryCard.tsx    # Container status breakdown
@@ -86,6 +86,15 @@ src/
 │       ├── TimeRangeSelector.tsx    # Time range selector (5m/1h/6h/24h)
 │       ├── ProgressBar.tsx          # Reusable progress bar component
 │       └── palette.ts              # Shared semantic and metric colors
+│   ├── logs/                    # Global logs view components
+│   │   ├── CommonLogs.tsx           # Unified all-container log view
+│   │   ├── LogsToolbar.tsx          # Text/regex filter, chips, stream, pause, counts
+│   │   └── LogRowMenu.tsx           # Per-row contextual filter actions
+│   └── logwindow/               # Log rendering and floating window components
+│       ├── LogStream.tsx            # Shared scroll/render/search log list (panel, windows, global view)
+│       ├── LogWindow.tsx            # Movable, resizable, tabbed window chrome
+│       ├── LogWindowLayer.tsx       # Overlay manager + drag-to-merge/detach hit-testing
+│       └── LogDock.tsx              # Minimized-window dock strip
 ├── hooks/
 │   ├── useDockGraph.ts             # WebSocket connection, reconnect, delta updates
 │   ├── useGraphLayout.ts           # ELK layout orchestration
@@ -101,7 +110,12 @@ src/
 │   ├── useTableSort.ts             # Generic column sort with toggle
 │   ├── useTableGrouping.ts         # Group by compose/network/status/driver
 │   ├── useRowHover.ts              # Shared row hover/selected state
-│   ├── useLogs.ts                  # Log stream management
+│   ├── useLogs.ts                  # Log stream management (history + SSE, dedupe, buffer)
+│   ├── useAggregateLogs.ts         # All-container merged log stream wrapper
+│   ├── useLogFilters.ts            # Global-log filter chips + text/regex predicate
+│   ├── useLogWindows.ts            # Floating log window state controller
+│   ├── logWindowsState.ts          # Pure log-window state transitions
+│   ├── useDragResize.ts            # Pointer-based window drag and resize
 │   ├── usePollingFetch.ts          # Generic polling fetch with interval
 │   ├── useStatsHistory.ts          # Stats time-series for dashboard charts
 │   ├── useRecentEvents.ts          # Recent Docker events
@@ -192,7 +206,11 @@ Backend (WebSocket) → useDockGraph hook → FlowCanvas
 
 4. **Dashboard view**: A 13-card monitoring dashboard that polls REST endpoints for stats history, recent events, system info, disk usage, and images. Cards include CPU/memory/network/I/O time-series charts, top resource consumers, event timeline, alerts, and infrastructure overview.
 
-5. **Detail panels**: Clicking any resource in graph or table view opens a detail panel. Container panels fetch live stats, logs, and inspect data. Network and volume panels show IPAM configuration and mount relationships.
+5. **Global logs view**: `CommonLogs` merges every container's logs into one time-ordered stream via `useAggregateLogs` (backed by `/api/logs` SSE + `/api/logs/history`). `useLogFilters` drives client-side filtering — text (literal or regex), per-container include/exclude, and stream — surfaced as removable chips and per-row actions, with deep back-scroll, a pause toggle, and a Ctrl+F find. Lines render through the shared `LogStream` with color-coded container badges.
+
+6. **Pop-out log windows**: Any container's logs can open in a floating window managed by `useLogWindows`. Windows drag and resize (`useDragResize`), merge into tabs when dropped together, detach back out, and minimize into a dock — all reusing `LogStream` for rendering.
+
+7. **Detail panels**: Clicking any resource in graph or table view opens a detail panel. Container panels fetch live stats, logs, and inspect data. Network and volume panels show IPAM configuration and mount relationships.
 
 ### Key Design Decisions
 

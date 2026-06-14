@@ -24,6 +24,8 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 - **Live topology graph** — containers, networks, and volumes rendered as an interactive, zoomable graph
 - **Table view** — alternative tabular view with sortable columns, grouping by compose project / network / status / driver, and collapsible groups
 - **Dashboard view** — 13-card monitoring dashboard with resource charts, top consumers, event timeline, alerts, disk usage, images, and compose project overview
+- **Global logs** — a unified, time-ordered log stream that aggregates every container into one view to trace an event across services; filter by text (literal or regex) or container, drill in with per-row filter actions, scroll back through merged history alongside the live tail, and find within (Ctrl+F)
+- **Pop-out log windows** — open any container's logs in a floating, movable and resizable window; drag windows together into tabs, minimize them to a dock, and search within each
 - **Detail panels** — click any resource to inspect stats, ports, mounts, environment, labels, logs, health checks, and network configuration
 - **Real-time updates** — watches the Docker event stream; the graph reflects changes within seconds
 - **Compose-aware** — parses compose files to show services that haven't started yet

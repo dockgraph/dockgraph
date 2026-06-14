@@ -46,6 +46,7 @@ backend/
 │   ├── networks.go          # Network inspect endpoint
 │   ├── volumes.go           # Volume inspect endpoint
 │   ├── logs.go              # Container log history and SSE streaming endpoints
+│   ├── logs_aggregate.go    # Aggregated all-container log history and SSE streaming
 │   ├── events.go            # Recent Docker events endpoint
 │   ├── stats_history.go     # Stats time-series endpoint for dashboard charts
 │   ├── system.go            # System info, disk usage, and image list endpoints
@@ -157,6 +158,8 @@ When `DG_PASSWORD` is set, all endpoints (except `/healthz`) require a valid JWT
 | `GET` | `/api/containers/:id` | Container inspect (detailed info) |
 | `GET` | `/api/containers/:id/logs` | Stream container logs (SSE) |
 | `GET` | `/api/containers/:id/logs/history` | Paginated log history (JSON) |
+| `GET` | `/api/logs` | Stream all containers' logs merged (SSE) |
+| `GET` | `/api/logs/history` | Paginated merged log history across all containers (JSON) |
 | `GET` | `/api/networks/:name` | Network inspect (IPAM, containers) |
 | `GET` | `/api/volumes/:name` | Volume inspect (driver, usage, labels) |
 | `GET` | `/api/system/info` | Docker host system information |
