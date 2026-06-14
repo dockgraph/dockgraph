@@ -182,7 +182,9 @@ export const ResourceChart = memo(function ResourceChart({ title, metric, data }
       <div ref={containerRef} className="dg-chart" style={{ width: "100%", minHeight: CHART_HEIGHT }}>
         {!hasData && (
           <div style={{ height: CHART_HEIGHT }}>
-            <StateDisplay loading message="Waiting for data" />
+            {data == null
+              ? <StateDisplay loading message="Waiting for data" />
+              : <StateDisplay message="No data available" />}
           </div>
         )}
       </div>
