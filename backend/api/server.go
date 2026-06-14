@@ -21,6 +21,8 @@ type HealthChecker interface {
 type DockerAPI interface {
 	ContainerInspector
 	ContainerLogger
+	ContainerLister
+	EventSubscriber
 	VolumeInspector
 	NetworkInspector
 }
@@ -60,6 +62,8 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 	if docker != nil {
 		mux.HandleFunc("GET /api/containers/{id}/logs/history", HandleContainerLogsHistory(docker))
 		mux.HandleFunc("GET /api/containers/{id}/logs", HandleContainerLogs(docker))
+		mux.HandleFunc("GET /api/logs/history", HandleAggregateLogsHistory(docker, docker))
+		mux.HandleFunc("GET /api/logs", HandleAggregateLogs(docker, docker, docker))
 		mux.HandleFunc("GET /api/containers/{id}", HandleContainerInspect(docker))
 		mux.HandleFunc("GET /api/volumes/{name}", HandleVolumeInspect(docker))
 		mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(docker))

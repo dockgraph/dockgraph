@@ -15,6 +15,7 @@ import (
 	"testing/fstest"
 
 	containertypes "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
 	networktypes "github.com/docker/docker/api/types/network"
 	volumetypes "github.com/docker/docker/api/types/volume"
 )
@@ -371,6 +372,17 @@ func (s *stubDockerAPI) VolumeInspect(_ context.Context, _ string) (volumetypes.
 
 func (s *stubDockerAPI) NetworkInspect(_ context.Context, _ string, _ networktypes.InspectOptions) (networktypes.Inspect, error) {
 	return networktypes.Inspect{}, fmt.Errorf("not implemented")
+}
+
+func (s *stubDockerAPI) ContainerList(_ context.Context, _ containertypes.ListOptions) ([]containertypes.Summary, error) {
+	return nil, nil
+}
+
+func (s *stubDockerAPI) Events(ctx context.Context, _ events.ListOptions) (<-chan events.Message, <-chan error) {
+	msg := make(chan events.Message)
+	errc := make(chan error)
+	go func() { <-ctx.Done(); close(msg); close(errc) }()
+	return msg, errc
 }
 
 func TestLogsHistoryValidRequest(t *testing.T) {
