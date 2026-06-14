@@ -99,3 +99,33 @@ export const STATS_THROTTLE_CRIT = 50;
 
 /** Debounce delay for search input (ms). */
 export const SEARCH_DEBOUNCE_MS = 150;
+
+// --- Floating log windows ---
+
+/** Top header bar height (px). Windows are clamped to stay below this. */
+export const HEADER_HEIGHT = 50;
+
+/** Height of the minimized-window dock strip (px). */
+export const DOCK_HEIGHT = 36;
+
+/** Default / minimum floating log window dimensions (px). */
+export const WINDOW_DEFAULT_W = 460;
+export const WINDOW_DEFAULT_H = 340;
+export const WINDOW_MIN_W = 280;
+export const WINDOW_MIN_H = 160;
+
+/** Pixel offset applied to each newly cascaded window. */
+export const WINDOW_CASCADE = 28;
+
+/**
+ * Centralized z-index layering. Raising the header above the detail panel and
+ * windows guarantees floating windows cover everything except the header.
+ */
+export const Z = {
+  canvasEdges: 1,
+  overlay: 5,
+  detailPanel: 20,
+  logWindowBase: 100, // per-window z is logWindowBase + window.z
+  dock: 9000,
+  header: 9500,
+} as const;

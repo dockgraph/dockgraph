@@ -49,6 +49,8 @@ export interface LogLine {
   stream: 'stdout' | 'stderr';
   text: string;
   timestamp?: string;
+  /** Source container name — set only for the aggregate (multi-container) stream. */
+  container?: string;
 }
 
 export interface VolumeDetail {

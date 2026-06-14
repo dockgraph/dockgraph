@@ -10,10 +10,10 @@ export function logLineId(): number {
 /** Parses an SSE data payload into a LogLine. */
 export function parseLogEvent(data: string): LogLine | null {
   try {
-    const parsed = JSON.parse(data) as { stream?: string; line?: string; timestamp?: string };
+    const parsed = JSON.parse(data) as { stream?: string; line?: string; timestamp?: string; container?: string };
     if (!parsed.line && !parsed.timestamp) return null;
     const stream = parsed.stream === 'stderr' ? 'stderr' : 'stdout';
-    return { id: logLineId(), stream, text: parsed.line ?? '', timestamp: parsed.timestamp };
+    return { id: logLineId(), stream, text: parsed.line ?? '', timestamp: parsed.timestamp, container: parsed.container };
   } catch {
     return null;
   }

@@ -44,6 +44,12 @@ export interface Theme {
   logText: string;
   logMuted: string;
   logTimestamp: string;
+  // Floating log windows
+  windowBg: string;
+  windowBorder: string;
+  windowShadow: string;
+  tabActiveBg: string;
+  dropIndicator: string;
 }
 
 // Technical Blueprint — deep slate-navy canvas, fine grid, teal signal accent.
@@ -82,6 +88,11 @@ const dark: Theme = {
   logText: '#e6edf5',
   logMuted: '#5a7088',
   logTimestamp: '#465d75',
+  windowBg: '#0f1828',
+  windowBorder: '#243450',
+  windowShadow: '0 12px 40px rgba(0, 0, 0, 0.55)',
+  tabActiveBg: '#172538',
+  dropIndicator: '#2dd4bf',
 };
 
 const light: Theme = {
@@ -119,6 +130,11 @@ const light: Theme = {
   logText: '#1e293b',
   logMuted: '#94a3b8',
   logTimestamp: '#64748b',
+  windowBg: '#ffffff',
+  windowBorder: '#d6d0c8',
+  windowShadow: '0 12px 40px rgba(60, 50, 30, 0.22)',
+  tabActiveBg: '#e8e2d9',
+  dropIndicator: '#0d9488',
 };
 
 interface ThemeContextValue {

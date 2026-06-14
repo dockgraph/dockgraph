@@ -5,7 +5,7 @@ import { LOG_BUFFER_SIZE } from '../utils/constants';
 
 /** Parsed response from the history endpoint. */
 interface HistoryResponse {
-  lines: { stream: string; line: string; timestamp?: string }[];
+  lines: { stream: string; line: string; timestamp?: string; container?: string }[];
 }
 
 export interface LogsResult {
@@ -26,6 +26,10 @@ interface LogsConfig {
   active: boolean;
   /** Number of lines to fetch per page. */
   pageSize?: number;
+  /** Max lines kept in memory. Defaults to LOG_BUFFER_SIZE. */
+  bufferSize?: number;
+  /** When set, older pages are de-duplicated against the buffer by this key. */
+  dedupeKey?: (line: LogLine) => string;
 }
 
 const DEFAULT_PAGE_SIZE = 200;
@@ -37,6 +41,7 @@ function toLogLine(entry: HistoryResponse['lines'][number]): LogLine {
     stream: (entry.stream === 'stderr' ? 'stderr' : 'stdout') as LogLine['stream'],
     text: entry.line,
     timestamp: entry.timestamp,
+    container: entry.container,
   };
 }
 
@@ -54,7 +59,7 @@ function appendParam(url: string, param: string): string {
  * 2. Open SSE with since=<newest_timestamp> for live tail
  * 3. On loadMore(): fetch older page via REST with before=<oldest_timestamp>
  */
-export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE_SIZE }: LogsConfig): LogsResult {
+export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE_SIZE, bufferSize = LOG_BUFFER_SIZE, dedupeKey }: LogsConfig): LogsResult {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -100,8 +105,8 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
 
       const buf = linesRef.current;
       buf.push(...newLines);
-      if (buf.length > LOG_BUFFER_SIZE) {
-        buf.splice(0, buf.length - LOG_BUFFER_SIZE);
+      if (buf.length > bufferSize) {
+        buf.splice(0, buf.length - bufferSize);
       }
       setLines([...buf]);
     };
@@ -125,7 +130,7 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
       source.close();
       sourceRef.current = null;
     };
-  }, []);
+  }, [bufferSize]);
 
   // Main effect: fetch initial history, then open SSE.
   useEffect(() => {
@@ -228,11 +233,23 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
 
         setHasMore(fetched.length >= pageSize);
 
+        // Drop lines already in the buffer (overlapping pages) when a key is set.
+        let older = fetched;
+        if (dedupeKey) {
+          const seen = new Set(linesRef.current.map(dedupeKey));
+          older = fetched.filter((l) => !seen.has(dedupeKey(l)));
+          if (older.length === 0) {
+            setHasMore(false);
+            setLoadingMore(false);
+            return;
+          }
+        }
+
         // Prepend older lines.
         const buf = linesRef.current;
-        linesRef.current = [...fetched, ...buf];
-        if (linesRef.current.length > LOG_BUFFER_SIZE) {
-          linesRef.current = linesRef.current.slice(0, LOG_BUFFER_SIZE);
+        linesRef.current = [...older, ...buf];
+        if (linesRef.current.length > bufferSize) {
+          linesRef.current = linesRef.current.slice(0, bufferSize);
         }
         setLines([...linesRef.current]);
         setLoadingMore(false);
@@ -242,7 +259,7 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
           setLoadingMore(false);
         }
       });
-  }, [historyUrl, loadingMore, hasMore, pageSize, fetchHistory]);
+  }, [historyUrl, loadingMore, hasMore, pageSize, bufferSize, dedupeKey, fetchHistory]);
 
   return { lines, connected, loading, loadingMore, hasMore, loadMore };
 }
