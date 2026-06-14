@@ -1,5 +1,5 @@
 # ── Stage 1: Build frontend ──────────────────────────────────
-FROM node:26-alpine@sha256:144769ec3f32e8ee36b3cfde91e82bee25d9367b20f31a151f3f7eea3a2a8541 AS frontend
+FROM node:26-alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS frontend
 WORKDIR /app/frontend
 
 # Install dependencies first (cached layer — only re-runs when lockfile changes)
@@ -13,7 +13,7 @@ RUN --mount=type=cache,target=/app/frontend/node_modules/.vite npm run build
 
 
 # ── Stage 2: Build backend ───────────────────────────────────
-FROM golang:1.26-alpine@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS backend
+FROM golang:1.26-alpine@sha256:7a3e50096189ad57c9f9f865e7e4aa8585ed1585248513dc5cda498e2f41812c AS backend
 ENV GOTOOLCHAIN=auto
 ENV CGO_ENABLED=0
 ENV GOOS=linux
