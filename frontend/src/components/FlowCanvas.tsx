@@ -58,6 +58,7 @@ import type { ReactNode } from "react";
 // default Graph view doesn't pay for them on first load.
 const TableView = lazy(() => import("./table/TableView").then((m) => ({ default: m.TableView })));
 const Dashboard = lazy(() => import("./dashboard/Dashboard").then((m) => ({ default: m.Dashboard })));
+const CommonLogs = lazy(() => import("./logs/CommonLogs").then((m) => ({ default: m.CommonLogs })));
 
 function ViewFallback() {
   return (
@@ -160,6 +161,13 @@ export function FlowCanvas({
       selectNodeRef.current?.(nodeId);
     },
     [handleInfoClick],
+  );
+
+  // Re-open the side panel for a container. The global logs view passes the
+  // bare container name; the detail panel expects a node id.
+  const openContainerInfo = useCallback(
+    (containerId: string) => handleInfoClickWithSelect(`container:${containerId}`),
+    [handleInfoClickWithSelect],
   );
 
   // Inject live stats and info callback into container and volume node data (doesn't affect layout).
@@ -414,6 +422,10 @@ export function FlowCanvas({
             onResourceTab={handleResourceTab}
             onInspect={handleInfoClickWithSelect}
           />
+        </Suspense>
+      ) : activeView === "logs" ? (
+        <Suspense fallback={<ViewFallback />}>
+          <CommonLogs active={activeView === "logs"} onOpenContainer={openContainerInfo} />
         </Suspense>
       ) : (
       <div style={{ position: "absolute", inset: 0, top: 50 }}>

@@ -5,6 +5,7 @@ const VIEWS = [
   { key: "graph", label: "Graph" },
   { key: "table", label: "Table" },
   { key: "dashboard", label: "Dashboard" },
+  { key: "logs", label: "Logs" },
 ] as const;
 
 export type ViewKey = (typeof VIEWS)[number]["key"];
