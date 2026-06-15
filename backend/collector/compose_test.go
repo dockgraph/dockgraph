@@ -151,6 +151,51 @@ func TestBuildComposeConfigVolumeMounts(t *testing.T) {
 	}
 }
 
+func TestBuildComposeConfigMasksSecretsAndCapturesLabels(t *testing.T) {
+	secret := "s3cr3t"
+	level := "info"
+	svc := composetypes.ServiceConfig{
+		Name: "api",
+		Environment: composetypes.MappingWithEquals{
+			"DB_PASSWORD": &secret,
+			"LOG_LEVEL":   &level,
+		},
+		Labels: composetypes.Labels{
+			"com.example.team": "platform",
+		},
+	}
+
+	cfg := buildComposeConfig(svc, composeNaming{project: "proj"})
+
+	if got := cfg.Environment["DB_PASSWORD"]; got != "********" {
+		t.Errorf("expected masked password, got %q", got)
+	}
+	if got := cfg.Environment["LOG_LEVEL"]; got != "info" {
+		t.Errorf("expected LOG_LEVEL=info, got %q", got)
+	}
+	if got := cfg.Labels["com.example.team"]; got != "platform" {
+		t.Errorf("expected label captured, got %q", got)
+	}
+}
+
+func TestParseComposePortsProtocol(t *testing.T) {
+	ports := []composetypes.ServicePortConfig{
+		{Published: "8070", Target: 80}, // unset → defaults to tcp
+		{Published: "5353", Target: 53, Protocol: "udp"},
+	}
+
+	got := parseComposePorts(ports)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 ports, got %d", len(got))
+	}
+	if got[0].Protocol != "tcp" {
+		t.Errorf("expected default protocol tcp, got %q", got[0].Protocol)
+	}
+	if got[1].Protocol != "udp" {
+		t.Errorf("expected protocol udp, got %q", got[1].Protocol)
+	}
+}
+
 func TestParseVolumeMountEdges(t *testing.T) {
 	snap, err := parseComposeFile(context.Background(), filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
 	if err != nil {

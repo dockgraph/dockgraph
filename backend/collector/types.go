@@ -23,8 +23,9 @@ import (
 
 // PortMapping represents a host-to-container port binding.
 type PortMapping struct {
-	Host      int `json:"host"`
-	Container int `json:"container"`
+	Host      int    `json:"host"`
+	Container int    `json:"container"`
+	Protocol  string `json:"protocol,omitempty"`
 }
 
 // Node represents a single element in the infrastructure graph.
@@ -57,6 +58,7 @@ type ComposeConfig struct {
 	Command     []string          `json:"command,omitempty"`
 	Entrypoint  []string          `json:"entrypoint,omitempty"`
 	Environment map[string]string `json:"environment,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
 	Restart     string            `json:"restart,omitempty"`
 	DependsOn   []string          `json:"dependsOn,omitempty"`
 	Volumes     []ComposeMount    `json:"volumes,omitempty"`

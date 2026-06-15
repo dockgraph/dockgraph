@@ -8,6 +8,8 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/loader"
 	composetypes "github.com/compose-spec/compose-go/v2/types"
+
+	"github.com/dockgraph/dockgraph/secrets"
 )
 
 // composeNaming provides Docker Compose naming conventions for a given project.
@@ -64,6 +66,11 @@ func parseComposePorts(ports []composetypes.ServicePortConfig) []PortMapping {
 			continue
 		}
 
+		proto := p.Protocol
+		if proto == "" {
+			proto = "tcp"
+		}
+
 		var startHost, endHost int
 		if n, _ := fmt.Sscanf(p.Published, "%d-%d", &startHost, &endHost); n == 2 && endHost >= startHost {
 			containerPort := int(p.Target)
@@ -71,6 +78,7 @@ func parseComposePorts(ports []composetypes.ServicePortConfig) []PortMapping {
 				result = append(result, PortMapping{
 					Host:      hp,
 					Container: containerPort + (hp - startHost),
+					Protocol:  proto,
 				})
 			}
 		} else {
@@ -81,6 +89,7 @@ func parseComposePorts(ports []composetypes.ServicePortConfig) []PortMapping {
 			result = append(result, PortMapping{
 				Host:      hostPort,
 				Container: int(p.Target),
+				Protocol:  proto,
 			})
 		}
 	}
@@ -169,12 +178,26 @@ func buildComposeConfig(svc composetypes.ServiceConfig, naming composeNaming) *C
 		CapDrop:    svc.CapDrop,
 	}
 
+	// Mask credential-looking values, matching how running containers are
+	// served, so secrets declared in a compose file aren't shown in clear.
 	if len(svc.Environment) > 0 {
 		cfg.Environment = make(map[string]string, len(svc.Environment))
 		for k, v := range svc.Environment {
-			if v != nil {
+			if v == nil {
+				continue
+			}
+			if secrets.IsSensitiveKey(k) {
+				cfg.Environment[k] = secrets.Masked
+			} else {
 				cfg.Environment[k] = *v
 			}
+		}
+	}
+
+	if len(svc.Labels) > 0 {
+		cfg.Labels = make(map[string]string, len(svc.Labels))
+		for k, v := range svc.Labels {
+			cfg.Labels[k] = v
 		}
 	}
 
