@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useTheme } from '../../theme';
+import { Copyable } from './Copyable';
 
 // Re-export panel styles so existing imports from './shared' keep working.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -47,12 +48,12 @@ export function Section({ title, children, defaultOpen = true }: { title: string
   );
 }
 
-/** Single label: value row. */
+/** Single label: value row. The value is click-to-copy. */
 export function Row({ label, value, mono, subtext }: { label: string; value: string; mono: React.CSSProperties; subtext: string }) {
   return (
     <div style={{ fontSize: 11, marginBottom: 3 }}>
       <span style={{ color: subtext }}>{label}: </span>
-      <span style={mono}>{value}</span>
+      <Copyable value={value} style={mono}>{value}</Copyable>
     </div>
   );
 }

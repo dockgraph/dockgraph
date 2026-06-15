@@ -1,5 +1,5 @@
 import { useTheme } from '../../theme';
-import { Section } from './shared';
+import { Section, Row } from './shared';
 import { monoStyle } from './panelStyles';
 import { ContainerLink } from './ContainerLink';
 import type { DGNode, VolumeMount } from '../../types';
@@ -21,12 +21,7 @@ export function GhostVolumePanel({ node, mounts, onNavigate }: Props) {
           {mounts.map(({ node: container, mountPath }) => (
             <div key={container.id} style={{ marginBottom: 6 }}>
               <ContainerLink name={container.name} onNavigate={onNavigate} />
-              {mountPath && (
-                <div style={{ fontSize: 11, marginBottom: 3 }}>
-                  <span style={{ color: theme.nodeSubtext }}>Mount: </span>
-                  <span style={mono}>{mountPath}</span>
-                </div>
-              )}
+              {mountPath && <Row label="Mount" value={mountPath} mono={mono} subtext={theme.nodeSubtext} />}
             </div>
           ))}
         </Section>

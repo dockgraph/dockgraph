@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+
+afterEach(() => cleanup());
 import { DetailPanelMounts } from './DetailPanelMounts';
 import { ThemeProvider } from '../../theme';
 import type { Mount } from '../../types/stats';

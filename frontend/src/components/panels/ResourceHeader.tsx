@@ -1,4 +1,5 @@
 import type { Theme } from '../../theme';
+import { Copyable } from './Copyable';
 
 interface Props {
   name: string;
@@ -11,7 +12,7 @@ export function ResourceHeader({ name, subtitle, theme }: Props) {
   return (
     <>
       <div style={{ fontSize: 16, fontWeight: 600, color: theme.nodeText, marginBottom: 2, wordBreak: 'break-all' as const }}>
-        {name}
+        <Copyable value={name}>{name}</Copyable>
       </div>
       {subtitle && (
         <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 6 }}>
