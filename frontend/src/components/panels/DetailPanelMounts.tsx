@@ -1,9 +1,9 @@
 import { useTheme } from '../../theme';
 import { Section, navLinkStyle } from './shared';
-import type { ContainerDetail } from '../../types/stats';
+import type { Mount } from '../../types/stats';
 
 interface Props {
-  mounts: ContainerDetail['mounts'];
+  mounts: Mount[];
   onNavigate?: (nodeId: string) => void;
 }
 

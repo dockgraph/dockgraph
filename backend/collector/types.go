@@ -59,7 +59,7 @@ type ComposeConfig struct {
 	Environment map[string]string `json:"environment,omitempty"`
 	Restart     string            `json:"restart,omitempty"`
 	DependsOn   []string          `json:"dependsOn,omitempty"`
-	Volumes     []string          `json:"volumes,omitempty"`
+	Volumes     []ComposeMount    `json:"volumes,omitempty"`
 	Networks    []string          `json:"networks,omitempty"`
 	User        string            `json:"user,omitempty"`
 	WorkingDir  string            `json:"workingDir,omitempty"`
@@ -67,6 +67,19 @@ type ComposeConfig struct {
 	ReadOnly    bool              `json:"readOnly,omitempty"`
 	CapAdd      []string          `json:"capAdd,omitempty"`
 	CapDrop     []string          `json:"capDrop,omitempty"`
+}
+
+// ComposeMount describes a volume or bind mount declared by a compose service.
+// Its JSON shape matches the running-container mount payload so the same detail
+// panel component renders both. For named volumes, Name holds the fully-qualified
+// volume node name (project-prefixed) so the panel link resolves to a real node;
+// for bind mounts it is empty and Source carries the host path.
+type ComposeMount struct {
+	Type        string `json:"type"`
+	Source      string `json:"source,omitempty"`
+	Destination string `json:"destination"`
+	RW          bool   `json:"rw"`
+	Name        string `json:"name,omitempty"`
 }
 
 // Edge represents a directed relationship between two nodes.

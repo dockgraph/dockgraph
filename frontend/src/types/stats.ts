@@ -16,6 +16,21 @@ export interface StatsMessage {
   stats: Record<string, ContainerStatsData>;
 }
 
+/**
+ * A volume or bind mount. Shared by running containers (from inspect) and
+ * not-yet-started compose services (from the compose file). For named volumes,
+ * `name` is the fully-qualified volume node name used to link to the graph node;
+ * for bind mounts it is absent and `source` holds the host path.
+ */
+export interface Mount {
+  type: string;
+  source: string;
+  destination: string;
+  rw: boolean;
+  name?: string;
+  propagation?: string;
+}
+
 export interface ContainerDetail {
   name: string;
   image: string;
@@ -37,7 +52,7 @@ export interface ContainerDetail {
   restartPolicy: { Name: string; MaximumRetryCount: number };
   networkMode: string;
   ports: { hostPort: string; containerPort: string; protocol: string }[];
-  mounts: { type: string; source: string; destination: string; rw: boolean; propagation: string; name?: string }[];
+  mounts: Mount[];
   networks: { name: string; ipAddress: string; gateway: string; macAddress: string; ipPrefixLen: number }[];
   security: { privileged: boolean; readonlyRootfs: boolean; capAdd: string[]; capDrop: string[] };
   resources: { cpuQuota: number; cpuPeriod: number; nanoCpus: number; memoryLimit: number; memoryReservation: number };

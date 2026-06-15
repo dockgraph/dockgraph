@@ -185,12 +185,19 @@ func buildComposeConfig(svc composetypes.ServiceConfig, naming composeNaming) *C
 		cfg.DependsOn = append(cfg.DependsOn, naming.container(depName))
 	}
 
+	// Named volumes carry their fully-qualified node name so the panel link
+	// resolves to the matching volume node; bind mounts keep only the host path.
 	for _, v := range svc.Volumes {
-		summary := v.Source + ":" + v.Target
-		if v.ReadOnly {
-			summary += ":ro"
+		mount := ComposeMount{
+			Type:        v.Type,
+			Source:      v.Source,
+			Destination: v.Target,
+			RW:          !v.ReadOnly,
 		}
-		cfg.Volumes = append(cfg.Volumes, summary)
+		if v.Type == mountTypeVolume {
+			mount.Name = naming.volume(v.Source)
+		}
+		cfg.Volumes = append(cfg.Volumes, mount)
 	}
 
 	for netName := range svc.Networks {

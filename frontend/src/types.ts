@@ -10,7 +10,7 @@ export interface ComposeConfig {
   environment?: Record<string, string>;
   restart?: string;
   dependsOn?: string[];
-  volumes?: string[];
+  volumes?: import('./types/stats').Mount[];
   networks?: string[];
   user?: string;
   workingDir?: string;
@@ -99,4 +99,4 @@ export interface ElkEdgeData {
   nodeCount?: number;
 }
 
-export type { ContainerStatsData, StatsMessage, ContainerDetail, LogLine, VolumeDetail, NetworkDetail } from './types/stats';
+export type { ContainerStatsData, StatsMessage, ContainerDetail, Mount, LogLine, VolumeDetail, NetworkDetail } from './types/stats';

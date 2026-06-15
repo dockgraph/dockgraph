@@ -85,6 +85,72 @@ func TestComposeConfigDependsOnUsesFullContainerNames(t *testing.T) {
 	}
 }
 
+// The side panel renders ComposeConfig.Volumes as mount rows, with named
+// volumes linking to "volume:<name>". The Name field must hold the full,
+// project-prefixed volume node name so the link resolves to an actual node.
+func TestComposeConfigVolumesUseFullVolumeNodeNames(t *testing.T) {
+	snap, err := parseComposeFile(context.Background(), filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	nodeIDs := make(map[string]bool)
+	for _, n := range snap.Nodes {
+		nodeIDs[n.ID] = true
+	}
+
+	var checked int
+	for _, n := range snap.Nodes {
+		if n.Compose == nil {
+			continue
+		}
+		for _, m := range n.Compose.Volumes {
+			if m.Type != mountTypeVolume {
+				continue
+			}
+			checked++
+			if m.Name == "" {
+				t.Errorf("node %s named volume mount to %q has empty Name", n.ID, m.Destination)
+				continue
+			}
+			if !nodeIDs["volume:"+m.Name] {
+				t.Errorf("node %s volume mount %q resolves to missing node volume:%s", n.ID, m.Name, m.Name)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("expected at least one named volume mount to verify")
+	}
+}
+
+// Exercises the full mount mapping that the parse-based tests can't reach with
+// the shared fixture: a read-only named volume and a bind mount.
+func TestBuildComposeConfigVolumeMounts(t *testing.T) {
+	naming := composeNaming{project: "proj"}
+	svc := composetypes.ServiceConfig{
+		Name: "api",
+		Volumes: []composetypes.ServiceVolumeConfig{
+			{Type: mountTypeVolume, Source: "db_data", Target: "/data", ReadOnly: true},
+			{Type: mountTypeBind, Source: "/etc/app", Target: "/config"},
+		},
+	}
+
+	cfg := buildComposeConfig(svc, naming)
+	if len(cfg.Volumes) != 2 {
+		t.Fatalf("expected 2 mounts, got %d", len(cfg.Volumes))
+	}
+
+	want := []ComposeMount{
+		{Type: mountTypeVolume, Source: "db_data", Destination: "/data", RW: false, Name: "proj_db_data"},
+		{Type: mountTypeBind, Source: "/etc/app", Destination: "/config", RW: true, Name: ""},
+	}
+	for i, w := range want {
+		if cfg.Volumes[i] != w {
+			t.Errorf("mount[%d] = %+v, want %+v", i, cfg.Volumes[i], w)
+		}
+	}
+}
+
 func TestParseVolumeMountEdges(t *testing.T) {
 	snap, err := parseComposeFile(context.Background(), filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
 	if err != nil {

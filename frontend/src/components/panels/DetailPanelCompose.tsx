@@ -2,6 +2,7 @@ import { useTheme } from '../../theme';
 import { Section, Row, navLinkStyle, monoStyle } from './shared';
 import { SecurityBadges } from './SecurityBadges';
 import { KeyValueList } from './KeyValueList';
+import { DetailPanelMounts } from './DetailPanelMounts';
 import type { ComposeConfig } from '../../types';
 
 interface Props {
@@ -46,13 +47,8 @@ export function DetailPanelCompose({ compose, image, onNavigate }: Props) {
         </Section>
       )}
 
-      {compose.volumes && compose.volumes.length > 0 && (
-        <Section title="Volumes">
-          {compose.volumes.map((v, i) => (
-            <div key={i} style={{ fontSize: 11, color: theme.panelText, marginBottom: 2, fontFamily: 'var(--dg-font-mono)', wordBreak: 'break-all' }}>{v}</div>
-          ))}
-        </Section>
-      )}
+      <DetailPanelMounts mounts={compose.volumes ?? []} onNavigate={onNavigate} />
+
 
       {compose.networks && compose.networks.length > 0 && (
         <Section title="Networks">
