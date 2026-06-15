@@ -178,8 +178,11 @@ func buildComposeConfig(svc composetypes.ServiceConfig, naming composeNaming) *C
 		}
 	}
 
+	// Store the full container node name (project-prefixed, replica-suffixed)
+	// so the side panel's dependency links resolve to real graph nodes, the
+	// same way Networks below uses the fully-qualified name.
 	for depName := range svc.DependsOn {
-		cfg.DependsOn = append(cfg.DependsOn, depName)
+		cfg.DependsOn = append(cfg.DependsOn, naming.container(depName))
 	}
 
 	for _, v := range svc.Volumes {

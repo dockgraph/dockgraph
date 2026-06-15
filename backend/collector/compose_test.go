@@ -53,6 +53,38 @@ func TestParseDependsOnEdges(t *testing.T) {
 	}
 }
 
+// The side panel renders ComposeConfig.DependsOn as clickable links that
+// navigate to "container:<value>". Those values must equal the full container
+// node names (project-prefixed, replica-suffixed) so the link resolves to an
+// actual node — bare service names like "postgres" match nothing.
+func TestComposeConfigDependsOnUsesFullContainerNames(t *testing.T) {
+	snap, err := parseComposeFile(context.Background(), filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	nodeIDs := make(map[string]bool)
+	for _, n := range snap.Nodes {
+		nodeIDs[n.ID] = true
+	}
+
+	var checked int
+	for _, n := range snap.Nodes {
+		if n.Compose == nil {
+			continue
+		}
+		for _, dep := range n.Compose.DependsOn {
+			checked++
+			if !nodeIDs["container:"+dep] {
+				t.Errorf("node %s depends_on %q resolves to missing node container:%s", n.ID, dep, dep)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("expected at least one depends_on entry to verify")
+	}
+}
+
 func TestParseVolumeMountEdges(t *testing.T) {
 	snap, err := parseComposeFile(context.Background(), filepath.Join(testdataDir(), "simple.yaml"), "simple.yaml")
 	if err != nil {
