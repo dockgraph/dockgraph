@@ -6,7 +6,7 @@ import { InspectButton } from './InspectButton';
 import { StatsMini } from './StatsMini';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
-import { ghostBorder } from '../utils/nodeStyles';
+import { ghostBorder, railColor } from '../utils/nodeStyles';
 import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY, zoomSelector } from '../utils/constants';
 import type { ContainerNodeData } from '../types';
 
@@ -23,6 +23,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
   const isLowZoom = useStore(zoomSelector);
   const statusColor = STATUS_COLORS[dgNode.status ?? 'exited'] ?? STATUS_COLORS.exited;
   const isGhost = dgNode.status === 'not_running';
+  const rail = railColor(isGhost, statusColor);
   const isActive = dgNode.status === 'running' || dgNode.status === 'unhealthy';
   const isPaused = dgNode.status === 'paused';
   const opacity = isActive ? 1 : isPaused ? PAUSED_OPACITY : INACTIVE_OPACITY;
@@ -32,7 +33,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
   const shell: React.CSSProperties = {
     background: theme.nodeBg,
     ...ghostBorder(isGhost, theme),
-    borderLeft: `3px solid ${statusColor}`,
+    borderLeft: `3px solid ${rail}`,
     borderRadius: 6,
     padding: '7px 10px',
     width: w,

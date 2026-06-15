@@ -5,13 +5,13 @@ import { NodeHandles } from './NodeHandles';
 import { InspectButton } from './InspectButton';
 import { useTheme } from '../theme';
 import { VOLUME_COLOR } from '../utils/colors';
-import { ghostBorder } from '../utils/nodeStyles';
+import { ghostBorder, railColor } from '../utils/nodeStyles';
 import type { VolumeNodeData } from '../types';
 import { INACTIVE_OPACITY, zoomSelector } from '../utils/constants';
 
-function VolumeIcon() {
+function VolumeIcon({ color }: { color: string }) {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={VOLUME_COLOR} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <ellipse cx="12" cy="5" rx="8" ry="3" />
       <path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
       <path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" />
@@ -26,11 +26,14 @@ export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
   const isLowZoom = useStore(zoomSelector);
   const isGhost = dgNode.status === 'not_running';
   const opacity = isGhost ? INACTIVE_OPACITY : 1;
+  // Ghost volumes use the neutral not-running rail/icon like ghost containers,
+  // rather than the orange volume identity colour.
+  const rail = railColor(isGhost, VOLUME_COLOR);
 
   const shell: React.CSSProperties = {
     background: theme.nodeBg,
     ...ghostBorder(isGhost, theme),
-    borderLeft: `3px solid ${VOLUME_COLOR}`,
+    borderLeft: `3px solid ${rail}`,
     borderRadius: 6,
     width: w,
     height: 40,
@@ -60,7 +63,7 @@ export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
     >
       <NodeHandles />
 
-      <VolumeIcon />
+      <VolumeIcon color={rail} />
       <div style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div
