@@ -26,9 +26,9 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 - **Dashboard view** — 13-card monitoring dashboard with resource charts, top consumers, event timeline, alerts, disk usage, images, and compose project overview
 - **Global logs** — a unified, time-ordered log stream that aggregates every container into one view to trace an event across services; filter by text (literal or regex) or container, drill in with per-row filter actions, scroll back through merged history alongside the live tail, and find within (Ctrl+F)
 - **Pop-out log windows** — open any container's logs in a floating, movable and resizable window; drag windows together into tabs, minimize them to a dock, and search within each
-- **Detail panels** — click any resource to inspect stats, ports, mounts, environment, labels, logs, health checks, and network configuration
+- **Detail panels** — click any resource to inspect stats, ports, mounts, environment, labels, logs, health checks, and network configuration; cross-references (dependencies, networks, mounted volumes) link straight to the related resource, and any value is click-to-copy
 - **Real-time updates** — watches the Docker event stream; the graph reflects changes within seconds
-- **Compose-aware** — parses compose files to show services that haven't started yet
+- **Compose-aware** — parses compose files to show services that haven't started yet, with the same detail panel as running containers (process config, environment, labels, ports, dependencies, and volume mounts) and clickable cross-references into the resources they'll create
 - **Network grouping** — containers are visually grouped by their primary network
 - **Dependency visualization** — `depends_on` edges with animated flow dots for running services
 - **Volume relationships** — named volume mounts shown as edges between volumes and containers
@@ -134,6 +134,7 @@ DockGraph requires access to the Docker daemon socket to read container, network
 - **Use a reverse proxy** (nginx, Caddy, Traefik) for TLS termination if exposing DockGraph beyond your local network. DockGraph serves plain HTTP — the reverse proxy handles HTTPS.
 - **Docker socket access** is read-only (`:ro`), but any process that can read the socket can inspect all Docker resources on the host. Run DockGraph in a network-isolated environment or behind a firewall.
 - **Read-only API.** DockGraph cannot start, stop, or modify containers. It only observes topology.
+- **Secret masking.** Environment values whose keys look like credentials (`PASSWORD`, `SECRET`, `KEY`, `TOKEN`, `AUTH`, …) are masked before leaving the server — for both running containers and parsed compose services — so they're never sent to the browser.
 
 ## How It Works
 

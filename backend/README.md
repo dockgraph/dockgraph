@@ -78,6 +78,8 @@ backend/
 ├── state/
 │   ├── manager.go           # Merges Docker + Compose snapshots, notifies subscribers
 │   └── diff.go              # Snapshot diffing for incremental delta updates
+├── secrets/
+│   └── secrets.go           # Masks credential-like env values (shared by api + collector)
 └── frontend/
     └── embed.go             # Embeds built frontend assets into the binary
 ```

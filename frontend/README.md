@@ -56,8 +56,10 @@ src/
 │   │   ├── ContainerList.tsx       # Container list within network/volume panels
 │   │   ├── KeyValueList.tsx        # Generic key-value display component
 │   │   ├── SecurityBadges.tsx      # Security capability badges
+│   │   ├── StatusBadge.tsx         # Shared status pill (running, exited, not-running)
+│   │   ├── Copyable.tsx            # Click-to-copy inline value wrapper
 │   │   ├── panelStyles.ts          # Shared panel style helpers
-│   │   └── shared.tsx              # Section, Row, and style re-exports
+│   │   └── shared.tsx              # Section, Row (click-to-copy), and style re-exports
 │   ├── table/                   # Table view components
 │   │   ├── TableView.tsx            # Resource tabs (Containers/Networks/Volumes)
 │   │   ├── GroupedTable.tsx         # Generic grouped table with toolbar and cards
@@ -141,7 +143,7 @@ src/
 │   ├── format.ts                   # General formatting helpers
 │   ├── alerts.ts                   # Dashboard alert generation logic
 │   ├── logParser.ts                # Docker log stream parser
-│   ├── nodeStyles.ts               # Node dimension calculations
+│   ├── nodeStyles.ts               # Ghost border and left-rail accent helpers for nodes
 │   ├── pathUtils.ts                # SVG path utilities
 │   └── selectionGraph.ts           # Click-to-highlight graph traversal
 ├── types/
