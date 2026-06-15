@@ -1,6 +1,6 @@
 import { useTheme } from '../../theme';
-import { STATUS_COLORS, STATUS_LABELS } from '../../utils/colors';
 import { Copyable } from './Copyable';
+import { StatusBadge } from './StatusBadge';
 import type { ContainerDetail } from '../../types/stats';
 
 interface Props {
@@ -24,7 +24,6 @@ function formatUptime(startedAt: string, finishedAt: string, running: boolean): 
 
 export function DetailPanelHeader({ detail }: Props) {
   const { theme } = useTheme();
-  const statusColor = STATUS_COLORS[detail.status] ?? STATUS_COLORS.exited;
   const uptime = formatUptime(detail.startedAt, detail.finishedAt, detail.running);
 
   return (
@@ -36,25 +35,7 @@ export function DetailPanelHeader({ detail }: Props) {
         <Copyable value={detail.image}>{detail.image}</Copyable>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '3px 9px',
-            borderRadius: 999,
-            background: `${statusColor}22`,
-            fontFamily: 'var(--dg-font-mono)',
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
-            color: statusColor,
-          }}
-        >
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0, boxShadow: detail.running ? `0 0 6px ${statusColor}` : 'none' }} />
-          {STATUS_LABELS[detail.status] ?? detail.status}
-        </span>
+        <StatusBadge status={detail.status} />
         {uptime && <span style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 11, color: theme.nodeSubtext }}>{detail.running ? `up ${uptime}` : `exited ${uptime} ago`}</span>}
         {detail.oomKilled && <span style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 10, color: theme.danger, fontWeight: 600 }}>OOM KILLED</span>}
         {!detail.running && detail.exitCode !== 0 && <span style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 10, color: theme.nodeSubtext }}>code {detail.exitCode}</span>}

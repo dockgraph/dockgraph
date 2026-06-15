@@ -1,6 +1,7 @@
 export interface PortMapping {
   host: number;
   container: number;
+  protocol?: string;
 }
 
 export interface ComposeConfig {
@@ -8,6 +9,7 @@ export interface ComposeConfig {
   command?: string[];
   entrypoint?: string[];
   environment?: Record<string, string>;
+  labels?: Record<string, string>;
   restart?: string;
   dependsOn?: string[];
   volumes?: import('./types/stats').Mount[];

@@ -1,5 +1,7 @@
 import type { Theme } from '../../theme';
 import type { DGNode } from '../../types';
+import { Copyable } from './Copyable';
+import { StatusBadge } from './StatusBadge';
 
 interface Props {
   node: DGNode;
@@ -11,18 +13,17 @@ export function GhostHeader({ node, theme }: Props) {
   return (
     <>
       <div style={{ fontSize: 16, fontWeight: 600, color: theme.nodeText, marginBottom: 2, wordBreak: 'break-all' as const }}>
-        {node.name}
+        <Copyable value={node.name}>{node.name}</Copyable>
       </div>
       {node.image && (
         <div style={{ fontSize: 11, color: theme.nodeSubtext, marginBottom: 6, wordBreak: 'break-all' as const }}>
-          {node.image}
+          <Copyable value={node.image}>{node.image}</Copyable>
         </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ width: 8, height: 8, borderRadius: '50%', background: theme.nodeSubtext }} />
-        <span style={{ fontSize: 12, color: theme.panelText }}>Not Running</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+        <StatusBadge status={node.status ?? 'not_running'} />
         {node.source && (
-          <span style={{ fontSize: 10, color: theme.nodeSubtext }}>from {node.source}</span>
+          <span style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 11, color: theme.nodeSubtext }}>from {node.source}</span>
         )}
       </div>
     </>

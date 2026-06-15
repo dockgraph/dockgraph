@@ -1,24 +1,23 @@
 import { useTheme } from '../../theme';
 import { Section, Row, navLinkStyle, monoStyle } from './shared';
 import { SecurityBadges } from './SecurityBadges';
-import { KeyValueList } from './KeyValueList';
 import { DetailPanelMounts } from './DetailPanelMounts';
+import { DetailPanelEnv } from './DetailPanelEnv';
+import { DetailPanelLabels } from './DetailPanelLabels';
 import type { ComposeConfig } from '../../types';
 
 interface Props {
   compose: ComposeConfig;
-  image?: string;
   onNavigate?: (targetId: string) => void;
 }
 
-export function DetailPanelCompose({ compose, image, onNavigate }: Props) {
+export function DetailPanelCompose({ compose, onNavigate }: Props) {
   const { theme } = useTheme();
   const mono = monoStyle(theme.panelText);
 
   return (
     <>
-      <Section title="Service Configuration">
-        {image && <Row label="Image" value={image} mono={mono} subtext={theme.nodeSubtext} />}
+      <Section title="Process">
         {compose.command && compose.command.length > 0 && <Row label="Command" value={compose.command.join(' ')} mono={mono} subtext={theme.nodeSubtext} />}
         {compose.entrypoint && compose.entrypoint.length > 0 && <Row label="Entrypoint" value={compose.entrypoint.join(' ')} mono={mono} subtext={theme.nodeSubtext} />}
         {compose.workingDir && <Row label="Working Dir" value={compose.workingDir} mono={mono} subtext={theme.nodeSubtext} />}
@@ -71,11 +70,9 @@ export function DetailPanelCompose({ compose, image, onNavigate }: Props) {
         </Section>
       )}
 
-      {compose.environment && Object.keys(compose.environment).length > 0 && (
-        <Section title="Environment">
-          <KeyValueList entries={compose.environment} />
-        </Section>
-      )}
+      <DetailPanelEnv env={Object.entries(compose.environment ?? {}).map(([key, value]) => ({ key, value }))} />
+
+      <DetailPanelLabels labels={compose.labels} />
 
       <SecurityBadges
         privileged={compose.privileged}
