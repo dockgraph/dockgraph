@@ -147,6 +147,95 @@ func TestBuildSnapshotSelfExclusion(t *testing.T) {
 	}
 }
 
+func TestBuildSnapshotSharedProjectKeepsNetworkAndVolume(t *testing.T) {
+	// DockGraph runs *inside* a real application's compose project. The project's
+	// networks and volumes are used by visible services, so they must stay — only
+	// the DockGraph container itself is hidden.
+	cli := &stubDockerClient{
+		containers: []containertypes.Summary{
+			{
+				Names:  []string{"/app-web-1"},
+				Image:  "web:1",
+				State:  "running",
+				Labels: map[string]string{composeProjectLabel: "app"},
+				NetworkSettings: &containertypes.NetworkSettingsSummary{
+					Networks: map[string]*networktypes.EndpointSettings{
+						"app_backend": {NetworkID: "net-1"},
+					},
+				},
+				Mounts: []containertypes.MountPoint{
+					{Type: "volume", Name: "app_data", Destination: "/data"},
+				},
+			},
+			{
+				Names:  []string{"/app-dockgraph-1"},
+				Image:  "dockgraph:latest",
+				State:  "running",
+				Labels: map[string]string{composeProjectLabel: "app", SelfExcludeLabel: "true"},
+			},
+		},
+		networks: []networktypes.Summary{
+			{ID: "net-1", Name: "app_backend", Labels: map[string]string{composeProjectLabel: "app"}},
+		},
+		volumes: []*volumetypes.Volume{
+			{Name: "app_data", Driver: "local", Labels: map[string]string{composeProjectLabel: "app"}},
+		},
+	}
+
+	dc := NewDockerCollector(cli, 0)
+	snap, err := dc.buildSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if n := len(filterNodes(snap.Nodes, "container")); n != 1 {
+		t.Errorf("expected 1 container (dockgraph hidden), got %d", n)
+	}
+	if n := len(filterNodes(snap.Nodes, "network")); n != 1 {
+		t.Errorf("expected shared-project network kept, got %d", n)
+	}
+	if n := len(filterNodes(snap.Nodes, "volume")); n != 1 {
+		t.Errorf("expected shared-project volume kept, got %d", n)
+	}
+}
+
+func TestBuildSnapshotSelfOnlyProjectHidesNetworkAndVolume(t *testing.T) {
+	// DockGraph in its own dedicated compose project: its auto-created network and
+	// volume have no other consumer, so they stay hidden along with the container.
+	cli := &stubDockerClient{
+		containers: []containertypes.Summary{
+			{
+				Names:  []string{"/dockgraph-dockgraph-1"},
+				Image:  "dockgraph:latest",
+				State:  "running",
+				Labels: map[string]string{composeProjectLabel: "dockgraph", SelfExcludeLabel: "true"},
+			},
+		},
+		networks: []networktypes.Summary{
+			{ID: "net-1", Name: "dockgraph_default", Labels: map[string]string{composeProjectLabel: "dockgraph"}},
+		},
+		volumes: []*volumetypes.Volume{
+			{Name: "dockgraph_data", Driver: "local", Labels: map[string]string{composeProjectLabel: "dockgraph"}},
+		},
+	}
+
+	dc := NewDockerCollector(cli, 0)
+	snap, err := dc.buildSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if n := len(filterNodes(snap.Nodes, "container")); n != 0 {
+		t.Errorf("expected dockgraph container hidden, got %d", n)
+	}
+	if n := len(filterNodes(snap.Nodes, "network")); n != 0 {
+		t.Errorf("expected self-only project network hidden, got %d", n)
+	}
+	if n := len(filterNodes(snap.Nodes, "volume")); n != 0 {
+		t.Errorf("expected self-only project volume hidden, got %d", n)
+	}
+}
+
 func TestBuildSnapshotEmptyNames(t *testing.T) {
 	cli := &stubDockerClient{
 		containers: []containertypes.Summary{
@@ -289,7 +378,7 @@ func TestBuildContainerEdgesEmptyDependsOnEntry(t *testing.T) {
 			"com.docker.compose.depends_on": ",,valid_svc:cond:restart",
 		},
 	}
-	edges := buildContainerEdges("test", container, map[string]string{}, map[serviceKey]string{
+	edges := buildContainerEdges("test", container, map[string]string{}, nil, map[serviceKey]string{
 		{project: "proj", service: "valid_svc"}: "proj-valid_svc-1",
 	})
 
@@ -306,7 +395,7 @@ func TestBuildContainerEdgesUnresolvedService(t *testing.T) {
 			"com.docker.compose.depends_on": "nonexistent:service_started:false",
 		},
 	}
-	edges := buildContainerEdges("test", container, map[string]string{}, map[serviceKey]string{})
+	edges := buildContainerEdges("test", container, map[string]string{}, nil, map[serviceKey]string{})
 
 	if len(edges) != 0 {
 		t.Errorf("expected 0 edges for unresolved service, got %d", len(edges))
@@ -319,7 +408,7 @@ func TestBuildContainerEdgesNoDepsLabel(t *testing.T) {
 			"com.docker.compose.project": "proj",
 		},
 	}
-	edges := buildContainerEdges("test", container, map[string]string{}, map[serviceKey]string{})
+	edges := buildContainerEdges("test", container, map[string]string{}, nil, map[serviceKey]string{})
 	if len(edges) != 0 {
 		t.Errorf("expected 0 edges, got %d", len(edges))
 	}

@@ -35,15 +35,30 @@ func buildVolumeNode(name, driver, status string) Node {
 	}
 }
 
-// classifyNetworks sorts network names and designates the first alphabetically
-// as the primary (used for hierarchy grouping), rest as secondary. Sorting
-// ensures stable assignment across polls so containers don't jump between groups.
-func classifyNetworks(netNames []string) (primary string, secondary []string) {
+// classifyNetworks designates one network as primary (used for hierarchy
+// grouping) and the rest as secondary. It prefers the network owned by the
+// container's own compose project, so a container is homed in its own stack
+// rather than a shared or external network it merely joins; without such a
+// match it falls back to the first network alphabetically. Names are sorted
+// first so assignment stays stable across polls. ownProject is the container's
+// compose project; networkProjects maps network name to its owning project.
+func classifyNetworks(netNames []string, ownProject string, networkProjects map[string]string) (primary string, secondary []string) {
 	sort.Strings(netNames)
+
+	if ownProject != "" {
+		for _, name := range netNames {
+			if networkProjects[name] == ownProject {
+				primary = name
+				break
+			}
+		}
+	}
+	if primary == "" && len(netNames) > 0 {
+		primary = netNames[0]
+	}
+
 	for _, name := range netNames {
-		if primary == "" {
-			primary = name
-		} else {
+		if name != primary {
 			secondary = append(secondary, name)
 		}
 	}

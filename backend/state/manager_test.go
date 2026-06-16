@@ -84,6 +84,39 @@ func TestMergeVolumeStatus(t *testing.T) {
 	}
 }
 
+func TestMergeNetworkIDValidation(t *testing.T) {
+	// A container's NetworkID must reference a network node that survives the
+	// merge. A dangling reference (its network was hidden or never emitted) is
+	// cleared so downstream layout never orphans the container under a missing
+	// group. Valid references are preserved.
+	m := NewManager()
+
+	snap := collector.GraphSnapshot{
+		Nodes: []collector.Node{
+			{ID: "network:real", Type: "network", Name: "real"},
+			{ID: "container:a", Type: "container", Name: "a", Status: "running", NetworkID: "network:real"},
+			{ID: "container:b", Type: "container", Name: "b", Status: "running", NetworkID: "network:ghost"},
+		},
+	}
+
+	m.HandleUpdate("docker", true, collector.StateUpdate{Snapshot: &snap})
+	merged := m.Current()
+
+	got := map[string]string{}
+	for _, n := range merged.Nodes {
+		if n.Type == "container" {
+			got[n.Name] = n.NetworkID
+		}
+	}
+
+	if got["a"] != "network:real" {
+		t.Errorf("expected valid NetworkID preserved, got %q", got["a"])
+	}
+	if got["b"] != "" {
+		t.Errorf("expected dangling NetworkID cleared, got %q", got["b"])
+	}
+}
+
 func TestSubscribe(t *testing.T) {
 	m := NewManager()
 	ch, unsub := m.Subscribe()
@@ -331,6 +364,7 @@ func TestMergeNodesDockerBackfillsNetworkID(t *testing.T) {
 	composeSnap := collector.GraphSnapshot{
 		Nodes: []collector.Node{
 			{ID: "container:api", Type: "container", Name: "api", NetworkID: "network:backend", Source: "compose.yml"},
+			{ID: "network:backend", Type: "network", Name: "backend", Source: "compose.yml"},
 		},
 	}
 

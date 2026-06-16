@@ -164,6 +164,7 @@ func mergeSnapshots(declarativeSnaps, runtimeSnaps map[string]*collector.GraphSn
 	dockerNodes, dockerEdges := flattenSnapshots(runtimeSnaps)
 
 	nodes := mergeNodes(dockerNodes, composeNodes)
+	clearDanglingNetworkIDs(nodes)
 	edges := mergeEdges(dockerEdges, composeEdges, nodes)
 
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
@@ -225,6 +226,22 @@ func mergeNodes(dockerNodes, composeNodes map[nodeKey]collector.Node) []collecto
 	}
 
 	return result
+}
+
+// clearDanglingNetworkIDs blanks any container NetworkID that doesn't resolve to
+// a network node in the merged set. This mirrors mergeEdges' endpoint check so
+// the graph stays internally consistent — downstream layout then never parents a
+// container under a network group that was never emitted.
+func clearDanglingNetworkIDs(nodes []collector.Node) {
+	nodeIDs := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		nodeIDs[n.ID] = true
+	}
+	for i := range nodes {
+		if nodes[i].NetworkID != "" && !nodeIDs[nodes[i].NetworkID] {
+			nodes[i].NetworkID = ""
+		}
+	}
 }
 
 // mergeEdges combines edges from both sources, giving docker precedence. Skips

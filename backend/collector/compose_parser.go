@@ -107,7 +107,7 @@ func buildServiceNode(svc composetypes.ServiceConfig, naming composeNaming, trac
 			trackedNetNames = append(trackedNetNames, netName)
 		}
 	}
-	primary, secondaryNets := classifyNetworks(trackedNetNames)
+	primary, secondaryNets := classifyNetworks(trackedNetNames, "", nil)
 
 	node := buildContainerNode(svcName, svc.Image, "not_running", parseComposePorts(svc.Ports))
 	node.Source = sourceName

@@ -65,6 +65,19 @@ func resolveNetworkNames(networks []networktypes.Summary) map[string]string {
 	return idToName
 }
 
+// networkProjectMap maps each network name to the compose project that owns it,
+// taken from the Docker Compose project label. Used to home a container in its
+// own project's network rather than a shared or external one it merely joins.
+func networkProjectMap(networks []networktypes.Summary) map[string]string {
+	projects := make(map[string]string)
+	for _, n := range networks {
+		if p := n.Labels[composeProjectLabel]; p != "" {
+			projects[n.Name] = p
+		}
+	}
+	return projects
+}
+
 // serviceKey identifies a Docker Compose service within a specific project.
 type serviceKey struct {
 	project string
@@ -90,11 +103,11 @@ func resolveServiceNames(containers []containertypes.Summary) map[serviceKey]str
 
 // buildContainerEdges creates secondary-network, volume-mount, and depends_on edges
 // for a single container.
-func buildContainerEdges(name string, c containertypes.Summary, networkIDToName map[string]string, serviceNames map[serviceKey]string) []Edge {
+func buildContainerEdges(name string, c containertypes.Summary, networkIDToName, networkProjects map[string]string, serviceNames map[serviceKey]string) []Edge {
 	var edges []Edge
 
 	// Secondary network connections
-	_, secondaryNets := classifyContainerNetworks(c, networkIDToName)
+	_, secondaryNets := classifyContainerNetworks(c, networkIDToName, networkProjects)
 	for _, netName := range secondaryNets {
 		edges = append(edges, Edge{
 			ID:     "e:net:" + name + ":" + netName,
@@ -145,8 +158,9 @@ func buildContainerEdges(name string, c containertypes.Summary, networkIDToName 
 }
 
 // classifyContainerNetworks resolves a container's Docker network IDs to names
-// and splits them into primary and secondary.
-func classifyContainerNetworks(c containertypes.Summary, networkIDToName map[string]string) (primary string, secondary []string) {
+// and splits them into primary and secondary, preferring the container's own
+// compose-project network as primary.
+func classifyContainerNetworks(c containertypes.Summary, networkIDToName, networkProjects map[string]string) (primary string, secondary []string) {
 	var tracked []string
 	if c.NetworkSettings != nil {
 		for _, ns := range c.NetworkSettings.Networks {
@@ -155,7 +169,35 @@ func classifyContainerNetworks(c containertypes.Summary, networkIDToName map[str
 			}
 		}
 	}
-	return classifyNetworks(tracked)
+	return classifyNetworks(tracked, c.Labels[composeProjectLabel], networkProjects)
+}
+
+// selfOnlyProjects returns the set of compose projects whose only container is
+// DockGraph itself. A project's auto-created networks and volumes are hidden
+// only for these — if a project also runs real services, its resources are part
+// of the visible topology.
+func selfOnlyProjects(containers []containertypes.Summary) map[string]bool {
+	hasSelf := make(map[string]bool)
+	hasOther := make(map[string]bool)
+	for _, c := range containers {
+		project := c.Labels[composeProjectLabel]
+		if project == "" {
+			continue
+		}
+		if isSelfExcluded(c.Labels) {
+			hasSelf[project] = true
+		} else {
+			hasOther[project] = true
+		}
+	}
+
+	result := make(map[string]bool)
+	for project := range hasSelf {
+		if !hasOther[project] {
+			result[project] = true
+		}
+	}
+	return result
 }
 
 // buildSnapshot queries the Docker daemon and assembles a complete graph of
@@ -171,18 +213,14 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		Edges: []Edge{},
 	}
 
-	// Collect compose projects that belong to self-excluded containers
-	// so we can also hide their auto-created networks and volumes.
-	selfProjects := make(map[string]bool)
-	for _, c := range res.containers {
-		if isSelfExcluded(c.Labels) {
-			if p := c.Labels[composeProjectLabel]; p != "" {
-				selfProjects[p] = true
-			}
-		}
-	}
+	// Hide auto-created networks and volumes only for projects whose sole
+	// container is DockGraph itself. When DockGraph shares a project with real
+	// services, those resources belong to the visible topology and must stay —
+	// only the DockGraph container is excluded.
+	selfProjects := selfOnlyProjects(res.containers)
 
 	networkIDToName := resolveNetworkNames(res.networks)
+	networkProjects := networkProjectMap(res.networks)
 	for _, n := range res.networks {
 		if networkIDToName[n.ID] != "" {
 			if p := n.Labels[composeProjectLabel]; p != "" && selfProjects[p] {
@@ -214,7 +252,7 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		status := containerStatus(c.State, c.Status)
 		ports := extractPorts(c.Ports)
 
-		primary, _ := classifyContainerNetworks(c, networkIDToName)
+		primary, _ := classifyContainerNetworks(c, networkIDToName, networkProjects)
 		node := buildContainerNode(name, c.Image, status, ports)
 		if c.Created > 0 {
 			node.CreatedAt = time.Unix(c.Created, 0).UTC().Format(time.RFC3339)
@@ -227,7 +265,7 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		}
 		snap.Nodes = append(snap.Nodes, node)
 
-		snap.Edges = append(snap.Edges, buildContainerEdges(name, c, networkIDToName, serviceNames)...)
+		snap.Edges = append(snap.Edges, buildContainerEdges(name, c, networkIDToName, networkProjects, serviceNames)...)
 	}
 
 	for _, v := range res.volumes {

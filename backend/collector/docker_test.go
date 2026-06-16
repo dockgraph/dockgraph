@@ -240,7 +240,7 @@ func TestClassifyContainerNetworks(t *testing.T) {
 		"net-def": "shared",
 	}
 
-	primary, secondary := classifyContainerNetworks(container, idToName)
+	primary, secondary := classifyContainerNetworks(container, idToName, nil)
 
 	if primary != "backend" {
 		t.Errorf("expected primary=backend, got %s", primary)
@@ -250,9 +250,59 @@ func TestClassifyContainerNetworks(t *testing.T) {
 	}
 }
 
+func TestClassifyContainerNetworksPrefersOwnProject(t *testing.T) {
+	// A container joins a shared/external network whose name sorts first
+	// alphabetically, plus its own project's network. It should be homed in its
+	// own project's network, with the shared one demoted to secondary — otherwise
+	// it gets grouped under a foreign stack and its own network appears empty.
+	container := containertypes.Summary{
+		Labels: map[string]string{composeProjectLabel: "front-admin"},
+		NetworkSettings: &containertypes.NetworkSettingsSummary{
+			Networks: map[string]*networktypes.EndpointSettings{
+				"back_backend":         {NetworkID: "net-1"},
+				"front-admin_frontend": {NetworkID: "net-2"},
+			},
+		},
+	}
+	idToName := map[string]string{"net-1": "back_backend", "net-2": "front-admin_frontend"}
+	networkProjects := map[string]string{"back_backend": "back", "front-admin_frontend": "front-admin"}
+
+	primary, secondary := classifyContainerNetworks(container, idToName, networkProjects)
+
+	if primary != "front-admin_frontend" {
+		t.Errorf("expected primary=front-admin_frontend (own project), got %s", primary)
+	}
+	if len(secondary) != 1 || secondary[0] != "back_backend" {
+		t.Errorf("expected secondary=[back_backend], got %v", secondary)
+	}
+}
+
+func TestClassifyContainerNetworksFallsBackToAlphabetical(t *testing.T) {
+	// With no own-project match (e.g. unlabeled container), the first network
+	// alphabetically remains primary so grouping stays stable across polls.
+	container := containertypes.Summary{
+		NetworkSettings: &containertypes.NetworkSettingsSummary{
+			Networks: map[string]*networktypes.EndpointSettings{
+				"zeta":  {NetworkID: "net-1"},
+				"alpha": {NetworkID: "net-2"},
+			},
+		},
+	}
+	idToName := map[string]string{"net-1": "zeta", "net-2": "alpha"}
+
+	primary, secondary := classifyContainerNetworks(container, idToName, nil)
+
+	if primary != "alpha" {
+		t.Errorf("expected primary=alpha (alphabetical fallback), got %s", primary)
+	}
+	if len(secondary) != 1 || secondary[0] != "zeta" {
+		t.Errorf("expected secondary=[zeta], got %v", secondary)
+	}
+}
+
 func TestClassifyContainerNetworksNilSettings(t *testing.T) {
 	container := containertypes.Summary{NetworkSettings: nil}
-	primary, secondary := classifyContainerNetworks(container, map[string]string{})
+	primary, secondary := classifyContainerNetworks(container, map[string]string{}, nil)
 
 	if primary != "" {
 		t.Errorf("expected empty primary, got %s", primary)
@@ -271,7 +321,7 @@ func TestClassifyContainerNetworksUnknownID(t *testing.T) {
 		},
 	}
 
-	primary, secondary := classifyContainerNetworks(container, map[string]string{})
+	primary, secondary := classifyContainerNetworks(container, map[string]string{}, nil)
 
 	if primary != "" {
 		t.Errorf("expected empty primary for unknown network, got %s", primary)
@@ -310,7 +360,7 @@ func TestBuildContainerEdges(t *testing.T) {
 		{project: "myapp", service: "db"}:    "myapp-db-1",
 	}
 
-	edges := buildContainerEdges("myapp-web-1", container, networkIDToName, serviceNames)
+	edges := buildContainerEdges("myapp-web-1", container, networkIDToName, nil, serviceNames)
 
 	// Count by type
 	var netEdges, volEdges, depEdges []Edge
@@ -349,7 +399,7 @@ func TestBuildContainerEdgesNoLabels(t *testing.T) {
 		Labels: map[string]string{},
 	}
 
-	edges := buildContainerEdges("test", container, map[string]string{"net-1": "only"}, nil)
+	edges := buildContainerEdges("test", container, map[string]string{"net-1": "only"}, nil, nil)
 
 	// Single network = primary, no secondary edges. No mounts, no depends_on.
 	if len(edges) != 0 {
