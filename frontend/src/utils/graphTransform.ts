@@ -58,7 +58,7 @@ function buildNetworkGroups(
 }
 
 /** Creates React Flow nodes for containers, assigning each to its network group. */
-function buildContainerNodes(containers: DGNode[]): RFNode[] {
+function buildContainerNodes(containers: DGNode[], groupIds: Set<string>): RFNode[] {
   return containers.map((c) => {
     const node: RFNode = {
       id: c.id,
@@ -66,11 +66,12 @@ function buildContainerNodes(containers: DGNode[]): RFNode[] {
       position: { x: 0, y: 0 },
       data: { dgNode: c },
     };
-    if (c.networkId) {
-      node.parentId = c.networkId;
-      node.extent = 'parent';
-    } else if (!c.source) {
-      node.parentId = UNMANAGED_GROUP_ID;
+    // Parent only to a group that was actually created. A networkId pointing at
+    // a hidden or absent network would otherwise orphan the node under a missing
+    // parent, which crashes the ELK layout — fall back to a free node instead.
+    const group = c.networkId ?? (!c.source ? UNMANAGED_GROUP_ID : undefined);
+    if (group && groupIds.has(group)) {
+      node.parentId = group;
       node.extent = 'parent';
     }
     return node;
@@ -133,8 +134,8 @@ export function toReactFlowNodes(dgNodes: DGNode[], dgEdges: DGEdge[]): RFNode[]
   const volumes = dgNodes.filter((n) => n.type === 'volume');
 
   const groups = buildNetworkGroups(networks, containers, dgEdges);
-  const containerNodes = buildContainerNodes(containers);
   const groupIds = new Set(groups.map((n) => n.id));
+  const containerNodes = buildContainerNodes(containers, groupIds);
   const volumeNodes = buildVolumeNodes(volumes, containers, dgEdges, groupIds);
 
   return [...groups, ...containerNodes, ...volumeNodes];

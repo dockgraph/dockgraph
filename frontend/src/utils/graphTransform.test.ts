@@ -18,6 +18,20 @@ describe('toReactFlowNodes', () => {
     expect(container?.parentId).toBe('network:backend');
   });
 
+  it('does not parent a container to a network group that does not exist', () => {
+    // The backend can emit a container whose primary network node was hidden
+    // (e.g. a shared network owned by an excluded project). Parenting the
+    // container to a group that is never created orphans it and crashes the
+    // ELK layout, so the container must fall back to a free, ungrouped node.
+    const nodes: DGNode[] = [
+      { id: 'container:web', type: 'container', name: 'web', status: 'running', networkId: 'network:ghost' },
+    ];
+    const result = toReactFlowNodes(nodes, []);
+    const container = result.find((n) => n.id === 'container:web');
+    expect(container).toBeDefined();
+    expect(container?.parentId).toBeUndefined();
+  });
+
   it('creates network group nodes for networks with children', () => {
     const nodes: DGNode[] = [
       { id: 'container:web', type: 'container', name: 'web', networkId: 'network:frontend' },
