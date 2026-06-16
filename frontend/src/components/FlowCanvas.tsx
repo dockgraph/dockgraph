@@ -395,16 +395,16 @@ export function FlowCanvas({
           borderBottom: `1px solid ${theme.panelBorder}`,
         }}
       >
-        <Brand />
-        <span
-          aria-hidden="true"
-          style={{ width: 1, height: 20, background: theme.panelBorder, flex: "0 0 auto" }}
-        />
-        <ViewTabs activeView={activeView} onViewChange={setActiveView} />
-        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
-          <SearchFilter search={search} />
+        <div style={{ flex: "1 1 0", display: "flex", alignItems: "center", gap: 12 }}>
+          <Brand />
+          <span
+            aria-hidden="true"
+            style={{ width: 1, height: 20, background: theme.panelBorder, flex: "0 0 auto" }}
+          />
+          <ViewTabs activeView={activeView} onViewChange={setActiveView} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+        <SearchFilter search={search} />
+        <div style={{ flex: "1 1 0", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
           <LogoutButton />
           <StatusIndicator connected={connected} />
         </div>

@@ -27,7 +27,7 @@ export function SearchFilter({ search }: Props) {
 
   return (
     <div
-      style={{ position: "relative" }}
+      style={{ position: "relative", minWidth: 0 }}
       onMouseDown={(e) => {
         // Prevent chip clicks from blurring the input.
         if (e.target !== inputRef.current) {
@@ -40,9 +40,12 @@ export function SearchFilter({ search }: Props) {
           display: "flex",
           alignItems: "center",
           gap: 7,
-          // Fixed width so the field never shifts as the hint / match count
-          // appear and disappear (it is center-anchored in the top bar).
+          // Preferred width so the field never shifts as the hint / match count
+          // appear and disappear; shrinks below this only when the header is too
+          // narrow, so it never overlaps the tabs or status.
           width: 320,
+          maxWidth: "100%",
+          minWidth: 0,
           // Inset relative to the top bar so the field reads as recessed.
           background: theme.canvasBg,
           border: `1px solid ${focused ? theme.accent : theme.panelBorder}`,
