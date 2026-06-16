@@ -39,6 +39,13 @@ describe('LogStream container badge', () => {
     expect(onContainerClick).toHaveBeenCalledWith('web');
   });
 
+  it('renders the container badge at the row text size, not the larger UA button default', () => {
+    wrap(<LogStream {...baseProps} lines={tagged} showContainer onContainerClick={vi.fn()} onLineMenu={vi.fn()} />);
+    const badge = screen.getByText('web');
+    // Buttons default to the UA font size (~13px); it must be pinned to the 10px row text.
+    expect(badge.style.fontSize).toBe('10px');
+  });
+
   it('fires onLineMenu from the row kebab', () => {
     const onLineMenu = vi.fn();
     wrap(<LogStream {...baseProps} lines={tagged} showContainer onContainerClick={vi.fn()} onLineMenu={onLineMenu} />);

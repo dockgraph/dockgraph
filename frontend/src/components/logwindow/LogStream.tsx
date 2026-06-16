@@ -237,7 +237,7 @@ export function LogStream({
                 style={{
                   background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
                   marginRight: 6, fontWeight: 600, color: networkColor(line.container),
-                  fontFamily: 'var(--dg-font-mono)', userSelect: 'none',
+                  fontFamily: 'var(--dg-font-mono)', fontSize: 10, userSelect: 'none',
                 }}
               >
                 {line.container}
