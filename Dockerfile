@@ -1,5 +1,5 @@
 # ── Stage 1: Build frontend ──────────────────────────────────
-FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS frontend
+FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS frontend
 WORKDIR /app/frontend
 
 # Install dependencies first (cached layer — only re-runs when lockfile changes)
@@ -12,7 +12,7 @@ RUN --mount=type=cache,target=/app/frontend/node_modules/.vite npm run build
 
 
 # ── Stage 2: Build backend ───────────────────────────────────
-FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS backend
+FROM golang:1.27-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS backend
 ENV GOTOOLCHAIN=auto
 ENV CGO_ENABLED=0
 ENV GOOS=linux
@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 
 # ── Stage 3: Runtime ─────────────────────────────────────────
-FROM gcr.io/distroless/static@sha256:9197324ba51d9cd071af8505989365c006adf9d6d2067eada25aef00abbb5278
+FROM gcr.io/distroless/static@sha256:f2ea2709ac8db56323cbd7d014277f32cb572d9ea124b0076f7aafe5980678fe
 COPY --from=backend /app/backend/dockgraph /dockgraph
 EXPOSE 7800
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=5s \
