@@ -165,7 +165,7 @@ func TestBuildComposeConfigMasksSecretsAndCapturesLabels(t *testing.T) {
 			},
 			Labels: composetypes.Labels{
 				"com.example.team": "platform",
-        "traefik.http.middlewares.auth.basicauth.users": "admin:$apr1$hash",
+				"traefik.http.middlewares.auth.basicauth.users": "admin:$apr1$hash",
 			},
 		},
 	}
