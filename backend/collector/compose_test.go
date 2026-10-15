@@ -129,9 +129,11 @@ func TestBuildComposeConfigVolumeMounts(t *testing.T) {
 	naming := composeNaming{project: "proj"}
 	svc := composetypes.ServiceConfig{
 		Name: "api",
-		Volumes: []composetypes.ServiceVolumeConfig{
-			{Type: mountTypeVolume, Source: "db_data", Target: "/data", ReadOnly: true},
-			{Type: mountTypeBind, Source: "/etc/app", Target: "/config"},
+		ContainerSpec: composetypes.ContainerSpec{
+			Volumes: []composetypes.ServiceVolumeConfig{
+				{Type: mountTypeVolume, Source: "db_data", Target: "/data", ReadOnly: true},
+				{Type: mountTypeBind, Source: "/etc/app", Target: "/config"},
+			},
 		},
 	}
 
@@ -156,13 +158,15 @@ func TestBuildComposeConfigMasksSecretsAndCapturesLabels(t *testing.T) {
 	level := "info"
 	svc := composetypes.ServiceConfig{
 		Name: "api",
-		Environment: composetypes.MappingWithEquals{
-			"DB_PASSWORD": &secret,
-			"LOG_LEVEL":   &level,
-		},
-		Labels: composetypes.Labels{
-			"com.example.team": "platform",
-			"traefik.http.middlewares.auth.basicauth.users": "admin:$apr1$hash",
+		ContainerSpec: composetypes.ContainerSpec{
+			Environment: composetypes.MappingWithEquals{
+				"DB_PASSWORD": &secret,
+				"LOG_LEVEL":   &level,
+			},
+			Labels: composetypes.Labels{
+				"com.example.team": "platform",
+        "traefik.http.middlewares.auth.basicauth.users": "admin:$apr1$hash",
+			},
 		},
 	}
 
