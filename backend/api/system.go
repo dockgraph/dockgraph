@@ -9,6 +9,7 @@ import (
 
 	dockertypes "github.com/docker/docker/api/types"
 	imagetypes "github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/swarm"
 	systemtypes "github.com/docker/docker/api/types/system"
 )
 
@@ -35,8 +36,10 @@ type ImageLister interface {
 	ImageList(ctx context.Context, options imagetypes.ListOptions) ([]imagetypes.Summary, error)
 }
 
-// HandleSystemInfo returns a handler for GET /api/system/info.
-func HandleSystemInfo(provider SystemInfoProvider) http.HandlerFunc {
+// HandleSystemInfo returns a handler for GET /api/system/info. mode is the
+// resolved runtime mode; `swarm` is populated when the daemon is an active
+// swarm member (node/manager counts are only known on managers).
+func HandleSystemInfo(provider SystemInfoProvider, mode string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
@@ -57,6 +60,15 @@ func HandleSystemInfo(provider SystemInfoProvider) http.HandlerFunc {
 			"cpus":          info.NCPU,
 			"memTotal":      info.MemTotal,
 			"cgroupVersion": info.CgroupVersion,
+			"mode":          mode,
+			"swarm":         nil,
+		}
+		if info.Swarm.LocalNodeState == swarm.LocalNodeStateActive {
+			resp["swarm"] = map[string]any{
+				"nodeId":   info.Swarm.NodeID,
+				"managers": info.Swarm.Managers,
+				"nodes":    info.Swarm.Nodes,
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")

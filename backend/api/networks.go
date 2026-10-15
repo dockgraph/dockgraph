@@ -50,7 +50,7 @@ func buildNetworkInspectResponse(network networktypes.Inspect) map[string]any {
 		"enableIPv6": network.EnableIPv6,
 		"created":    network.Created,
 		"options":    network.Options,
-		"labels":     network.Labels,
+		fieldLabels:  network.Labels,
 	}
 
 	if network.IPAM.Config != nil {

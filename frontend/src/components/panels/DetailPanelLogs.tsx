@@ -1,4 +1,4 @@
-import { useContainerLogs } from '../../hooks/useContainerLogs';
+import { useContainerLogs, type LogResource } from '../../hooks/useContainerLogs';
 import { useTheme } from '../../theme';
 import { LogStream } from '../logwindow/LogStream';
 
@@ -7,10 +7,12 @@ interface Props {
   active: boolean;
   /** Optional: open these logs in a floating window. */
   onPopOut?: () => void;
+  /** Read a swarm service's logs (all tasks) instead of a container's. */
+  resource?: LogResource;
 }
 
-export function DetailPanelLogs({ containerId, active, onPopOut }: Props) {
-  const logs = useContainerLogs(containerId, active);
+export function DetailPanelLogs({ containerId, active, onPopOut, resource = 'container' }: Props) {
+  const logs = useContainerLogs(containerId, active, resource);
   const { theme } = useTheme();
 
   return (

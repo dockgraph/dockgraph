@@ -69,8 +69,8 @@ func TestHubBroadcast(t *testing.T) {
 	if wireMsg.Type != "snapshot" {
 		t.Errorf("expected snapshot, got %s", wireMsg.Type)
 	}
-	if wireMsg.Version != 1 {
-		t.Errorf("expected version 1, got %d", wireMsg.Version)
+	if wireMsg.Version != collector.ProtocolVersion {
+		t.Errorf("expected version %d, got %d", collector.ProtocolVersion, wireMsg.Version)
 	}
 }
 
@@ -202,7 +202,7 @@ func TestCheckOrigin(t *testing.T) {
 
 func TestSecurityHeaders(t *testing.T) {
 	hub := NewHub()
-	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, nil, nil, nil, nil)
+	handler := NewServer(hub, fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, nil, nil, nil, nil, "")
 	server := httptest.NewServer(handler)
 	defer server.Close()
 

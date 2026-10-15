@@ -3,6 +3,7 @@ import type { DGNode, DGEdge, GraphSnapshot, WireMessage } from '../types';
 import type { StatsMessage } from '../types/stats';
 import { RECONNECT_MAX_DELAY } from '../utils/constants';
 import { snapshotFingerprint, applyDelta as applyDeltaFn } from '../utils/deltaUtils';
+import { protocolAction } from '../utils/protocol';
 
 interface DockGraphState {
   nodes: DGNode[];
@@ -74,6 +75,17 @@ export function useDockGraph(onStats?: (data: StatsMessage) => void): DockGraphS
       if (typeof msg.version !== 'number') return;
       if (msg.type === 'auth_expired') {
         window.location.reload();
+        return;
+      }
+      // A different protocol version means this bundle and the server
+      // disagree on the payload shape: reload once to get a matching bundle.
+      const action = protocolAction(msg.version);
+      if (action === 'reload') {
+        window.location.reload();
+        return;
+      }
+      if (action === 'ignore') {
+        console.warn(`unsupported protocol version ${msg.version}`);
         return;
       }
       if (!('data' in msg) || !msg.data) return;

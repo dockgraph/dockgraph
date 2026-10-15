@@ -2,6 +2,7 @@ import { memo } from "react";
 import { useTheme } from "../../theme";
 import { useRowHover } from "../../hooks/useRowHover";
 import { networkColor } from "../../utils/colors";
+import { projectOf } from "../../utils/stack";
 import { tableRow } from "./tableStyles";
 import type { DGNode } from "../../types";
 
@@ -34,7 +35,7 @@ export const NetworkRow = memo(function NetworkRow({
       style={rowStyle(theme, selected, { ...styles.row, gridTemplateColumns: gridTemplate })}
     >
       <span style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden" }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: networkColor(node.name), flexShrink: 0 }} />
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: networkColor(node.name, projectOf(node)), flexShrink: 0 }} />
         <span style={{ fontFamily: "var(--dg-font-mono)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={node.name}>
           {node.name}
         </span>

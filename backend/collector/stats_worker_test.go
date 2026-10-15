@@ -268,3 +268,46 @@ func sampleStatsResponse(cpuDelta, systemDelta uint64, onlineCPUs uint32) contai
 		PidsStats: containertypes.PidsStats{Current: 10},
 	}
 }
+
+func TestMergeSamplesLocalWinsOnNameCollision(t *testing.T) {
+	local := []ContainerSample{{ID: "local1", Name: "exporter", Stats: ContainerStats{CPUPercent: 1}}}
+	remote := []ContainerSample{
+		{ID: "remote1", Name: "exporter", Stats: ContainerStats{CPUPercent: 99}},
+		{ID: "local1", Name: "exporter", Stats: ContainerStats{CPUPercent: 50}},
+		{ID: "remote2", Name: "web.1.abc", Stats: ContainerStats{CPUPercent: 2}},
+	}
+	snap := BuildStatsSnapshot(mergeSamples(local, remote))
+	if got := snap.Stats["exporter"].CPUPercent; got != 1 {
+		t.Errorf("local sample must win on name collision, got cpu %v", got)
+	}
+	if _, ok := snap.Stats["web.1.abc"]; !ok {
+		t.Error("distinct remote sample must be kept")
+	}
+}
+
+// Standalone containers named alike on several nodes: the local one keeps
+// the name-keyed entry, but every node's aggregate still counts its own
+// container, and a container reported twice (same ID) counts once.
+func TestMergeSamplesSameNameCountsInEachNodeAggregate(t *testing.T) {
+	local := []ContainerSample{
+		{ID: "l1", Name: "exporter", NodeHostname: "mgr", Stats: ContainerStats{CPUPercent: 1, MemUsage: 10}},
+	}
+	remote := []ContainerSample{
+		{ID: "r1", Name: "exporter", NodeHostname: "w1", Stats: ContainerStats{CPUPercent: 7, MemUsage: 70}},
+		{ID: "r2", Name: "exporter", NodeHostname: "w2", Stats: ContainerStats{CPUPercent: 3, MemUsage: 30}},
+		{ID: "l1", Name: "exporter", NodeHostname: "mgr", Stats: ContainerStats{CPUPercent: 50}}, // duplicate of local
+	}
+	snap := BuildStatsSnapshot(mergeSamples(local, remote), "mgr", "w1", "w2")
+
+	if got := snap.Stats["exporter"].CPUPercent; got != 1 {
+		t.Errorf("exporter entry cpu = %v, want the local sample's 1", got)
+	}
+	for host, want := range map[string]float64{"mgr": 1, "w1": 7, "w2": 3} {
+		if got := snap.Stats[NodeStatsPrefix+host].CPUPercent; got != want {
+			t.Errorf("node %s cpu = %v, want %v", host, got, want)
+		}
+	}
+	if got := snap.Stats[NodeStatsPrefix+"w1"].MemUsage; got != 70 {
+		t.Errorf("node w1 mem = %v, want 70", got)
+	}
+}

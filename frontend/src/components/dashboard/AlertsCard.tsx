@@ -3,13 +3,14 @@ import { useTheme } from "../../theme";
 import { DashboardCard } from "./DashboardCard";
 import { STATUS_COLORS } from "./palette";
 import { evaluateAlerts, type Alert } from "../../utils/alerts";
+import { withoutNodeStats } from "../../utils/stack";
 import type { DGNode } from "../../types";
 import type { ContainerStatsData } from "../../types/stats";
 
 interface Props {
   nodes: DGNode[];
   statsMap: Map<string, ContainerStatsData>;
-  /** Open the detail panel for the container the alert refers to. */
+  /** Open the detail panel for the workload the alert refers to. */
   onInspect: (nodeId: string) => void;
 }
 
@@ -21,7 +22,8 @@ const SEVERITY_STYLES: Record<Alert["severity"], { color: string; bg: string; la
 
 export const AlertsCard = memo(function AlertsCard({ nodes, statsMap, onInspect }: Props) {
   const { theme } = useTheme();
-  const alerts = useMemo(() => evaluateAlerts(nodes, statsMap), [nodes, statsMap]);
+  // Per-swarm-node aggregates (`node:{hostname}`) are not workloads to alert on.
+  const alerts = useMemo(() => evaluateAlerts(nodes, withoutNodeStats(statsMap)), [nodes, statsMap]);
   const [hovered, setHovered] = useState<number | null>(null);
 
   const badge = alerts.length > 0 ? (
@@ -44,14 +46,13 @@ export const AlertsCard = memo(function AlertsCard({ nodes, statsMap, onInspect 
       <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 220, overflowY: "auto" }}>
         {alerts.map((alert, i) => {
           const sev = SEVERITY_STYLES[alert.severity];
-          const nodeId = `container:${alert.container}`;
           return (
             <div
               key={`${alert.container}-${alert.message}-${i}`}
               role="button"
               tabIndex={0}
-              onClick={() => onInspect(nodeId)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onInspect(nodeId); } }}
+              onClick={() => onInspect(alert.nodeId)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onInspect(alert.nodeId); } }}
               onMouseEnter={() => setHovered(i)}
               onMouseLeave={() => setHovered(null)}
               title={`Inspect ${alert.container}`}

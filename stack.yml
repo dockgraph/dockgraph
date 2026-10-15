@@ -1,0 +1,125 @@
+# DockGraph for Docker Swarm.
+#
+#   # 1. Create the shared agent token (once per swarm, on a manager):
+#   openssl rand -hex 32 | docker secret create dg_agent_token -
+#
+#   # 2. Deploy (on a manager):
+#   docker stack deploy -c stack.yml dockgraph
+#
+#   # 3. Open http://<any-node>:7800
+#
+# `server` runs on a manager (it needs the swarm API) and serves the UI.
+# `agent` runs on every node and exposes that node's container stats,
+# inspect and logs to the server over the internal overlay network only.
+#
+# Optional variables (interpolated by `docker stack deploy`):
+#   DG_IMAGE      image to run (default dockgraph/dockgraph:latest)
+#   DG_HTTP_PORT  published UI port (default 7800)
+
+services:
+
+  server:
+    image: ${DG_IMAGE:-dockgraph/dockgraph:latest}
+    ports:
+      # Published through the routing mesh; reachable on every node.
+      - "${DG_HTTP_PORT:-7800}:7800"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker API access (manager)
+      # Optional: mount stack files to show services that are not deployed
+      # yet. The path must exist on the manager the server is scheduled on.
+      # - /opt/stacks/shop.yml:/stacks/shop.yml:ro
+    environment:
+      DG_MODE: "swarm"
+      DG_PORT: "7800"
+      DG_AGENT_ADDR: "tasks.agent"   # DNS name of every agent task in this stack
+      DG_AGENT_PORT: "7801"
+      DG_AGENT_TOKEN_FILE: "/run/secrets/dg_agent_token"
+      # DG_SWARM_POLL_INTERVAL: "5s"
+      # Require a login for the web UI and WebSocket (recommended). Either
+      # inline, or from a Docker secret (create it first with
+      # `printf '%s' 'pass' | docker secret create dg_password -`, then
+      # uncomment the dg_password secret below and at the bottom of the file):
+      # DG_PASSWORD: ""
+      # DG_PASSWORD_FILE: "/run/secrets/dg_password"
+      # Keep 0.0.0.0 in swarm: 127.0.0.1 would cut the routing mesh off.
+      # DG_BIND_ADDR: "0.0.0.0"
+      # Stack name = what you pass to `docker stack deploy`:
+      # DG_COMPOSE_PATH: "shop=/stacks/shop.yml"
+    secrets:
+      - dg_agent_token
+      # - dg_password
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "/dockgraph", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      dockgraph.self: "true"   # container label: hides the task containers
+    deploy:
+      replicas: 1
+      labels:
+        dockgraph.self: "true" # service label: hides the service node
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: any
+        delay: 5s
+      update_config:
+        order: stop-first
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
+  agent:
+    image: ${DG_IMAGE:-dockgraph/dockgraph:latest}
+    # No published port: the agent API is only reachable on `internal`.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker API access (this node)
+    environment:
+      DG_MODE: "agent"
+      DG_AGENT_PORT: "7801"
+      DG_AGENT_TOKEN_FILE: "/run/secrets/dg_agent_token"
+    secrets:
+      - dg_agent_token
+    networks:
+      - internal
+    healthcheck:
+      # In agent mode the healthcheck probes DG_AGENT_PORT.
+      test: ["CMD", "/dockgraph", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      dockgraph.self: "true"
+    deploy:
+      mode: global
+      labels:
+        dockgraph.self: "true"
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+networks:
+  internal:
+    driver: overlay
+    attachable: false   # only this stack's services can join
+    # Uncomment to encrypt server<->agent traffic between nodes (IPsec;
+    # not supported on every platform, e.g. Docker Desktop).
+    # driver_opts:
+    #   encrypted: "true"
+
+secrets:
+  dg_agent_token:
+    external: true
+  # dg_password:
+  #   external: true

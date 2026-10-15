@@ -87,4 +87,21 @@ describe("ContainerRow", () => {
     const wrapper = container.firstElementChild as HTMLElement;
     expect(wrapper.style.opacity).toBe("0.5");
   });
+
+  it("dims a swarm service only when no replica runs, whatever its status", () => {
+    const svc = (running: number) => ({
+      id: "service:shop_api", type: "service", name: "shop_api", status: "degraded",
+      service: { replicas: { running, desired: 2 } },
+    });
+    const opacity = (running: number) => {
+      const { container, unmount } = render(
+        <ContainerRow node={svc(running)} stats={undefined} selected={false} onClick={() => {}} gridTemplate="1fr 1fr 1fr 1fr 1fr" />,
+      );
+      const value = (container.firstElementChild as HTMLElement).style.opacity;
+      unmount();
+      return value;
+    };
+    expect(opacity(1)).toBe("1");
+    expect(opacity(0)).toBe("0.5");
+  });
 });

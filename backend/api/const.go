@@ -15,3 +15,10 @@ const untaggedImageTag = "<none>:<none>"
 
 // indexHTMLPath is the SPA fallback served when no static file matches the URL.
 const indexHTMLPath = "index.html"
+
+// fieldStatus and fieldLabels are JSON response field keys shared by the
+// container, service, network and volume inspect payloads.
+const (
+	fieldStatus = "status"
+	fieldLabels = "labels"
+)

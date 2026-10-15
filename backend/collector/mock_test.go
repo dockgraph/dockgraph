@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 
 	dockertypes "github.com/docker/docker/api/types"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	imagetypes "github.com/docker/docker/api/types/image"
 	networktypes "github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/swarm"
 	systemtypes "github.com/docker/docker/api/types/system"
 	volumetypes "github.com/docker/docker/api/types/volume"
 )
@@ -22,9 +24,20 @@ type stubDockerClient struct {
 	networks   []networktypes.Summary
 	volumes    []*volumetypes.Volume
 
+	services []swarm.Service
+	tasks    []swarm.Task
+	nodes    []swarm.Node
+
 	containerErr error
 	networkErr   error
 	volumeErr    error
+	serviceErr   error
+	taskErr      error
+	nodeErr      error
+
+	// taskListCalls counts TaskList invocations (guarded by mu).
+	mu            sync.Mutex
+	taskListCalls int
 
 	eventsCh <-chan events.Message
 	errCh    <-chan error
@@ -90,6 +103,37 @@ func (s *stubDockerClient) ImageList(_ context.Context, _ imagetypes.ListOptions
 	return nil, nil
 }
 
+func (s *stubDockerClient) ServiceList(_ context.Context, _ swarm.ServiceListOptions) ([]swarm.Service, error) {
+	return s.services, s.serviceErr
+}
+
+func (s *stubDockerClient) TaskList(_ context.Context, _ swarm.TaskListOptions) ([]swarm.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.taskListCalls++
+	return s.tasks, s.taskErr
+}
+
+func (s *stubDockerClient) NodeList(_ context.Context, _ swarm.NodeListOptions) ([]swarm.Node, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.nodes, s.nodeErr
+}
+
+// setNodes replaces the node list returned by NodeList (safe for concurrent use).
+func (s *stubDockerClient) setNodes(nodes []swarm.Node) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nodes = nodes
+}
+
+// setTasks replaces the task list returned by TaskList (safe for concurrent use).
+func (s *stubDockerClient) setTasks(tasks []swarm.Task) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tasks = tasks
+}
+
 func (s *stubDockerClient) Close() error { return nil }
 
 // errClient returns a stub that fails on the specified resource.
@@ -102,6 +146,12 @@ func errClient(resource string) *stubDockerClient {
 		c.networkErr = fmt.Errorf("network list failed")
 	case "volumes":
 		c.volumeErr = fmt.Errorf("volume list failed")
+	case "services":
+		c.serviceErr = fmt.Errorf("service list failed")
+	case "tasks":
+		c.taskErr = fmt.Errorf("task list failed")
+	case "nodes":
+		c.nodeErr = fmt.Errorf("node list failed")
 	}
 	return c
 }

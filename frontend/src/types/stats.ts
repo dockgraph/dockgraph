@@ -97,3 +97,32 @@ export interface NetworkDetail {
   labels: Record<string, string>;
   containers: { name: string; ipv4Address: string; ipv6Address: string; macAddress: string }[];
 }
+
+/** Response of GET /api/services/{id}: a swarm service with its tasks. */
+export interface ServiceDetail {
+  id: string;
+  name: string;
+  stack?: string;
+  /** "running" | "degraded" | "updating" | "stopped", or "unknown" when the counts can't be read. */
+  status: string;
+  mode?: string;
+  /** Null when swarm couldn't report the counts. */
+  replicas: import('../types').ReplicaCount | null;
+  tasks: import('../types').TaskInfo[];
+  /** True when the task list could not be read: `tasks` is empty, not known empty. */
+  tasksUnavailable?: boolean;
+  labels?: Record<string, string> | null;
+  createdAt?: string;
+  updatedAt?: string;
+  ports: { host: number; container: number; protocol: string; publishMode: string }[];
+  networks: { name: string; aliases?: string[] | null }[];
+  image?: string;
+  cmd?: string[] | null;
+  args?: string[] | null;
+  workingDir?: string;
+  user?: string;
+  env?: { key: string; value: string }[];
+  mounts?: Mount[];
+  constraints?: string[] | null;
+  updateStatus?: { state: string; message?: string };
+}

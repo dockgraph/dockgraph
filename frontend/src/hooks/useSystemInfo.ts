@@ -9,6 +9,10 @@ export interface SystemInfo {
   cpus: number;
   memTotal: number;
   cgroupVersion: string;
+  /** Resolved runtime mode: "standalone", "swarm" or "agent". */
+  mode?: string;
+  /** Present when the daemon is an active swarm member. */
+  swarm?: { nodeId: string; managers: number; nodes: number } | null;
 }
 
 export function useSystemInfo() {

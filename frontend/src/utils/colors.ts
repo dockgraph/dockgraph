@@ -1,3 +1,4 @@
+import { stripStackPrefix } from './stack';
 import { STATS_CPU_WARN, STATS_CPU_CRIT, STATS_THROTTLE_CRIT } from './constants';
 
 const PALETTE = [
@@ -25,7 +26,14 @@ export function hashString(str: string): number {
   return Math.abs(hash);
 }
 
-export function networkColor(networkName: string): string {
+/**
+ * Deterministic identity colour for a network name. When the owning stack is
+ * given, its `{stack}_` prefix is dropped before hashing so the same logical
+ * network (e.g. `shop_backend` and `blog_backend`) keeps one colour across
+ * stacks.
+ */
+export function networkColor(name: string, stack?: string): string {
+  const networkName = stripStackPrefix(name, stack);
   if (cache.has(networkName)) {
     return cache.get(networkName)!;
   }
@@ -38,6 +46,47 @@ export function networkColor(networkName: string): string {
   return color;
 }
 
+/** Neutral colour for workloads that belong to no stack. */
+export const NO_STACK_COLOR = '#64748b';
+
+/**
+ * Deterministic identity colour for a stack/project, hashed like network
+ * colours. Workloads without a stack get a neutral slate.
+ */
+export function stackColor(stack: string | undefined): string {
+  if (!stack) return NO_STACK_COLOR;
+  return PALETTE[hashString(stack) % PALETTE.length];
+}
+
+/** Colours for swarm node states ("ready", "down", ...). */
+export const SWARM_NODE_STATE_COLORS: Record<string, string> = {
+  ready: '#22c55e',
+  down: '#ef4444',
+  disconnected: '#ef4444',
+  unknown: '#f59e0b',
+};
+
+/** Colour of a swarm node state dot; unknown states read amber. */
+export function swarmNodeStateColor(state: string | undefined): string {
+  return SWARM_NODE_STATE_COLORS[state ?? 'unknown'] ?? SWARM_NODE_STATE_COLORS.unknown;
+}
+
+/**
+ * Identity colours of swarm node roles in the per-node view (role group
+ * frame, title tab, node box accent, role badge, minimap). Violet for
+ * managers and cyan for workers stay clear of the green/amber/red state
+ * colours; the light variants are darker for contrast on the paper canvas.
+ */
+export const SWARM_ROLE_COLORS: Record<'manager' | 'worker', { dark: string; light: string }> = {
+  manager: { dark: '#a78bfa', light: '#7c3aed' },
+  worker: { dark: '#22d3ee', light: '#0e7490' },
+};
+
+/** Colour of a swarm node role for the given theme mode. */
+export function swarmRoleColor(role: 'manager' | 'worker', mode: 'dark' | 'light'): string {
+  return SWARM_ROLE_COLORS[role][mode];
+}
+
 export const STATUS_COLORS: Record<string, string> = {
   running: '#22c55e',
   unhealthy: '#f59e0b',
@@ -46,6 +95,11 @@ export const STATUS_COLORS: Record<string, string> = {
   dead: '#a855f7',
   created: '#06b6d4',
   not_running: '#64748b',
+  // Swarm service states.
+  degraded: '#f59e0b',
+  updating: '#3b82f6',
+  stopped: '#ef4444',
+  unknown: '#64748b',
 };
 
 /** Returns a semantic color for CPU usage: green (ok), amber (warn), red (critical). */
@@ -63,4 +117,8 @@ export const STATUS_LABELS: Record<string, string> = {
   dead: 'Dead',
   created: 'Created',
   not_running: 'Not running',
+  degraded: 'Degraded',
+  updating: 'Updating',
+  stopped: 'Stopped',
+  unknown: 'Unknown',
 };

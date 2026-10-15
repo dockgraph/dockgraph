@@ -16,3 +16,9 @@ export function ghostBorder(isGhost: boolean, theme: Theme): React.CSSProperties
 export function railColor(isGhost: boolean, activeColor: string): string {
   return isGhost ? STATUS_COLORS.not_running : activeColor;
 }
+
+/** Faint lift shared by graph cards (containers, per-node service cards). */
+export const CARD_SHADOW = '0 2px 6px -3px rgba(0, 0, 0, 0.45)';
+
+/** Corner radius shared by graph cards. */
+export const CARD_RADIUS = 6;

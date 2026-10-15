@@ -1,5 +1,6 @@
 import type { ElkNode } from 'elkjs/lib/elk.bundled';
 import type { Node as RFNode } from '@xyflow/react';
+import { isGroupType } from './elkGraph';
 
 /**
  * Maps ELK-computed positions back to React Flow nodes. Handles both
@@ -26,7 +27,7 @@ export function applyElkPositions(
         y: (elkNode.y ?? 0) + offsetY,
       };
 
-      if (rfNode.type === 'networkGroup') {
+      if (isGroupType(rfNode.type)) {
         rfNode.style = {
           ...rfNode.style,
           width: elkNode.width,

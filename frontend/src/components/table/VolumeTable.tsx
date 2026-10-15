@@ -8,7 +8,7 @@ import type { GroupOption } from "./TableToolbar";
 import type { DGNode, DGEdge } from "../../types";
 
 const GROUP_OPTIONS: GroupOption[] = [
-  { key: "compose", label: "Compose Project" },
+  { key: "compose", label: "Stack / Project" },
   { key: "driver", label: "Driver" },
   { key: "none", label: "None" },
 ];

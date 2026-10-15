@@ -3,16 +3,21 @@ import { useReactFlow } from '@xyflow/react';
 import { useContainerDetail } from './useContainerDetail';
 import { useVolumeDetail } from './useVolumeDetail';
 import { useNetworkDetail } from './useNetworkDetail';
+import { useServiceDetail } from './useServiceDetail';
+import { projectOf, resolveNodeRef } from '../utils/stack';
 import type { DGNode, DGEdge, VolumeMount } from '../types';
 
 /** Discriminated union describing the resolved detail panel variant. */
 export type DetailVariant =
   | { kind: 'none' }
   | { kind: 'container'; containerName: string }
+  | { kind: 'service'; serviceName: string }
   | { kind: 'volume'; volumeName: string }
   | { kind: 'network'; networkName: string }
   | { kind: 'group' }
+  | { kind: 'swarmnode'; node: DGNode }
   | { kind: 'ghost-container'; node: DGNode }
+  | { kind: 'ghost-service'; node: DGNode }
   | { kind: 'ghost-volume'; node: DGNode }
   | { kind: 'ghost-network'; node: DGNode };
 
@@ -46,25 +51,16 @@ export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[]) {
   }, [detailNodeId, fitView]);
 
   // Resolve cross-reference names to graph node IDs. Supports suffix matching
-  // for Docker's short names (e.g. service name without compose prefix).
+  // for Docker's short names (a compose service name without its project
+  // prefix, `{stack}_{svc}` swarm services, task container names), preferring
+  // matches in the stack of the resource currently shown.
   const handleNavigate = useCallback(
     (targetId: string) => {
-      if (dgNodes.some((n) => n.id === targetId)) {
-        setDetailNodeId(targetId);
-        return;
-      }
-      const sepIdx = targetId.indexOf(':');
-      if (sepIdx < 0) return;
-      const type = targetId.slice(0, sepIdx) as DGNode['type'];
-      const name = targetId.slice(sepIdx + 1);
-      const match = dgNodes.find(
-        (n) =>
-          n.type === type &&
-          (n.name === name ||
-            n.name.endsWith(`-${name}`) ||
-            n.name.endsWith(`_${name}`)),
-      );
-      setDetailNodeId(match ? match.id : targetId);
+      if (targetId.indexOf(':') < 0 && !dgNodes.some((n) => n.id === targetId)) return;
+      setDetailNodeId((current) => {
+        const from = current ? dgNodes.find((n) => n.id === current) : undefined;
+        return resolveNodeRef(dgNodes, targetId, from ? projectOf(from) : undefined);
+      });
     },
     [dgNodes],
   );
@@ -74,6 +70,8 @@ export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[]) {
   const isVolumeDetail = detailNodeId?.startsWith('volume:') ?? false;
   const isNetworkDetail = detailNodeId?.startsWith('network:') ?? false;
   const isGroupDetail = detailNodeId?.startsWith('group:') ?? false;
+  const isServiceDetail = detailNodeId?.startsWith('service:') ?? false;
+  const isSwarmNodeDetail = detailNodeId?.startsWith('swarmnode:') ?? false;
   const detailDgNode = detailNodeId
     ? dgNodes.find((n) => n.id === detailNodeId)
     : null;
@@ -83,15 +81,19 @@ export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[]) {
   const variant: DetailVariant = useMemo(() => {
     if (!detailNodeId) return { kind: 'none' };
     if (isGroupDetail) return { kind: 'group' };
+    // Swarm nodes need no fetch: the graph node carries everything shown.
+    if (isSwarmNodeDetail) return detailDgNode ? { kind: 'swarmnode', node: detailDgNode } : { kind: 'none' };
     if (isGhostResource && detailDgNode) {
       if (isVolumeDetail) return { kind: 'ghost-volume', node: detailDgNode };
       if (isNetworkDetail) return { kind: 'ghost-network', node: detailDgNode };
+      if (isServiceDetail) return { kind: 'ghost-service', node: detailDgNode };
       return { kind: 'ghost-container', node: detailDgNode };
     }
     if (isNetworkDetail) return { kind: 'network', networkName: detailNodeId.replace('network:', '') };
     if (isVolumeDetail) return { kind: 'volume', volumeName: detailNodeId.replace('volume:', '') };
+    if (isServiceDetail) return { kind: 'service', serviceName: detailNodeId.replace('service:', '') };
     return { kind: 'container', containerName: detailNodeId.replace('container:', '') };
-  }, [detailNodeId, isGroupDetail, isGhostResource, isVolumeDetail, isNetworkDetail, detailDgNode]);
+  }, [detailNodeId, isGroupDetail, isSwarmNodeDetail, isGhostResource, isVolumeDetail, isNetworkDetail, isServiceDetail, detailDgNode]);
 
   // Containers belonging to the selected network/group.
   const groupContainers = useMemo(() => {
@@ -100,7 +102,9 @@ export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[]) {
     }
     if (isNetworkDetail && detailNodeId) {
       const ids = new Set(
-        dgNodes.filter((n) => n.type === 'container' && n.networkId === detailNodeId).map((n) => n.id),
+        dgNodes
+          .filter((n) => (n.type === 'container' || n.type === 'service') && n.networkId === detailNodeId)
+          .map((n) => n.id),
       );
       for (const e of dgEdges) {
         if (e.type === 'secondary_network' && e.target === detailNodeId) {
@@ -129,20 +133,24 @@ export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[]) {
   const containerName = variant.kind === 'container' ? variant.containerName : null;
   const volumeName = variant.kind === 'volume' ? variant.volumeName : null;
   const networkName = variant.kind === 'network' ? variant.networkName : null;
+  const serviceName = variant.kind === 'service' ? variant.serviceName : null;
 
   const { data: containerData, loading: containerLoading, error: containerError } = useContainerDetail(containerName);
   const { data: volumeData, loading: volumeLoading, error: volumeError } = useVolumeDetail(volumeName);
   const { data: networkData, loading: networkLoading, error: networkError } = useNetworkDetail(networkName);
+  const { data: serviceData, loading: serviceLoading, error: serviceError } = useServiceDetail(serviceName);
 
   // Coalesce loading/error for the active variant.
   const loading = variant.kind === 'container' ? containerLoading
     : variant.kind === 'volume' ? volumeLoading
     : variant.kind === 'network' ? networkLoading
+    : variant.kind === 'service' ? serviceLoading
     : false;
 
   const error = variant.kind === 'container' ? containerError
     : variant.kind === 'volume' ? volumeError
     : variant.kind === 'network' ? networkError
+    : variant.kind === 'service' ? serviceError
     : null;
 
   return {
@@ -155,6 +163,7 @@ export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[]) {
     containerData,
     volumeData,
     networkData,
+    serviceData,
     loading,
     error,
     handleInfoClick,

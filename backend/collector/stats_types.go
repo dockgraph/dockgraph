@@ -22,5 +22,5 @@ type StatsSnapshot struct {
 
 // NewStatsMessage wraps a stats snapshot for WebSocket transmission.
 func NewStatsMessage(s StatsSnapshot) WireMessage {
-	return WireMessage{Type: "stats", Version: 1, Data: s}
+	return WireMessage{Type: "stats", Version: ProtocolVersion, Data: s}
 }

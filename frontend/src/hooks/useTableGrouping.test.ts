@@ -78,3 +78,22 @@ describe("useTableGrouping", () => {
     expect(bridgeGroup?.items.length).toBe(2);
   });
 });
+
+describe("useTableGrouping by stack / project", () => {
+  it("groups by the resolved stack, falling back to compose and stack labels", () => {
+    const nodes: DGNode[] = [
+      makeNode({ id: "service:shop_web", type: "service", name: "shop_web", stack: "shop" }),
+      makeNode({ id: "c:1", name: "blog-app-1", labels: { "com.docker.compose.project": "blog" } }),
+      makeNode({ id: "c:2", name: "shop_db.1.x", labels: { "com.docker.stack.namespace": "shop" } }),
+      makeNode({ id: "c:3", name: "lone" }),
+    ];
+    const { result } = renderHook(() => useTableGrouping(nodes));
+    const byKey = Object.fromEntries(result.current.groups.map((g) => [g.key, g.items.map((n) => n.id)]));
+    expect(byKey).toEqual({
+      shop: ["service:shop_web", "c:2"],
+      blog: ["c:1"],
+      _no_project: ["c:3"],
+    });
+    expect(result.current.groups.find((g) => g.key === "_no_project")?.label).toBe("No stack / project");
+  });
+});

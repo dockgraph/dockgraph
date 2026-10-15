@@ -47,7 +47,7 @@ func buildInspectResponse(info containertypes.InspectResponse) map[string]any {
 	resp := map[string]any{
 		fieldName:       name,
 		"image":         info.Config.Image,
-		"status":        info.State.Status,
+		fieldStatus:     info.State.Status,
 		stateRunning:    info.State.Running,
 		"paused":        info.State.Paused,
 		"restarting":    info.State.Restarting,
@@ -61,7 +61,7 @@ func buildInspectResponse(info containertypes.InspectResponse) map[string]any {
 		"workingDir":    info.Config.WorkingDir,
 		"user":          info.Config.User,
 		"env":           filterEnvVars(info.Config.Env),
-		"labels":        info.Config.Labels,
+		fieldLabels:     info.Config.Labels,
 		"restartPolicy": info.HostConfig.RestartPolicy,
 		"networkMode":   string(info.HostConfig.NetworkMode),
 		"ports":         buildPorts(info),

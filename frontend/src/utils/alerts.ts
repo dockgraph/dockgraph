@@ -3,10 +3,17 @@ import type { ContainerStatsData } from "../types/stats";
 
 export interface Alert {
   severity: "error" | "warning" | "info";
+  /** Graph node the alert refers to, for the detail panel. */
+  nodeId: string;
+  /** Workload (container or swarm service) name. */
   container: string;
   message: string;
 }
 
+/**
+ * Alerts for the workloads in `nodes`: containers, and swarm services (whose
+ * stats entry is the aggregate of their tasks, keyed by service name).
+ */
 export function evaluateAlerts(
   nodes: DGNode[],
   stats: Map<string, ContainerStatsData>,
@@ -14,26 +21,36 @@ export function evaluateAlerts(
   const alerts: Alert[] = [];
 
   for (const node of nodes) {
-    if (node.type !== "container") continue;
+    if (node.type !== "container" && node.type !== "service") continue;
+    const push = (severity: Alert["severity"], message: string) =>
+      alerts.push({ severity, nodeId: node.id, container: node.name, message });
 
-    if (node.status === "exited") {
-      alerts.push({ severity: "error", container: node.name, message: "Container exited" });
-    }
-    if (node.status === "restarting") {
-      alerts.push({ severity: "warning", container: node.name, message: "Container restarting" });
+    // A service aggregate sums its tasks' CPU, so compare the per-replica
+    // average with the per-container threshold.
+    let replicas = 1;
+    if (node.type === "container") {
+      if (node.status === "exited") push("error", "Container exited");
+      if (node.status === "restarting") push("warning", "Container restarting");
+    } else {
+      const r = node.service?.replicas;
+      if (node.status === "degraded") {
+        push("warning", r ? `Service degraded: ${r.running}/${r.desired} running` : "Service degraded");
+      }
+      replicas = Math.max(1, r?.running ?? 1);
     }
 
     const s = stats.get(node.name);
     if (!s) continue;
 
-    if (s.cpuPercent > 80) {
-      alerts.push({ severity: "warning", container: node.name, message: `High CPU: ${s.cpuPercent.toFixed(1)}%` });
+    const cpu = s.cpuPercent / replicas;
+    if (cpu > 80) {
+      push("warning", `High CPU: ${cpu.toFixed(1)}%${replicas > 1 ? " per replica" : ""}`);
     }
     if (s.memLimit > 0 && s.memUsage / s.memLimit > 0.9) {
-      alerts.push({ severity: "warning", container: node.name, message: "Memory usage > 90% of limit" });
+      push("warning", "Memory usage > 90% of limit");
     }
     if (s.netRxErrors + s.netTxErrors > 0) {
-      alerts.push({ severity: "info", container: node.name, message: `Network errors: ${s.netRxErrors + s.netTxErrors}` });
+      push("info", `Network errors: ${s.netRxErrors + s.netTxErrors}`);
     }
   }
 

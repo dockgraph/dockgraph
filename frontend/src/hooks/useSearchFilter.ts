@@ -66,7 +66,7 @@ export function useSearchFilter(dgNodes: DGNode[]): SearchFilterResult {
       if (filters.types.size > 0 && !filters.types.has(n.type)) continue;
       if (filters.statuses.size > 0 && !filters.statuses.has(n.status ?? '')) continue;
       if (lowerQ) {
-        const haystack = `${n.name} ${n.image ?? ''} ${Object.values(n.labels ?? {}).join(' ')}`.toLowerCase();
+        const haystack = `${n.name} ${n.image ?? ''} ${n.stack ?? ''} ${Object.values(n.labels ?? {}).join(' ')}`.toLowerCase();
         if (!haystack.includes(lowerQ)) continue;
       }
       ids.add(n.id);

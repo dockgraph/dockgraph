@@ -129,3 +129,41 @@ describe('snapshotFingerprint', () => {
     expect(fp).toBe('|');
   });
 });
+
+describe('snapshotFingerprint (swarm)', () => {
+  const svc: DGNode = {
+    id: 'service:shop_web', type: 'service', name: 'shop_web', status: 'running', stack: 'shop',
+    service: { mode: 'replicated', replicas: { running: 2, desired: 2 }, tasks: [
+      { id: 't1', slot: 1, nodeId: 'n1', state: 'running', desiredState: 'running' },
+      { id: 't2', slot: 2, nodeId: 'n2', state: 'running', desiredState: 'running' },
+    ] },
+  };
+
+  it('changes when the stack changes', () => {
+    expect(snapshotFingerprint([web], [])).not.toBe(snapshotFingerprint([{ ...web, stack: 'app' }], []));
+  });
+
+  it('changes when replica counts change', () => {
+    const scaled = { ...svc, service: { ...svc.service!, replicas: { running: 2, desired: 3 } } };
+    expect(snapshotFingerprint([svc], [])).not.toBe(snapshotFingerprint([scaled], []));
+  });
+
+  it('changes when a task state or placement changes', () => {
+    const tasks = svc.service!.tasks!;
+    const failed = { ...svc, service: { ...svc.service!, tasks: [tasks[0], { ...tasks[1], state: 'failed' }] } };
+    const moved = { ...svc, service: { ...svc.service!, tasks: [tasks[0], { ...tasks[1], nodeId: 'n3' }] } };
+    expect(snapshotFingerprint([svc], [])).not.toBe(snapshotFingerprint([failed], []));
+    expect(snapshotFingerprint([svc], [])).not.toBe(snapshotFingerprint([moved], []));
+  });
+
+  it('changes when the update status changes', () => {
+    const updating = { ...svc, service: { ...svc.service!, updateStatus: 'updating' } };
+    expect(snapshotFingerprint([svc], [])).not.toBe(snapshotFingerprint([updating], []));
+  });
+
+  it('ignores task order', () => {
+    const tasks = svc.service!.tasks!;
+    const reordered = { ...svc, service: { ...svc.service!, tasks: [tasks[1], tasks[0]] } };
+    expect(snapshotFingerprint([svc], [])).toBe(snapshotFingerprint([reordered], []));
+  });
+});

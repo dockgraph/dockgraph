@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,7 +73,8 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	for _, key := range []string{
 		"DG_BIND_ADDR", "DG_PORT", "DG_POLL_INTERVAL",
 		"DG_COMPOSE_PATH", "DG_PASSWORD", "DG_STATS_INTERVAL",
-		"DG_STATS_WORKERS",
+		"DG_STATS_WORKERS", "DG_MODE", "DG_SWARM_POLL_INTERVAL",
+		"DG_AGENT_PORT", "DG_AGENT_ADDR", "DG_AGENT_TOKEN", "DG_AGENT_TOKEN_FILE",
 	} {
 		t.Setenv(key, "")
 	}
@@ -99,6 +103,21 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	}
 	if cfg.PasswordHash != "" {
 		t.Errorf("PasswordHash: got %q, want empty", cfg.PasswordHash)
+	}
+	if cfg.Mode != "auto" {
+		t.Errorf("Mode: got %s, want auto", cfg.Mode)
+	}
+	if cfg.SwarmPollInterval != 5*time.Second {
+		t.Errorf("SwarmPollInterval: got %v, want 5s", cfg.SwarmPollInterval)
+	}
+	if cfg.AgentPort != "7801" {
+		t.Errorf("AgentPort: got %s, want 7801", cfg.AgentPort)
+	}
+	if cfg.AgentAddr != "tasks.agent" {
+		t.Errorf("AgentAddr: got %s, want tasks.agent", cfg.AgentAddr)
+	}
+	if cfg.AgentToken != "" {
+		t.Errorf("AgentToken: got %q, want empty", cfg.AgentToken)
 	}
 }
 
@@ -380,5 +399,246 @@ func clearConfigEnv(t *testing.T, keys ...string) {
 	t.Helper()
 	for _, k := range keys {
 		t.Setenv(k, "")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DG_MODE / DG_SWARM_POLL_INTERVAL
+// ---------------------------------------------------------------------------
+
+func TestLoadConfig_Mode(t *testing.T) {
+	tests := []struct {
+		name string
+		val  string
+		want string
+	}{
+		{"empty_default", "", "auto"},
+		{"auto", "auto", "auto"},
+		{"standalone", "standalone", "standalone"},
+		{"swarm", "swarm", "swarm"},
+		{"agent", "agent", "agent"},
+		{"case_insensitive", " Swarm ", "swarm"},
+		{"invalid", "cluster", "auto"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearConfigEnv(t, "DG_PASSWORD")
+			t.Setenv("DG_MODE", tt.val)
+			if got := LoadConfig().Mode; got != tt.want {
+				t.Errorf("got %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_SwarmPollInterval(t *testing.T) {
+	tests := []struct {
+		name string
+		val  string
+		want time.Duration
+	}{
+		{"default", "", 5 * time.Second},
+		{"custom", "10s", 10 * time.Second},
+		{"below_min", "100ms", time.Second},
+		{"invalid", "soon", 5 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearConfigEnv(t, "DG_PASSWORD")
+			t.Setenv("DG_SWARM_POLL_INTERVAL", tt.val)
+			if got := LoadConfig().SwarmPollInterval; got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DG_AGENT_PORT / DG_AGENT_ADDR / DG_AGENT_TOKEN(_FILE)
+// ---------------------------------------------------------------------------
+
+func TestLoadConfig_AgentPort(t *testing.T) {
+	tests := []struct {
+		name string
+		val  string
+		want string
+	}{
+		{"default", "", "7801"},
+		{"custom", "9000", "9000"},
+		{"zero", "0", "7801"},
+		{"too_high", "70000", "7801"},
+		{"not_a_number", "abc", "7801"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearConfigEnv(t, "DG_PASSWORD")
+			t.Setenv("DG_AGENT_PORT", tt.val)
+			if got := LoadConfig().AgentPort; got != tt.want {
+				t.Errorf("got %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_AgentAddr(t *testing.T) {
+	clearConfigEnv(t, "DG_PASSWORD")
+	t.Setenv("DG_AGENT_ADDR", " tasks.dg_agent:9000 ")
+	if got := LoadConfig().AgentAddr; got != "tasks.dg_agent:9000" {
+		t.Errorf("got %q, want tasks.dg_agent:9000", got)
+	}
+}
+
+func TestLoadConfig_AgentToken(t *testing.T) {
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, "token")
+	if err := os.WriteFile(tokenFile, []byte("from-file\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	emptyFile := filepath.Join(dir, "empty")
+	if err := os.WriteFile(emptyFile, []byte("\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name  string
+		token string
+		file  string
+		want  string
+	}{
+		{"unset", "", "", ""},
+		{"inline", " inline-secret ", "", "inline-secret"},
+		{"file_trimmed", "", tokenFile, "from-file"},
+		{"inline_wins", "inline-secret", tokenFile, "inline-secret"},
+		{"missing_file", "", filepath.Join(dir, "missing"), ""},
+		{"empty_file", "", emptyFile, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearConfigEnv(t, "DG_PASSWORD")
+			t.Setenv("DG_AGENT_TOKEN", tt.token)
+			t.Setenv("DG_AGENT_TOKEN_FILE", tt.file)
+			if got := LoadConfig().AgentToken; got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DG_PASSWORD_FILE
+// ---------------------------------------------------------------------------
+
+func TestLoadConfig_PasswordFile(t *testing.T) {
+	dir := t.TempDir()
+	plainFile := filepath.Join(dir, "plain")
+	if err := os.WriteFile(plainFile, []byte("from-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := auth.HashPassword("hashed-secret")
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	hashFile := filepath.Join(dir, "hash")
+	if err := os.WriteFile(hashFile, []byte(hash+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name   string
+		inline string
+		file   string
+		want   string // password expected to verify; "" = auth disabled
+	}{
+		{"unset", "", "", ""},
+		{"file_plaintext_trimmed", "", plainFile, "from-secret"},
+		{"file_prehashed", "", hashFile, "hashed-secret"},
+		{"inline_wins", "inline-pass", plainFile, "inline-pass"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearConfigEnv(t, "DG_AGENT_TOKEN", "DG_AGENT_TOKEN_FILE")
+			t.Setenv("DG_PASSWORD", tt.inline)
+			t.Setenv("DG_PASSWORD_FILE", tt.file)
+			got := LoadConfig().PasswordHash
+			if tt.want == "" {
+				if got != "" {
+					t.Fatalf("PasswordHash: got %q, want empty", got)
+				}
+				return
+			}
+			ok, err := auth.CheckPassword(tt.want, got)
+			if err != nil {
+				t.Fatalf("CheckPassword: %v", err)
+			}
+			if !ok {
+				t.Errorf("hash does not verify against %q", tt.want)
+			}
+		})
+	}
+}
+
+func TestReadSecretEnv_MissingFile(t *testing.T) {
+	t.Setenv("DG_TEST_SECRET", "")
+	t.Setenv("DG_TEST_SECRET_FILE", filepath.Join(t.TempDir(), "missing"))
+	if _, err := readSecretEnv("DG_TEST_SECRET"); err == nil {
+		t.Fatal("expected an error for an unreadable secret file")
+	}
+}
+
+func TestReadSecretEnv_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{"empty": "", "whitespace": " \n\t\n"} {
+		t.Run(name, func(t *testing.T) {
+			file := filepath.Join(dir, name)
+			if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("DG_TEST_SECRET", "")
+			t.Setenv("DG_TEST_SECRET_FILE", file)
+			_, err := readSecretEnv("DG_TEST_SECRET")
+			if err == nil || !strings.Contains(err.Error(), "DG_TEST_SECRET_FILE is empty") {
+				t.Fatalf("expected an empty-file error, got %v", err)
+			}
+		})
+	}
+}
+
+// The inline variable wins before the file is read, so an empty file next
+// to it is not an error.
+func TestReadSecretEnv_InlineWinsOverEmptyFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "empty")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DG_TEST_SECRET", "inline")
+	t.Setenv("DG_TEST_SECRET_FILE", file)
+	got, err := readSecretEnv("DG_TEST_SECRET")
+	if err != nil || got != "inline" {
+		t.Fatalf("got %q, %v; want inline, nil", got, err)
+	}
+}
+
+func TestHealthcheckPort(t *testing.T) {
+	tests := []struct {
+		name, mode, port, agentPort, want string
+	}{
+		{"server_default", "", "", "", "7800"},
+		{"server_port", "swarm", "9000", "9001", "9000"},
+		{"agent_default", "agent", "9000", "", "7801"},
+		{"agent_port", "agent", "9000", "9001", "9001"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearConfigEnv(t, "DG_PASSWORD")
+			t.Setenv("DG_MODE", tt.mode)
+			t.Setenv("DG_PORT", tt.port)
+			t.Setenv("DG_AGENT_PORT", tt.agentPort)
+			// An unreadable password file would make LoadConfig exit: the
+			// probe must not read it (nor hash the password) at all.
+			t.Setenv("DG_PASSWORD_FILE", filepath.Join(t.TempDir(), "missing"))
+			if got := healthcheckPort(); got != tt.want {
+				t.Errorf("got %s, want %s", got, tt.want)
+			}
+		})
 	}
 }

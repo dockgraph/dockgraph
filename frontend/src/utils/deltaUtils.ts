@@ -1,17 +1,28 @@
 import type { DGNode, DGEdge, DeltaUpdate } from '../types';
 
+/** Replica counts, update state and per-task states of a service node. */
+function serviceKey(n: DGNode): string {
+  const s = n.service;
+  if (!s) return '';
+  const tasks = (s.tasks ?? [])
+    .map((t) => `${t.id}=${t.state ?? ''}/${t.desiredState ?? ''}@${t.nodeId ?? ''}`)
+    .sort()
+    .join(';');
+  return `${s.replicas.running}/${s.replicas.desired}:${s.mode ?? ''}:${s.updateStatus ?? ''}:${tasks}`;
+}
+
 /**
  * Produces a lightweight fingerprint of the current graph state.
  * Prevents redundant re-renders when the WebSocket pushes a snapshot
  * that is structurally identical to what we already have (same node IDs,
- * same statuses, same edge set). IDs are sorted so order differences
+ * same statuses, same edge set, same stack and service replica/task states). IDs are sorted so order differences
  * between snapshots don't cause false mismatches.
  */
 export function snapshotFingerprint(nodes: DGNode[], edges: DGEdge[]): string {
   const nk = (nodes ?? [])
     .map(
       (n) =>
-        `${n.id}:${n.status ?? ''}:${n.image ?? ''}:${n.networkId ?? ''}:${(n.ports ?? []).map((p) => `${p.host}-${p.container}`).join(';')}`,
+        `${n.id}:${n.status ?? ''}:${n.image ?? ''}:${n.networkId ?? ''}:${(n.ports ?? []).map((p) => `${p.host}-${p.container}`).join(';')}:${n.stack ?? ''}:${serviceKey(n)}:${JSON.stringify(n.swarmNode ?? null)}`
     )
     .sort()
     .join(',');

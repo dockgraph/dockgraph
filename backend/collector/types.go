@@ -4,7 +4,8 @@
 //
 // Node and edge IDs follow a namespaced format to prevent collisions:
 //
-//	Nodes: "container:{name}", "network:{name}", "volume:{name}"
+//	Nodes: "container:{name}", "service:{name}", "network:{name}", "volume:{name}",
+//	       "swarmnode:{hostname}"
 //	Edges: "e:dep:{source}:{target}", "e:net:{source}:{target}", "e:vol:{source}:{target}"
 package collector
 
@@ -17,6 +18,7 @@ import (
 	"github.com/docker/docker/api/types/events"
 	imagetypes "github.com/docker/docker/api/types/image"
 	networktypes "github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/swarm"
 	systemtypes "github.com/docker/docker/api/types/system"
 	volumetypes "github.com/docker/docker/api/types/volume"
 )
@@ -32,8 +34,13 @@ type PortMapping struct {
 // The Type field determines which optional fields are populated:
 //
 //	"container" — Image, Status, Ports, Labels, NetworkID
+//	"service"   — Image, Status, Ports, Labels, NetworkID, Service (swarm mode)
 //	"network"   — Driver, Subnet, Gateway
 //	"volume"    — Driver, Status
+//	"swarmnode" — Status (ready, down, unknown, disconnected), SwarmNode
+//
+// Stack is the generic project the node belongs to: the compose project or,
+// for swarm resources, the stack namespace. Empty for standalone resources.
 type Node struct {
 	ID        string            `json:"id"`
 	Type      string            `json:"type"`
@@ -49,6 +56,55 @@ type Node struct {
 	Source    string            `json:"source,omitempty"`
 	CreatedAt string            `json:"createdAt,omitempty"`
 	Compose   *ComposeConfig    `json:"compose,omitempty"`
+	Stack     string            `json:"stack,omitempty"`
+	Service   *ServiceInfo      `json:"service,omitempty"`
+	SwarmNode *SwarmNodeInfo    `json:"swarmNode,omitempty"`
+}
+
+// SwarmNodeInfo carries cluster-node details for "swarmnode" nodes. Role is
+// "manager" or "worker", Availability is "active", "pause" or "drain", and
+// State is the node's reported state (also mirrored in Node.Status). NanoCPUs
+// and MemoryBytes are the node's total capacity as reported by its engine.
+type SwarmNodeInfo struct {
+	ID            string `json:"id"`
+	Role          string `json:"role"`
+	Leader        bool   `json:"leader"`
+	Availability  string `json:"availability"`
+	State         string `json:"state"`
+	Addr          string `json:"addr,omitempty"`
+	EngineVersion string `json:"engineVersion,omitempty"`
+	NanoCPUs      int64  `json:"nanoCpus,omitempty"`
+	MemoryBytes   int64  `json:"memoryBytes,omitempty"`
+}
+
+// ServiceInfo carries swarm service state for "service" nodes. Mode is one of
+// "replicated", "global", "replicated-job" or "global-job". UpdateStatus mirrors
+// the service's rolling-update state (e.g. "updating", "completed"), empty when
+// no update has run.
+type ServiceInfo struct {
+	Mode         string       `json:"mode,omitempty"`
+	Replicas     ReplicaCount `json:"replicas"`
+	Tasks        []TaskInfo   `json:"tasks,omitempty"`
+	UpdateStatus string       `json:"updateStatus,omitempty"`
+}
+
+// ReplicaCount is the number of running tasks versus the desired count.
+type ReplicaCount struct {
+	Running int `json:"running"`
+	Desired int `json:"desired"`
+}
+
+// TaskInfo is a single swarm task of a service, placed on a cluster node.
+type TaskInfo struct {
+	ID           string `json:"id"`
+	Slot         int    `json:"slot,omitempty"`
+	NodeID       string `json:"nodeId,omitempty"`
+	NodeHostname string `json:"nodeHostname,omitempty"`
+	State        string `json:"state,omitempty"`
+	DesiredState string `json:"desiredState,omitempty"`
+	ContainerID  string `json:"containerId,omitempty"`
+	Error        string `json:"error,omitempty"`
+	Timestamp    string `json:"timestamp,omitempty"`
 }
 
 // ComposeConfig carries service configuration from a compose file,
@@ -109,6 +165,13 @@ type DeltaUpdate struct {
 	EdgesRemoved []string `json:"edgesRemoved,omitempty"`
 }
 
+// ProtocolVersion is the WebSocket wire protocol version carried by every
+// message. Bump it on any change an older frontend cannot safely render; the
+// frontend reloads itself to fetch a matching bundle when it differs.
+//
+// Version 2 adds the "service" and "swarmnode" node types.
+const ProtocolVersion = 2
+
 // WireMessage is the envelope sent over the WebSocket connection.
 // Type is either "snapshot" or "delta", and Data contains the corresponding payload.
 type WireMessage struct {
@@ -119,12 +182,12 @@ type WireMessage struct {
 
 // NewSnapshotMessage wraps a full graph snapshot for WebSocket transmission.
 func NewSnapshotMessage(s GraphSnapshot) WireMessage {
-	return WireMessage{Type: MsgTypeSnapshot, Version: 1, Data: s}
+	return WireMessage{Type: MsgTypeSnapshot, Version: ProtocolVersion, Data: s}
 }
 
 // NewDeltaMessage wraps an incremental update for WebSocket transmission.
 func NewDeltaMessage(d DeltaUpdate) WireMessage {
-	return WireMessage{Type: MsgTypeDelta, Version: 1, Data: d}
+	return WireMessage{Type: MsgTypeDelta, Version: ProtocolVersion, Data: d}
 }
 
 // StateMessage is an internal message passed from the state manager to the
@@ -157,6 +220,9 @@ type DockerClient interface {
 	Info(ctx context.Context) (systemtypes.Info, error)
 	DiskUsage(ctx context.Context, options dockertypes.DiskUsageOptions) (dockertypes.DiskUsage, error)
 	ImageList(ctx context.Context, options imagetypes.ListOptions) ([]imagetypes.Summary, error)
+	ServiceList(ctx context.Context, options swarm.ServiceListOptions) ([]swarm.Service, error)
+	TaskList(ctx context.Context, options swarm.TaskListOptions) ([]swarm.Task, error)
+	NodeList(ctx context.Context, options swarm.NodeListOptions) ([]swarm.Node, error)
 	Close() error
 }
 

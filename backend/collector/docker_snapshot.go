@@ -53,11 +53,12 @@ func fetchResources(ctx context.Context, cli DockerClient) (dockerResources, err
 }
 
 // resolveNetworkNames maps Docker's internal network hex IDs to human-readable names,
-// skipping the built-in bridge/host/none networks that aren't part of custom topologies.
+// skipping the built-in bridge/host/none networks and the swarm routing-mesh
+// networks (ingress, docker_gwbridge) that aren't part of custom topologies.
 func resolveNetworkNames(networks []networktypes.Summary) map[string]string {
 	idToName := make(map[string]string)
 	for _, n := range networks {
-		if n.Name == networkBridge || n.Name == "host" || n.Name == "none" {
+		if isBuiltinNetwork(n) {
 			continue
 		}
 		idToName[n.ID] = n.Name
@@ -65,13 +66,24 @@ func resolveNetworkNames(networks []networktypes.Summary) map[string]string {
 	return idToName
 }
 
-// networkProjectMap maps each network name to the compose project that owns it,
-// taken from the Docker Compose project label. Used to home a container in its
+// isBuiltinNetwork reports whether a network is Docker plumbing rather than
+// part of a user-defined topology. The Ingress flag catches a custom-named
+// routing-mesh network as well as the default "ingress".
+func isBuiltinNetwork(n networktypes.Summary) bool {
+	switch n.Name {
+	case networkBridge, "host", "none", networkIngress, networkGwBridge:
+		return true
+	}
+	return n.Ingress
+}
+
+// networkProjectMap maps each network name to the project that owns it, taken
+// from the Docker Compose project label or the swarm stack namespace. Used to home a container in its
 // own project's network rather than a shared or external one it merely joins.
 func networkProjectMap(networks []networktypes.Summary) map[string]string {
 	projects := make(map[string]string)
 	for _, n := range networks {
-		if p := n.Labels[composeProjectLabel]; p != "" {
+		if p := ProjectOf(n.Labels); p != "" {
 			projects[n.Name] = p
 		}
 	}
@@ -92,7 +104,7 @@ func resolveServiceNames(containers []containertypes.Summary) map[serviceKey]str
 		if len(c.Names) == 0 {
 			continue
 		}
-		project := c.Labels[composeProjectLabel]
+		project := ProjectOf(c.Labels)
 		service := c.Labels["com.docker.compose.service"]
 		if project != "" && service != "" {
 			m[serviceKey{project, service}] = strings.TrimPrefix(c.Names[0], "/")
@@ -133,7 +145,7 @@ func buildContainerEdges(name string, c containertypes.Summary, networkIDToName,
 	// Depends-on edges derived from compose labels.
 	// The label format is comma-separated entries of "service:condition:restart",
 	// e.g. "db:service_healthy:false,redis:service_started:false".
-	project := c.Labels[composeProjectLabel]
+	project := ProjectOf(c.Labels)
 	depsLabel := c.Labels["com.docker.compose.depends_on"]
 	if project != "" && depsLabel != "" {
 		for _, entry := range strings.Split(depsLabel, ",") {
@@ -169,25 +181,40 @@ func classifyContainerNetworks(c containertypes.Summary, networkIDToName, networ
 			}
 		}
 	}
-	return classifyNetworks(tracked, c.Labels[composeProjectLabel], networkProjects)
+	return classifyNetworks(tracked, ProjectOf(c.Labels), networkProjects)
 }
 
-// selfOnlyProjects returns the set of compose projects whose only container is
-// DockGraph itself. A project's auto-created networks and volumes are hidden
-// only for these — if a project also runs real services, its resources are part
-// of the visible topology.
-func selfOnlyProjects(containers []containertypes.Summary) map[string]bool {
+// projectMember is one workload (container or swarm service) of a project,
+// flagged when it is DockGraph itself.
+type projectMember struct {
+	project string
+	self    bool
+}
+
+// containerMembers lists the project membership of each container.
+func containerMembers(containers []containertypes.Summary) []projectMember {
+	members := make([]projectMember, 0, len(containers))
+	for _, c := range containers {
+		members = append(members, projectMember{ProjectOf(c.Labels), isSelfExcluded(c.Labels)})
+	}
+	return members
+}
+
+// selfOnlyProjects returns the set of projects (compose projects or swarm
+// stacks) whose only workload is DockGraph itself. A project's auto-created
+// networks and volumes are hidden only for these — if a project also runs real
+// services, its resources are part of the visible topology.
+func selfOnlyProjects(members []projectMember) map[string]bool {
 	hasSelf := make(map[string]bool)
 	hasOther := make(map[string]bool)
-	for _, c := range containers {
-		project := c.Labels[composeProjectLabel]
-		if project == "" {
+	for _, m := range members {
+		if m.project == "" {
 			continue
 		}
-		if isSelfExcluded(c.Labels) {
-			hasSelf[project] = true
+		if m.self {
+			hasSelf[m.project] = true
 		} else {
-			hasOther[project] = true
+			hasOther[m.project] = true
 		}
 	}
 
@@ -208,22 +235,29 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		return GraphSnapshot{}, err
 	}
 
+	// Hide auto-created networks and volumes only for projects whose sole
+	// container is DockGraph itself. When DockGraph shares a project with real
+	// services, those resources belong to the visible topology and must stay —
+	// only the DockGraph container is excluded.
+	snap := assembleSnapshot(res, selfOnlyProjects(containerMembers(res.containers)))
+	sortSnapshot(&snap)
+	return snap, nil
+}
+
+// assembleSnapshot converts raw Docker resources into graph nodes and edges.
+// Networks and volumes owned by a project in selfProjects are omitted.
+func assembleSnapshot(res dockerResources, selfProjects map[string]bool) GraphSnapshot {
 	snap := GraphSnapshot{
 		Nodes: []Node{},
 		Edges: []Edge{},
 	}
 
-	// Hide auto-created networks and volumes only for projects whose sole
-	// container is DockGraph itself. When DockGraph shares a project with real
-	// services, those resources belong to the visible topology and must stay —
-	// only the DockGraph container is excluded.
-	selfProjects := selfOnlyProjects(res.containers)
-
 	networkIDToName := resolveNetworkNames(res.networks)
 	networkProjects := networkProjectMap(res.networks)
 	for _, n := range res.networks {
 		if networkIDToName[n.ID] != "" {
-			if p := n.Labels[composeProjectLabel]; p != "" && selfProjects[p] {
+			project := ProjectOf(n.Labels)
+			if project != "" && selfProjects[project] {
 				continue
 			}
 			node := buildNetworkNode(n.Name, n.Driver)
@@ -231,9 +265,8 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 				node.Subnet = n.IPAM.Config[0].Subnet
 				node.Gateway = n.IPAM.Config[0].Gateway
 			}
-			if project := n.Labels[composeProjectLabel]; project != "" {
-				node.Labels = map[string]string{composeProjectLabel: project}
-			}
+			node.Labels = projectLabels(n.Labels)
+			node.Stack = project
 			snap.Nodes = append(snap.Nodes, node)
 		}
 	}
@@ -260,28 +293,30 @@ func (d *DockerCollector) buildSnapshot(ctx context.Context) (GraphSnapshot, err
 		if primary != "" {
 			node.NetworkID = "network:" + primary
 		}
-		if project := c.Labels[composeProjectLabel]; project != "" {
-			node.Labels = map[string]string{composeProjectLabel: project}
-		}
+		node.Labels = projectLabels(c.Labels)
+		node.Stack = ProjectOf(c.Labels)
 		snap.Nodes = append(snap.Nodes, node)
 
 		snap.Edges = append(snap.Edges, buildContainerEdges(name, c, networkIDToName, networkProjects, serviceNames)...)
 	}
 
 	for _, v := range res.volumes {
-		if p := v.Labels[composeProjectLabel]; p != "" && selfProjects[p] {
+		project := ProjectOf(v.Labels)
+		if project != "" && selfProjects[project] {
 			continue
 		}
 		node := buildVolumeNode(v.Name, v.Driver, "created")
-		if project := v.Labels[composeProjectLabel]; project != "" {
-			node.Labels = map[string]string{composeProjectLabel: project}
-		}
+		node.Labels = projectLabels(v.Labels)
+		node.Stack = project
 		snap.Nodes = append(snap.Nodes, node)
 	}
 
-	// Deterministic ordering prevents false-positive diffs in the state manager's merge.
+	return snap
+}
+
+// sortSnapshot orders nodes and edges by ID. Deterministic ordering prevents
+// false-positive diffs in the state manager's merge.
+func sortSnapshot(snap *GraphSnapshot) {
 	sort.Slice(snap.Nodes, func(i, j int) bool { return snap.Nodes[i].ID < snap.Nodes[j].ID })
 	sort.Slice(snap.Edges, func(i, j int) bool { return snap.Edges[i].ID < snap.Edges[j].ID })
-
-	return snap, nil
 }

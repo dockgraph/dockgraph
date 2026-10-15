@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { ThemeProvider } from '../../theme';
 import { CommonLogs } from './CommonLogs';
+import { STANDALONE_STACK } from '../../utils/stack';
 import type { ReactNode } from 'react';
 
 class StubEventSource {
@@ -44,5 +45,19 @@ describe('CommonLogs', () => {
     wrap(<CommonLogs active onOpenContainer={onOpenContainer} />);
     fireEvent.click(await screen.findByText('web'));
     expect(onOpenContainer).toHaveBeenCalledWith('web');
+  });
+
+  it('passes ?stack= to the history and stream endpoints', async () => {
+    wrap(<CommonLogs active onOpenContainer={vi.fn()} stack="shop" />);
+    await screen.findByText('hello world');
+    const url = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(url).toMatch(/^\/api\/logs\/history\?stack=shop&limit=\d+$/);
+  });
+
+  it('standalone scope filters lines client-side by workload name', async () => {
+    wrap(<CommonLogs active onOpenContainer={vi.fn()} stack={STANDALONE_STACK} scopeNames={new Set(['db'])} />);
+    expect(await screen.findByText('boom error')).toBeTruthy();
+    expect(screen.queryByText('hello world')).toBeNull();
+    expect(vi.mocked(fetch).mock.calls[0][0]).not.toContain('stack=');
   });
 });

@@ -14,9 +14,38 @@ type StatsCollector struct {
 	client     DockerClient
 	interval   time.Duration
 	maxWorkers int
+	remote     RemoteSampler
 	updates    chan StatsSnapshot
 	stopCh     chan struct{}
 	wg         sync.WaitGroup
+
+	// localNodeID and localHostname stamp local samples in swarm mode.
+	localNodeID   string
+	localHostname string
+}
+
+// RemoteSampler supplies container samples from other nodes (per-node agents
+// in swarm mode). Samples must return within its own timeouts and honour ctx.
+// ReportingNodes lists the hostnames that answered the last Samples call.
+type RemoteSampler interface {
+	Samples(ctx context.Context) []ContainerSample
+	ReportingNodes() []string
+}
+
+// SetRemote adds a source of samples from other nodes, merged into every
+// snapshot alongside local samples. Must be called before Start.
+func (s *StatsCollector) SetRemote(r RemoteSampler) {
+	s.remote = r
+}
+
+// SetLocalNode records the swarm node this collector samples, so local
+// samples are attributed to it (ContainerSample.NodeID/NodeHostname) and
+// feed its "node:{hostname}" aggregate. hostname must match the swarm node's
+// Description.Hostname, the name its graph node is keyed by. Must be called
+// before Start.
+func (s *StatsCollector) SetLocalNode(id, hostname string) {
+	s.localNodeID = id
+	s.localHostname = hostname
 }
 
 // NewStatsCollector creates a collector that polls container stats at the given interval.
@@ -56,7 +85,7 @@ func (s *StatsCollector) pollLoop(ctx context.Context) {
 	defer ticker.Stop()
 
 	// Initial poll on start.
-	snap := pollAllStats(ctx, s.client, s.maxWorkers)
+	snap := s.poll(ctx)
 	select {
 	case s.updates <- snap:
 	case <-ctx.Done():
@@ -66,7 +95,7 @@ func (s *StatsCollector) pollLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			snap := pollAllStats(ctx, s.client, s.maxWorkers)
+			snap := s.poll(ctx)
 			select {
 			case s.updates <- snap:
 			default:
@@ -78,4 +107,34 @@ func (s *StatsCollector) pollLoop(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// poll samples local containers and, concurrently, the remote sampler, then
+// merges both (local wins on duplicate container IDs) into one snapshot.
+// Local samples are stamped with the local node when one is set.
+func (s *StatsCollector) poll(ctx context.Context) StatsSnapshot {
+	var remoteCh chan []ContainerSample
+	if s.remote != nil {
+		remoteCh = make(chan []ContainerSample, 1)
+		go func() {
+			remoteCh <- s.remote.Samples(ctx)
+		}()
+	}
+	local := PollSamples(ctx, s.client, s.maxWorkers)
+	if s.localHostname != "" {
+		for i := range local {
+			local[i].NodeID = s.localNodeID
+			local[i].NodeHostname = s.localHostname
+		}
+	}
+	var reporting []string
+	if s.localHostname != "" {
+		reporting = append(reporting, s.localHostname)
+	}
+	if remoteCh == nil {
+		return BuildStatsSnapshot(local, reporting...)
+	}
+	remote := <-remoteCh
+	reporting = append(reporting, s.remote.ReportingNodes()...)
+	return BuildStatsSnapshot(mergeSamples(local, remote), reporting...)
 }

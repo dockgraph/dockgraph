@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,19 +18,64 @@ import (
 // or directories (scanned recursively for .yml/.yaml files).
 type ComposeCollector struct {
 	paths   []string
+	names   map[string]string // path -> explicit project/stack name
+	swarm   bool
 	updates chan StateUpdate
 	stopCh  chan struct{}
 	wg      sync.WaitGroup
 }
 
 // NewComposeCollector creates a collector that watches the given paths
-// for compose file changes. Each path can be a file or a directory.
+// for compose file changes. Each path can be a file or a directory, optionally
+// prefixed with an explicit project/stack name as "name=/path" — the name
+// overrides the files' top-level `name`, like `docker stack deploy -c file name`.
 func NewComposeCollector(paths []string) *ComposeCollector {
-	return &ComposeCollector{
-		paths:   paths,
+	c := &ComposeCollector{
+		names:   make(map[string]string),
 		updates: make(chan StateUpdate, 16),
 		stopCh:  make(chan struct{}),
 	}
+	for _, entry := range paths {
+		name, path := splitNamedPath(entry)
+		c.paths = append(c.paths, path)
+		if name != "" {
+			c.names[filepath.Clean(path)] = name
+		}
+	}
+	return c
+}
+
+// EnableSwarm makes the collector interpret compose files as swarm stack
+// files: services become "service" ghost nodes named {stack}_{service}.
+// Must be called before Start.
+func (c *ComposeCollector) EnableSwarm() {
+	c.swarm = true
+}
+
+// validPathName matches the name part of a "name=/path" entry.
+var validPathName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+
+// splitNamedPath splits a "name=/path" entry. Entries without a valid name
+// prefix (including paths that merely contain '=') are returned as-is.
+func splitNamedPath(entry string) (name, path string) {
+	if before, after, ok := strings.Cut(entry, "="); ok && validPathName.MatchString(before) && after != "" {
+		return before, after
+	}
+	return "", entry
+}
+
+// projectNameFor returns the explicit name configured for a file, either on
+// the file itself or on a directory containing it. Empty means use the file's
+// own `name` field.
+func (c *ComposeCollector) projectNameFor(file string) string {
+	file = filepath.Clean(file)
+	best, bestLen := "", -1
+	for path, name := range c.names {
+		if (file == path || strings.HasPrefix(file, path+string(filepath.Separator))) && len(path) > bestLen {
+			best, bestLen = name, len(path)
+		}
+	}
+	return best
 }
 
 // Updates returns a read-only channel that emits state updates whenever
@@ -71,7 +118,10 @@ func (c *ComposeCollector) scan(ctx context.Context) error {
 
 	for _, f := range files {
 		sourceName := filepath.Base(f)
-		snap, err := parseComposeFile(ctx, f, sourceName)
+		snap, err := parseComposeFileWith(ctx, f, sourceName, composeParseOptions{
+			ProjectName: c.projectNameFor(f),
+			Swarm:       c.swarm,
+		})
 		if err != nil {
 			log.Printf("warning: failed to parse %s: %v", sourceName, err)
 			continue

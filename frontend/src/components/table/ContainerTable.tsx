@@ -10,7 +10,7 @@ import type { DGNode } from "../../types";
 import type { ContainerStatsData } from "../../types/stats";
 
 const GROUP_OPTIONS: GroupOption[] = [
-  { key: "compose", label: "Compose Project" },
+  { key: "compose", label: "Stack / Project" },
   { key: "network", label: "Network" },
   { key: "status", label: "Status" },
   { key: "none", label: "None" },
@@ -29,6 +29,8 @@ interface Props {
   statsMap: Map<string, ContainerStatsData>;
   selectedNodeId: string | null;
   onRowClick: (nodeId: string) => void;
+  /** Message when there are no rows (e.g. for the Services tab). */
+  emptyMessage?: string;
 }
 
 export const ContainerTable = memo(function ContainerTable({
@@ -36,6 +38,7 @@ export const ContainerTable = memo(function ContainerTable({
   statsMap,
   selectedNodeId,
   onRowClick,
+  emptyMessage = "No containers found",
 }: Props) {
   const sort = useTableSort<string>("name");
   const grouping = useTableGrouping(nodes);
@@ -48,7 +51,7 @@ export const ContainerTable = memo(function ContainerTable({
       columns={COLUMNS}
       gridTemplate={CONTAINER_GRID}
       groupOptions={GROUP_OPTIONS}
-      emptyMessage="No containers found"
+      emptyMessage={emptyMessage}
       groupColor={(group) =>
         group.key.startsWith("network:") ? networkColor(group.label) : undefined
       }

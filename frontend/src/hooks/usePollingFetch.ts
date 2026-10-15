@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSyncExternalStore } from "react";
 
 interface FetchState<T> {
@@ -7,10 +7,24 @@ interface FetchState<T> {
   error: string | null;
 }
 
-const EMPTY: FetchState<never> = { data: null, loading: false, error: null };
+/** Fetch state tagged with the URL it belongs to. */
+interface KeyedState<T> extends FetchState<T> {
+  url: string | null;
+}
 
+const EMPTY: KeyedState<never> = { url: null, data: null, loading: false, error: null };
+
+/**
+ * Polls `url`, starting the next request `intervalMs` after the previous one
+ * settled, so requests never overlap and an older response can't overwrite
+ * a newer one. Data from the last successful poll is kept
+ * while the next one loads and after it fails, but only for the same URL:
+ * results are keyed by URL, so a change of URL (another stack, scope or
+ * range) never renders the previous URL's data, even for the one render
+ * before the new fetch starts.
+ */
 export function usePollingFetch<T>(url: string | null, intervalMs: number): FetchState<T> {
-  const stateRef = useRef<FetchState<T>>(EMPTY as FetchState<T>);
+  const stateRef = useRef<KeyedState<T>>(EMPTY as KeyedState<T>);
   const subscribersRef = useRef(new Set<() => void>());
 
   const subscribe = useCallback((cb: () => void) => {
@@ -27,14 +41,15 @@ export function usePollingFetch<T>(url: string | null, intervalMs: number): Fetc
 
   useEffect(() => {
     if (!url) {
-      if (stateRef.current !== (EMPTY as FetchState<T>)) {
-        stateRef.current = EMPTY as FetchState<T>;
+      if (stateRef.current !== (EMPTY as KeyedState<T>)) {
+        stateRef.current = EMPTY as KeyedState<T>;
         notify();
       }
       return;
     }
 
     const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     const doFetch = () => {
       fetch(url, { signal: controller.signal })
@@ -44,28 +59,36 @@ export function usePollingFetch<T>(url: string | null, intervalMs: number): Fetc
         })
         .then((data: T) => {
           if (!controller.signal.aborted) {
-            stateRef.current = { data, loading: false, error: null };
+            stateRef.current = { url, data, loading: false, error: null };
             notify();
           }
         })
         .catch(err => {
           if (!controller.signal.aborted) {
-            stateRef.current = { data: stateRef.current.data, loading: false, error: err.message };
+            stateRef.current = { ...stateRef.current, loading: false, error: err.message };
             notify();
           }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) timer = setTimeout(doFetch, intervalMs);
         });
     };
 
-    stateRef.current = { ...stateRef.current, loading: true, error: null };
+    // Keep data only when it belongs to this URL.
+    const keep = stateRef.current.url === url ? stateRef.current.data : null;
+    stateRef.current = { url, data: keep, loading: true, error: null };
     notify();
     doFetch();
 
-    const timer = setInterval(doFetch, intervalMs);
     return () => {
       controller.abort();
-      clearInterval(timer);
+      clearTimeout(timer);
     };
   }, [url, intervalMs, notify]);
 
-  return state;
+  return useMemo<FetchState<T>>(() => {
+    if (state.url === url) return { data: state.data, loading: state.loading, error: state.error };
+    // Render before the effect for a new URL has run: nothing for it yet.
+    return { data: null, loading: Boolean(url), error: null };
+  }, [state, url]);
 }

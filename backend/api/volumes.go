@@ -46,8 +46,8 @@ func buildVolumeResponse(vol volumetypes.Volume) map[string]any {
 		"driver":     vol.Driver,
 		"mountpoint": vol.Mountpoint,
 		"createdAt":  vol.CreatedAt,
-		"status":     vol.Status,
-		"labels":     vol.Labels,
+		fieldStatus:  vol.Status,
+		fieldLabels:  vol.Labels,
 		"scope":      vol.Scope,
 		"options":    vol.Options,
 	}

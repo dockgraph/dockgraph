@@ -7,10 +7,11 @@ import { tableLayout, resourceTabs } from "./tableStyles";
 import type { DGNode, DGEdge } from "../../types";
 import type { ContainerStatsData } from "../../types/stats";
 
-export type ResourceTab = "containers" | "networks" | "volumes";
+export type ResourceTab = "containers" | "services" | "networks" | "volumes";
 
 const TABS: { key: ResourceTab; label: string }[] = [
   { key: "containers", label: "Containers" },
+  { key: "services", label: "Services" },
   { key: "networks", label: "Networks" },
   { key: "volumes", label: "Volumes" },
 ];
@@ -20,6 +21,7 @@ function tabForSelection(id: string | null): ResourceTab | null {
   if (id.startsWith("network:")) return "networks";
   if (id.startsWith("volume:")) return "volumes";
   if (id.startsWith("container:")) return "containers";
+  if (id.startsWith("service:")) return "services";
   return null;
 }
 
@@ -63,11 +65,18 @@ export const TableView = memo(function TableView({
   );
 
   const containers = useMemo(() => filtered.filter((n) => n.type === "container"), [filtered]);
+  const services = useMemo(() => filtered.filter((n) => n.type === "service"), [filtered]);
   const networks = useMemo(() => filtered.filter((n) => n.type === "network"), [filtered]);
   const volumes = useMemo(() => filtered.filter((n) => n.type === "volume"), [filtered]);
 
+  // The Services tab only appears when the graph has swarm services (or it is
+  // the active tab), so standalone setups keep the familiar three tabs.
+  const hasServices = useMemo(() => nodes.some((n) => n.type === "service"), [nodes]);
+  const visibleTabs = TABS.filter((t) => t.key !== "services" || hasServices || activeTab === "services");
+
   const counts: Record<ResourceTab, number> = {
     containers: containers.length,
+    services: services.length,
     networks: networks.length,
     volumes: volumes.length,
   };
@@ -75,7 +84,7 @@ export const TableView = memo(function TableView({
   return (
     <div style={styles.container}>
       <div style={tabStyles.container}>
-        {TABS.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.key}
             className={activeTab === tab.key ? "dg-resource-tab dg-resource-tab--active" : "dg-resource-tab"}
@@ -101,6 +110,15 @@ export const TableView = memo(function TableView({
           statsMap={statsMap}
           selectedNodeId={selectedNodeId}
           onRowClick={onRowClick}
+        />
+      )}
+      {activeTab === "services" && (
+        <ContainerTable
+          nodes={services}
+          statsMap={statsMap}
+          selectedNodeId={selectedNodeId}
+          onRowClick={onRowClick}
+          emptyMessage="No services found"
         />
       )}
       {activeTab === "networks" && (

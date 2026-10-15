@@ -4,6 +4,7 @@ import { DashboardCard } from "./DashboardCard";
 import { StateDisplay } from "../StateDisplay";
 import { formatBytes, formatPercent } from "../../utils/format";
 import type { StatsHistoryData } from "../../hooks/useStatsHistory";
+import { seriesLabel } from "../../utils/stack";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 
@@ -86,7 +87,7 @@ function buildSeries(
     const color = colorForName(name);
     values.push(vals);
     seriesOpts.push({
-      label: name,
+      label: seriesLabel(name),
       stroke: color,
       width: 1.5,
       fill: (metric === "netIO" || metric === "diskIO") ? color + "18" : undefined,

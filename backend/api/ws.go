@@ -277,7 +277,7 @@ func (h *Hub) SweepExpiredClients() {
 	h.mu.RUnlock()
 
 	for _, client := range expired {
-		msg := collector.WireMessage{Type: "auth_expired", Version: 1}
+		msg := collector.WireMessage{Type: "auth_expired", Version: collector.ProtocolVersion}
 		select {
 		case client.sendCh <- msg:
 		default:

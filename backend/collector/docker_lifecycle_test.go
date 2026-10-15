@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -302,5 +303,52 @@ func TestWatchEventsDebounce(t *testing.T) {
 		// A second poll is acceptable (poll loop may have ticked), not a failure
 	case <-time.After(800 * time.Millisecond):
 		// expected: single debounced poll
+	}
+}
+
+// overlapClient records how many ContainerList calls (one per snapshot) run
+// at the same time.
+type overlapClient struct {
+	*stubDockerClient
+	mu       sync.Mutex
+	inFlight int
+	maxSeen  int
+}
+
+func (c *overlapClient) ContainerList(ctx context.Context, opts containertypes.ListOptions) ([]containertypes.Summary, error) {
+	c.mu.Lock()
+	c.inFlight++
+	c.maxSeen = max(c.maxSeen, c.inFlight)
+	c.mu.Unlock()
+	time.Sleep(20 * time.Millisecond)
+	c.mu.Lock()
+	c.inFlight--
+	c.mu.Unlock()
+	return c.stubDockerClient.ContainerList(ctx, opts)
+}
+
+func TestDockerCollectorPollsNeverOverlap(t *testing.T) {
+	cli := &overlapClient{stubDockerClient: &stubDockerClient{}}
+	dc := NewDockerCollector(cli, time.Hour)
+	ctx := context.Background()
+
+	const polls = 4
+	var wg sync.WaitGroup
+	for range polls {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := dc.poll(ctx); err != nil {
+				t.Errorf("poll: %v", err)
+			}
+		}()
+	}
+	for range polls {
+		<-dc.Updates()
+	}
+	wg.Wait()
+
+	if cli.maxSeen != 1 {
+		t.Fatalf("expected polls to be serialized, saw %d concurrent snapshots", cli.maxSeen)
 	}
 }

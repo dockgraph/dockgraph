@@ -3,13 +3,14 @@ import type { NodeProps } from '@xyflow/react';
 import { NodeHandles } from './NodeHandles';
 import { InspectButton } from './InspectButton';
 import { networkColor } from '../utils/colors';
+import { projectOf } from '../utils/stack';
 import { useTheme } from '../theme';
 import type { NetworkGroupData } from '../types';
 
 export const NetworkGroup = memo(function NetworkGroup({ data }: NodeProps) {
   const { dgNode, onInfoClick } = data as unknown as NetworkGroupData;
   const { theme } = useTheme();
-  const color = networkColor(dgNode.name);
+  const color = networkColor(dgNode.name, projectOf(dgNode));
 
   return (
     <div

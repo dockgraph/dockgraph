@@ -11,7 +11,8 @@ import {
   DOT_SPACING,
   MIN_DOTS,
   MAX_DOTS,
-  DOT_RADIUS,
+  ARROW_LENGTH,
+  ARROW_WIDTH,
   DOT_OPACITY,
   ENDPOINT_RADIUS,
   DASH_PATTERN_SVG,
@@ -29,7 +30,10 @@ export const ElkEdge = memo(function ElkEdge({ id, data, style }: EdgeProps) {
   }, [id]);
   const path = edgeData?.path;
   const active = edgeData?.active !== false;
-  const animated = edgeData?.edgeType === 'depends_on' && (edgeData?.animated ?? active);
+  // Service dependencies (db) and storage mounts carry the "live" signal —
+  // render them in the accent/orange strokes with a traveling arrow.
+  const isLiveEdgeType = edgeData?.edgeType === 'depends_on' || edgeData?.edgeType === 'volume_mount';
+  const animated = isLiveEdgeType && (edgeData?.animated ?? active);
   const isLowZoom = useStore(zoomSelector);
   const isSimplified = (edgeData?.nodeCount ?? 0) > ANIMATION_NODE_LIMIT;
 
@@ -98,14 +102,22 @@ export const ElkEdge = memo(function ElkEdge({ id, data, style }: EdgeProps) {
       {animated && Array.from({ length: dotCount }, (_, i) => {
         const offset = i / dotCount;
         return (
-          <circle key={i} r={DOT_RADIUS} fill={stroke} opacity={DOT_OPACITY}>
+          <path
+            key={i}
+            // Triangle tip points along +x; animateMotion's rotate="auto"
+            // then rotates it to the path's tangent at each point.
+            d={`M ${ARROW_LENGTH / 2} 0 L ${-ARROW_LENGTH / 2} ${ARROW_WIDTH} L ${-ARROW_LENGTH / 2} ${-ARROW_WIDTH} Z`}
+            fill={stroke}
+            opacity={DOT_OPACITY}
+          >
             <animateMotion
               dur={`${dur}s`}
               repeatCount="indefinite"
               begin={`${offset * dur}s`}
               path={path}
+              rotate="auto"
             />
-          </circle>
+          </path>
         );
       })}
     </g>

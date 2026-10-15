@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/loader"
@@ -17,20 +19,78 @@ import (
 //
 //	networks/volumes: {project}_{name}   (underscore)
 //	containers:       {project}-{service}-1 (hyphens)
+//
+// When the file is deployed as a swarm stack, services are named
+// {stack}_{service} and become "service" nodes instead of containers.
 type composeNaming struct {
 	project string
+	swarm   bool
+	// networks/volumes map a top-level key to its runtime name when it
+	// differs from {project}_{key}: `external: true` resources keep their own
+	// name, and an explicit `name:` overrides the prefix.
+	networks map[string]string
+	volumes  map[string]string
 }
 
-func (n composeNaming) network(name string) string   { return n.project + "_" + name }
-func (n composeNaming) volume(name string) string    { return n.project + "_" + name }
-func (n composeNaming) container(name string) string { return n.project + "-" + name + "-1" }
+func (n composeNaming) network(name string) string {
+	if resolved := n.networks[name]; resolved != "" {
+		return resolved
+	}
+	return n.project + "_" + name
+}
+
+func (n composeNaming) volume(name string) string {
+	if resolved := n.volumes[name]; resolved != "" {
+		return resolved
+	}
+	return n.project + "_" + name
+}
+
+// newComposeNaming builds the naming scheme for a loaded project, recording
+// the resolved runtime name of every top-level network and volume.
+func newComposeNaming(project *composetypes.Project, swarm bool) composeNaming {
+	n := composeNaming{
+		project:  project.Name,
+		swarm:    swarm,
+		networks: make(map[string]string, len(project.Networks)),
+		volumes:  make(map[string]string, len(project.Volumes)),
+	}
+	for key, net := range project.Networks {
+		if net.Name != "" {
+			n.networks[key] = net.Name
+		}
+	}
+	for key, vol := range project.Volumes {
+		if vol.Name != "" {
+			n.volumes[key] = vol.Name
+		}
+	}
+	return n
+}
+
+// container returns the runtime name of a service's workload: the first
+// compose container, or the swarm service.
+func (n composeNaming) container(name string) string {
+	if n.swarm {
+		return n.project + "_" + name
+	}
+	return n.project + "-" + name + "-1"
+}
+
+// nodeID returns the graph node ID of a service's workload.
+func (n composeNaming) nodeID(name string) string {
+	if n.swarm {
+		return "service:" + n.container(name)
+	}
+	return "container:" + n.container(name)
+}
 
 // buildComposeNetworkNodes creates graph nodes for each non-default network
 // defined in the compose file.
 func buildComposeNetworkNodes(project *composetypes.Project, naming composeNaming, sourceName string) ([]Node, map[string]bool) {
 	tracked := make(map[string]bool)
 	var nodes []Node
-	for name := range project.Networks {
+	for name, net := range project.Networks {
 		if name == "default" {
 			continue
 		}
@@ -39,6 +99,10 @@ func buildComposeNetworkNodes(project *composetypes.Project, naming composeNamin
 		node := buildNetworkNode(fullName, "")
 		node.Status = "not_running"
 		node.Source = sourceName
+		// External networks exist independently of the project.
+		if !bool(net.External) {
+			node.Stack = naming.project
+		}
 		nodes = append(nodes, node)
 	}
 	return nodes, tracked
@@ -48,10 +112,13 @@ func buildComposeNetworkNodes(project *composetypes.Project, naming composeNamin
 // defined in the compose file.
 func buildComposeVolumeNodes(project *composetypes.Project, naming composeNaming, sourceName string) []Node {
 	var nodes []Node
-	for name := range project.Volumes {
+	for name, vol := range project.Volumes {
 		fullName := naming.volume(name)
 		node := buildVolumeNode(fullName, "", "not_running")
 		node.Source = sourceName
+		if !bool(vol.External) {
+			node.Stack = naming.project
+		}
 		nodes = append(nodes, node)
 	}
 	return nodes
@@ -96,8 +163,9 @@ func parseComposePorts(ports []composetypes.ServicePortConfig) []PortMapping {
 	return result
 }
 
-// buildServiceNode creates a container node for a single compose service,
-// classifies its networks, and delegates edge creation to buildServiceEdges.
+// buildServiceNode creates a container node (or, for a swarm stack, a service
+// node) for a single compose service, classifies its networks, and delegates
+// edge creation to buildServiceEdges.
 func buildServiceNode(svc composetypes.ServiceConfig, naming composeNaming, trackedNets map[string]bool, sourceName string) (Node, []Edge) {
 	svcName := naming.container(svc.Name)
 
@@ -111,7 +179,13 @@ func buildServiceNode(svc composetypes.ServiceConfig, naming composeNaming, trac
 
 	node := buildContainerNode(svcName, svc.Image, "not_running", parseComposePorts(svc.Ports))
 	node.Source = sourceName
+	node.Stack = naming.project
 	node.Compose = buildComposeConfig(svc, naming)
+	if naming.swarm {
+		node.ID = naming.nodeID(svc.Name)
+		node.Type = nodeTypeService
+		node.Service = stackServiceInfo(svc)
+	}
 	if primary != "" {
 		node.NetworkID = "network:" + naming.network(primary)
 	}
@@ -123,7 +197,7 @@ func buildServiceNode(svc composetypes.ServiceConfig, naming composeNaming, trac
 // buildServiceEdges creates secondary-network, depends_on, and volume-mount
 // edges for a compose service.
 func buildServiceEdges(svc composetypes.ServiceConfig, naming composeNaming, svcName string, secondaryNets []string) []Edge {
-	containerID := "container:" + svcName
+	containerID := naming.nodeID(svc.Name)
 	var edges []Edge
 
 	for _, netName := range secondaryNets {
@@ -142,7 +216,7 @@ func buildServiceEdges(svc composetypes.ServiceConfig, naming composeNaming, svc
 			ID:     "e:dep:" + svcName + ":" + depFullName,
 			Type:   "depends_on",
 			Source: containerID,
-			Target: "container:" + depFullName,
+			Target: naming.nodeID(depName),
 		})
 	}
 
@@ -160,6 +234,38 @@ func buildServiceEdges(svc composetypes.ServiceConfig, naming composeNaming, svc
 	}
 
 	return edges
+}
+
+// stackServiceInfo reads a stack service's deploy mode and replica count into
+// the ghost node's ServiceInfo. Replicated services and jobs default to one
+// replica; global services and global jobs have no fixed count until the
+// manager schedules them on the eligible nodes.
+func stackServiceInfo(svc composetypes.ServiceConfig) *ServiceInfo {
+	info := &ServiceInfo{Mode: serviceModeReplicated, Replicas: ReplicaCount{Desired: 1}}
+	if svc.Deploy == nil {
+		return info
+	}
+	switch svc.Deploy.Mode {
+	case serviceModeGlobal, serviceModeGlobalJob:
+		info.Mode = svc.Deploy.Mode
+		info.Replicas.Desired = 0
+		return info
+	case serviceModeReplicatedJob:
+		info.Mode = svc.Deploy.Mode
+	}
+	if svc.Deploy.Replicas != nil {
+		info.Replicas.Desired = *svc.Deploy.Replicas
+	}
+	return info
+}
+
+// isComposeServiceSelfExcluded checks a compose service's container labels
+// and, for stacks, its deploy labels (which become the swarm service labels).
+func isComposeServiceSelfExcluded(svc composetypes.ServiceConfig) bool {
+	if isSelfExcluded(svc.Labels) {
+		return true
+	}
+	return svc.Deploy != nil && isSelfExcluded(svc.Deploy.Labels)
 }
 
 // buildComposeConfig extracts service configuration from a compose service
@@ -194,11 +300,10 @@ func buildComposeConfig(svc composetypes.ServiceConfig, naming composeNaming) *C
 		}
 	}
 
+	// Labels get the same masking as live service labels: a stack-file ghost
+	// shows them in the service panel, and they may carry credentials.
 	if len(svc.Labels) > 0 {
-		cfg.Labels = make(map[string]string, len(svc.Labels))
-		for k, v := range svc.Labels {
-			cfg.Labels[k] = v
-		}
+		cfg.Labels = secrets.MaskLabels(svc.Labels)
 	}
 
 	// Store the full container node name (project-prefixed, replica-suffixed)
@@ -230,9 +335,24 @@ func buildComposeConfig(svc composetypes.ServiceConfig, naming composeNaming) *C
 	return cfg
 }
 
+// composeParseOptions controls how a compose file is interpreted.
+// ProjectName, when set, overrides the file's top-level `name` (as
+// `docker stack deploy -c file NAME` does). Swarm treats the file as a stack:
+// services become service nodes and, without a name, the project falls back
+// to the file's basename.
+type composeParseOptions struct {
+	ProjectName string
+	Swarm       bool
+}
+
 // parseComposeFile loads a Docker Compose file and converts it into a graph
 // snapshot containing all services, networks, volumes, and their relationships.
 func parseComposeFile(ctx context.Context, path, sourceName string) (GraphSnapshot, error) {
+	return parseComposeFileWith(ctx, path, sourceName, composeParseOptions{})
+}
+
+// parseComposeFileWith is parseComposeFile with explicit naming/mode options.
+func parseComposeFileWith(ctx context.Context, path, sourceName string, opts composeParseOptions) (GraphSnapshot, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return GraphSnapshot{}, err
@@ -245,12 +365,21 @@ func parseComposeFile(ctx context.Context, path, sourceName string) (GraphSnapsh
 		ConfigFiles: []composetypes.ConfigFile{
 			{Filename: path, Content: data},
 		},
+	}, func(o *loader.Options) {
+		switch {
+		case opts.ProjectName != "":
+			o.SetProjectName(loader.NormalizeProjectName(opts.ProjectName), true)
+		case opts.Swarm:
+			// Stack files rarely declare `name`; default to the file basename.
+			base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+			o.SetProjectName(loader.NormalizeProjectName(base), false)
+		}
 	})
 	if err != nil {
 		return GraphSnapshot{}, fmt.Errorf("%w (does the file have a top-level 'name' field?)", err)
 	}
 
-	naming := composeNaming{project: project.Name}
+	naming := newComposeNaming(project, opts.Swarm)
 	var snap GraphSnapshot
 
 	networkNodes, trackedNets := buildComposeNetworkNodes(project, naming, sourceName)
@@ -258,7 +387,7 @@ func parseComposeFile(ctx context.Context, path, sourceName string) (GraphSnapsh
 	snap.Nodes = append(snap.Nodes, buildComposeVolumeNodes(project, naming, sourceName)...)
 
 	for _, svc := range project.AllServices() {
-		if isSelfExcluded(svc.Labels) {
+		if isComposeServiceSelfExcluded(svc) {
 			continue
 		}
 		node, edges := buildServiceNode(svc, naming, trackedNets, sourceName)

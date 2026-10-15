@@ -5,6 +5,7 @@ import { STATUS_COLORS, networkColor } from "../../utils/colors";
 import { METRIC_COLORS } from "../dashboard/palette";
 import { formatBytes } from "../../utils/formatBytes";
 import { INACTIVE_OPACITY } from "../../utils/constants";
+import { isServiceLive, projectOf } from "../../utils/stack";
 import { tableRow } from "./tableStyles";
 import type { DGNode } from "../../types";
 import type { ContainerStatsData } from "../../types/stats";
@@ -42,7 +43,8 @@ export const ContainerRow = memo(function ContainerRow({
   const { theme } = useTheme();
   const styles = tableRow(theme);
   const { handlers, rowStyle } = useRowHover();
-  const isActive = ACTIVE_STATUSES.has(node.status ?? "");
+  // A service is active while a replica runs, whatever its status.
+  const isActive = node.type === "service" ? isServiceLive(node) : ACTIVE_STATUSES.has(node.status ?? "");
   const isGhost = node.status === "not_running";
   const opacity = isActive ? 1 : INACTIVE_OPACITY;
   const statusColor = STATUS_COLORS[node.status ?? ""] ?? STATUS_COLORS.created;
@@ -75,15 +77,20 @@ export const ContainerRow = memo(function ContainerRow({
             style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor, flexShrink: 0, boxShadow: isActive ? `0 0 6px ${statusColor}` : "none" }}
           />
           {node.status ?? "unknown"}
+          {node.service && (
+            <span style={{ fontFamily: "var(--dg-font-mono)", fontSize: 11, color: theme.nodeSubtext }}>
+              {node.service.replicas.running}/{node.service.replicas.desired}
+            </span>
+          )}
         </span>
         <span style={{ color: theme.nodeSubtext, fontFamily: "var(--dg-font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {formatPorts(node)}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
           {node.networkId && (
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: networkColor(formatNetwork(node)), flexShrink: 0 }} />
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: networkColor(formatNetwork(node), projectOf(node)), flexShrink: 0 }} />
           )}
-          <span style={{ color: node.networkId ? networkColor(formatNetwork(node)) : theme.nodeSubtext, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ color: node.networkId ? networkColor(formatNetwork(node), projectOf(node)) : theme.nodeSubtext, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {formatNetwork(node)}
           </span>
         </span>

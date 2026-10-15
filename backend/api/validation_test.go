@@ -49,6 +49,29 @@ func TestValidResourceName(t *testing.T) {
 	}
 }
 
+func TestValidStackName(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  bool
+	}{
+		{"a", true},
+		{"7", true},
+		{"shop", true},
+		{"my-stack_v2.1", true},
+		{"", false},
+		{".x", false},
+		{"-x", false},
+		{"_x", false},
+		{"../x", false},
+		{"a/b", false},
+		{"a b", false},
+	} {
+		if got := validStackName.MatchString(tc.input); got != tc.want {
+			t.Errorf("validStackName.MatchString(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestFilterEnvVars(t *testing.T) {
 	t.Run("normal vars", func(t *testing.T) {
 		input := []string{"PATH=/usr/bin", "HOME=/root", "PORT=8080"}

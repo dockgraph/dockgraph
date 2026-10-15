@@ -1,5 +1,5 @@
-import { DASH_PATTERN, DOT_OPACITY, DOT_RADIUS, ENDPOINT_RADIUS } from '../utils/constants';
-import { polylinePointAt } from '../utils/pathUtils';
+import { DASH_PATTERN, DOT_OPACITY, ARROW_LENGTH, ARROW_WIDTH, ENDPOINT_RADIUS } from '../utils/constants';
+import { polylinePointAt, polylineDirectionAt } from '../utils/pathUtils';
 import type { CanvasEdge, AnimatedEdge, Viewport, ViewBounds } from './canvasEdgeTypes';
 import { viewBounds, isVisible } from './canvasEdgeUtils';
 
@@ -27,7 +27,24 @@ export function drawEdges(ctx: CanvasRenderingContext2D, edges: CanvasEdge[], vb
   }
 }
 
-/** Draws animated dots traveling along depends_on edges, skipping off-screen edges. */
+/** Draws one arrowhead marker at `pt`, oriented along unit vector `dir`. */
+function drawArrowhead(ctx: CanvasRenderingContext2D, pt: { x: number; y: number }, dir: { x: number; y: number }): void {
+  const nx = -dir.y;
+  const ny = dir.x;
+  const tipX = pt.x + (dir.x * ARROW_LENGTH) / 2;
+  const tipY = pt.y + (dir.y * ARROW_LENGTH) / 2;
+  const baseX = pt.x - (dir.x * ARROW_LENGTH) / 2;
+  const baseY = pt.y - (dir.y * ARROW_LENGTH) / 2;
+
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(baseX + nx * ARROW_WIDTH, baseY + ny * ARROW_WIDTH);
+  ctx.lineTo(baseX - nx * ARROW_WIDTH, baseY - ny * ARROW_WIDTH);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/** Draws animated arrowheads traveling along depends_on and volume_mount edges, skipping off-screen edges. */
 export function drawAnimatedDots(
   ctx: CanvasRenderingContext2D,
   animated: AnimatedEdge[],
@@ -47,9 +64,8 @@ export function drawAnimatedDots(
       const offset = i / anim.dotCount;
       const t = ((timeSec / anim.duration) + offset) % 1;
       const pt = polylinePointAt(anim.points, t, anim.totalLength);
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, DOT_RADIUS, 0, Math.PI * 2);
-      ctx.fill();
+      const dir = polylineDirectionAt(anim.points, t, anim.totalLength);
+      drawArrowhead(ctx, pt, dir);
     }
   }
 }

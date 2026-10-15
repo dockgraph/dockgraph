@@ -19,7 +19,19 @@ export interface StatsHistoryData {
   containers: Record<string, ContainerTimeSeries>;
 }
 
-export function useStatsHistory(range: TimeRange) {
-  const url = useMemo(() => `/api/stats/history?range=${range}`, [range]);
+/** Which series the history holds: workloads (default) or per-swarm-node aggregates. */
+export type HistoryScope = "workloads" | "nodes";
+
+/**
+ * Polls the stats history. `stack` (a compose project / swarm stack name)
+ * limits the series to that stack's workloads server-side. `scope` "nodes"
+ * returns only the per-swarm-node aggregates (`node:{hostname}`) instead;
+ * the backend rejects it combined with a stack, so the stack is dropped then.
+ */
+export function useStatsHistory(range: TimeRange, stack?: string | null, scope: HistoryScope = "workloads") {
+  const url = useMemo(() => {
+    if (scope === "nodes") return `/api/stats/history?range=${range}&scope=nodes`;
+    return `/api/stats/history?range=${range}${stack ? `&stack=${encodeURIComponent(stack)}` : ''}`;
+  }, [range, stack, scope]);
   return usePollingFetch<StatsHistoryData>(url, 10_000);
 }

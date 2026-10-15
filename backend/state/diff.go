@@ -59,7 +59,7 @@ func nodeEqual(a, b collector.Node) bool {
 		a.Image != b.Image || a.Status != b.Status ||
 		a.NetworkID != b.NetworkID || a.Driver != b.Driver ||
 		a.Subnet != b.Subnet || a.Gateway != b.Gateway || a.Source != b.Source ||
-		a.CreatedAt != b.CreatedAt {
+		a.CreatedAt != b.CreatedAt || a.Stack != b.Stack {
 		return false
 	}
 	if len(a.Ports) != len(b.Ports) {
@@ -80,7 +80,11 @@ func nodeEqual(a, b collector.Node) bool {
 	}
 	// Compose config changes are infrequent (only on file edits), so
 	// reflect.DeepEqual is acceptable here and avoids a fragile field-by-field check.
-	return reflect.DeepEqual(a.Compose, b.Compose)
+	// Service info is only set on swarm service nodes and changes with task
+	// state, which the collector already rate-limits by fingerprint; the same
+	// holds for swarm node info on "swarmnode" nodes.
+	return reflect.DeepEqual(a.Compose, b.Compose) && reflect.DeepEqual(a.Service, b.Service) &&
+		reflect.DeepEqual(a.SwarmNode, b.SwarmNode)
 }
 
 func indexNodes(snap *collector.GraphSnapshot) map[string]collector.Node {

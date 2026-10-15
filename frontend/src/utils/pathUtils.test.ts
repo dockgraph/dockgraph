@@ -5,6 +5,7 @@ import {
   polylineEndpoints,
   polylineBBox,
   polylinePointAt,
+  polylineDirectionAt,
 } from './pathUtils';
 
 describe('parsePolyline', () => {
@@ -152,5 +153,32 @@ describe('polylinePointAt', () => {
     const pts = [{ x: 0, y: 0 }, { x: 5, y: 0 }];
     const pt = polylinePointAt(pts, 0.5, 20);
     expect(pt).toEqual({ x: 5, y: 0 });
+  });
+});
+
+describe('polylineDirectionAt', () => {
+  it('returns rightward unit vector along a horizontal segment', () => {
+    const points = [{ x: 0, y: 0 }, { x: 10, y: 0 }];
+    const dir = polylineDirectionAt(points, 0.5, 10);
+    expect(dir.x).toBeCloseTo(1, 5);
+    expect(dir.y).toBeCloseTo(0, 5);
+  });
+
+  it('returns downward unit vector along a vertical segment', () => {
+    const points = [{ x: 0, y: 0 }, { x: 0, y: 10 }];
+    const dir = polylineDirectionAt(points, 0.5, 10);
+    expect(dir.x).toBeCloseTo(0, 5);
+    expect(dir.y).toBeCloseTo(1, 5);
+  });
+
+  it('follows the tangent after a turn on a multi-segment path', () => {
+    const points = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }];
+    const dir = polylineDirectionAt(points, 0.9, 20);
+    expect(dir.x).toBeCloseTo(0, 5);
+    expect(dir.y).toBeCloseTo(1, 5);
+  });
+
+  it('falls back to rightward for a degenerate single-point polyline', () => {
+    expect(polylineDirectionAt([{ x: 1, y: 1 }], 0.5, 0)).toEqual({ x: 1, y: 0 });
   });
 });

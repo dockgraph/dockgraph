@@ -17,6 +17,9 @@ function mockCtx() {
     fill: vi.fn(),
     beginPath: vi.fn(),
     arc: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
     clearRect: vi.fn(),
     scale: vi.fn(),
     translate: vi.fn(),
@@ -120,7 +123,7 @@ describe('drawAnimatedDots', () => {
     expect(ctx.beginPath).not.toHaveBeenCalled();
   });
 
-  it('draws the correct number of dots for visible edges', () => {
+  it('draws the correct number of arrowheads for visible edges', () => {
     const ctx = mockCtx();
     const anim: AnimatedEdge = {
       stroke: '#000',
@@ -134,7 +137,9 @@ describe('drawAnimatedDots', () => {
 
     drawAnimatedDots(ctx, [anim], VB, 1000);
 
-    expect(ctx.arc).toHaveBeenCalledTimes(3);
+    expect(ctx.moveTo).toHaveBeenCalledTimes(3);
+    expect(ctx.lineTo).toHaveBeenCalledTimes(6);
+    expect(ctx.closePath).toHaveBeenCalledTimes(3);
     expect(ctx.fill).toHaveBeenCalledTimes(3);
   });
 
@@ -152,7 +157,7 @@ describe('drawAnimatedDots', () => {
 
     drawAnimatedDots(ctx, [anim], VB, 1000);
 
-    expect(ctx.arc).not.toHaveBeenCalled();
+    expect(ctx.moveTo).not.toHaveBeenCalled();
   });
 
   it('applies DOT_OPACITY to globalAlpha', () => {

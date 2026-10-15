@@ -2,7 +2,7 @@ import type { ElkNode } from 'elkjs/lib/elk.bundled';
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import { findComponents } from './components';
 import { extractEdgePaths } from './edgePaths';
-import { classifyNodes, buildElkChildren, wrapComponents } from './elkGraph';
+import { classifyNodes, buildElkChildren, wrapComponents, isGroupType } from './elkGraph';
 import { applyElkPositions } from './elkPositions';
 
 // ELK's runtime (~1.6 MB) is the single largest dependency, but it only runs
@@ -42,7 +42,7 @@ function measureNodeWidth(nodes: RFNode[]): number {
 
   let maxW = 0;
   for (const n of nodes) {
-    if (n.type === 'networkGroup') continue;
+    if (isGroupType(n.type)) continue;
     const label = (n.data as { dgNode: { name: string } }).dgNode.name;
     const cacheKey = `${n.type}:${label}`;
     let textW = labelWidthCache.get(cacheKey);
@@ -124,7 +124,7 @@ export async function computeLayout(
   // Nodes are freshly created by classifyNodes — mutation is safe here.
   const allNodes = [...groups, ...children, ...freeNodes];
   for (const n of allNodes) {
-    if (n.type !== 'networkGroup') {
+    if (!isGroupType(n.type)) {
       n.data = { ...n.data, nodeWidth };
     }
   }

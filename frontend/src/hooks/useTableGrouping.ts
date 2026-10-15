@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import type { DGNode } from "../types";
+import { projectOf } from "../utils/stack";
 
 export type GroupByKey = "network" | "compose" | "status" | "driver" | "none";
 
@@ -19,7 +20,7 @@ export interface TableGroupingState<T> {
 
 function formatGroupLabel(key: string, groupBy: GroupByKey): string {
   if (key === "_unassigned") return "Unassigned";
-  if (key === "_no_project") return "No project";
+  if (key === "_no_project") return "No stack / project";
   if (key === "_no_driver") return "No driver";
   if (key === "_all") return "All";
   if (groupBy === "network") return key.replace(/^network:/, "");
@@ -31,7 +32,7 @@ function nodeGroupKey(node: DGNode, groupBy: GroupByKey): string {
     case "network":
       return node.networkId ?? "_unassigned";
     case "compose":
-      return node.labels?.["com.docker.compose.project"] ?? "_no_project";
+      return projectOf(node) ?? "_no_project";
     case "status":
       return node.status ?? "unknown";
     case "driver":

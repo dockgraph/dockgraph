@@ -6,15 +6,26 @@ import {
   Controls,
   Background,
   BackgroundVariant,
+  useReactFlow,
   type Node as RFNode,
   type Edge as RFEdge,
 } from "@xyflow/react";
 import { ANIMATION_NODE_LIMIT, DETAIL_PANEL_WIDTH, Z } from "../utils/constants";
+import { SWARM_LINK_EDGE_TYPE, controlLinkEdges, overlayLinkEdges } from "../utils/swarmLinks";
+import { serviceIdOf, type SelectionState } from "../utils/selectionGraph";
 
 import { ContainerNode } from "./ContainerNode";
+import { ServiceNode } from "./ServiceNode";
+import { StackSelector } from "./StackSelector";
+import { GroupByToggle } from "./GroupByToggle";
 import { NetworkGroup } from "./NetworkGroup";
+import { SwarmNodeGroup } from "./SwarmNodeGroup";
+import { NodeServiceCard } from "./NodeServiceCard";
+import { RoleGroup } from "./RoleGroup";
+import { ControlSummary } from "./ControlSummary";
 import { VolumeNode } from "./VolumeNode";
 import { ElkEdge } from "./ElkEdge";
+import { SwarmLinkEdge } from "./SwarmLinkEdge";
 import { CanvasEdgeLayer, type CanvasEdgeLayerHandle } from "./CanvasEdgeLayer";
 import { ThemeToggle } from "./ThemeToggle";
 import { Brand } from "./Brand";
@@ -45,14 +56,21 @@ import { GhostContainerPanel } from "./panels/GhostContainerPanel";
 import { ResourceHeader } from "./panels/ResourceHeader";
 import { GhostHeader } from "./panels/GhostHeader";
 import { ContainerList } from "./panels/ContainerList";
+import { DetailPanelService, DetailPanelServiceHeader } from "./panels/DetailPanelService";
+import { DetailPanelSwarmNode, DetailPanelSwarmNodeHeader } from "./panels/DetailPanelSwarmNode";
 import { useGraphLayout } from "../hooks/useGraphLayout";
 import { useSelectionHighlight } from "../hooks/useSelectionHighlight";
 import { useDetailPanel } from "../hooks/useDetailPanel";
 import { useLogWindows } from "../hooks/useLogWindows";
 import { useSearchFilter } from "../hooks/useSearchFilter";
-import { networkColor } from "../utils/colors";
+import { useGroupBy } from "../hooks/useGroupBy";
+import { useSystemInfo } from "../hooks/useSystemInfo";
+import { networkColor, stackColor, swarmRoleColor } from "../utils/colors";
+import { nodeStatsKey, projectOf, resolveNodeRef, taskContainerName, type StackSummary } from "../utils/stack";
 import { useTheme } from "../theme";
-import type { DGNode, DGEdge, ContainerStatsData } from "../types";
+import type {
+  DGNode, DGEdge, ContainerStatsData, SwarmNodeGroupData, NodeServiceCardData, RoleGroupData,
+} from "../types";
 import type { ReactNode } from "react";
 
 // Code-split the Table and Dashboard views (the latter pulls in uPlot) so the
@@ -93,12 +111,18 @@ function Overlay({ children }: { children: ReactNode }) {
 
 const nodeTypes = {
   containerNode: ContainerNode,
+  serviceNode: ServiceNode,
   networkGroup: NetworkGroup,
   volumeNode: VolumeNode,
+  nodeGroup: SwarmNodeGroup,
+  roleGroup: RoleGroup,
+  nodeServiceCard: NodeServiceCard,
+  controlSummary: ControlSummary,
 };
 
 const edgeTypes = {
   elk: ElkEdge,
+  [SWARM_LINK_EDGE_TYPE]: SwarmLinkEdge,
 };
 
 interface FlowCanvasProps {
@@ -107,6 +131,11 @@ interface FlowCanvasProps {
   connected: boolean;
   ready: boolean;
   statsMap: Map<string, ContainerStatsData>;
+  /** Every stack in the unscoped graph, for the header stack selector. */
+  stacks?: StackSummary[];
+  /** Stack the graph is scoped to (null = all). dgNodes/dgEdges are already filtered. */
+  selectedStack?: string | null;
+  onSelectStack?: (stack: string | null) => void;
 }
 
 export function FlowCanvas({
@@ -115,10 +144,22 @@ export function FlowCanvas({
   connected,
   ready,
   statsMap,
+  stacks = [],
+  selectedStack = null,
+  onSelectStack,
 }: FlowCanvasProps) {
   const { theme } = useTheme();
   const canvasEdgeRef = useRef<CanvasEdgeLayerHandle>(null);
   const selectNodeRef = useRef<((id: string) => void) | undefined>(undefined);
+
+  // Graph grouping: by network (default) or by swarm node. The per-node view
+  // only exists when the graph has swarm nodes; otherwise a stale ?group=node
+  // falls back to the network view.
+  const { groupBy, setGroupBy } = useGroupBy();
+  const hasSwarmNodes = dgNodes.some((n) => n.type === "swarmnode");
+  const effectiveGroupBy = hasSwarmNodes ? groupBy : "network";
+  const { data: systemInfo } = useSystemInfo();
+  const localNodeId = systemInfo?.swarm?.nodeId ?? null;
 
   const {
     nodes,
@@ -127,10 +168,37 @@ export function FlowCanvas({
     onEdgesChange,
     layoutBusy,
     layoutError,
-  } = useGraphLayout(dgNodes, dgEdges, theme.edgeStroke, theme.edgeSignal);
+  } = useGraphLayout(dgNodes, dgEdges, theme.edgeStroke, theme.edgeSignal, effectiveGroupBy, localNodeId);
 
-  const hasVisibleNodes = dgNodes.some(
-    (n) => n.type === "container" || n.type === "volume",
+  // Fit the viewport once the layout of a newly chosen grouping has settled
+  // (the ReactFlow `fitView` prop only applies to the first render). fitView
+  // is queued by React Flow until the new nodes are measured.
+  const { fitView } = useReactFlow();
+  const fittedGroupByRef = useRef(effectiveGroupBy);
+  useEffect(() => {
+    if (layoutBusy || fittedGroupByRef.current === effectiveGroupBy) return;
+    fittedGroupByRef.current = effectiveGroupBy;
+    void fitView({ duration: 300 });
+  }, [effectiveGroupBy, layoutBusy, fitView]);
+
+  // Service hovered in the per-node view: its cards on every node get outlined.
+  const [hoveredServiceId, setHoveredServiceId] = useState<string | null>(null);
+  const handleNodeMouseEnter = useCallback((_: React.MouseEvent, node: RFNode) => {
+    if (node.type === "nodeServiceCard") {
+      setHoveredServiceId((node.data as unknown as NodeServiceCardData).serviceId);
+    }
+  }, []);
+  const handleNodeMouseLeave = useCallback((_: React.MouseEvent, node: RFNode) => {
+    if (node.type === "nodeServiceCard") setHoveredServiceId(null);
+  }, []);
+
+  // Ids on the canvas, so a detail click only selects what is actually drawn
+  // (a swarm node opened from the dashboard has no box in the network view).
+  const canvasIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => { canvasIdsRef.current = new Set(nodes.map((n) => n.id)); }, [nodes]);
+
+  const hasVisibleNodes = effectiveGroupBy === "node" || dgNodes.some(
+    (n) => n.type === "container" || n.type === "service" || n.type === "volume",
   );
   const showEmptyState = !ready || !hasVisibleNodes;
   const largeGraph = dgNodes.length > ANIMATION_NODE_LIMIT;
@@ -150,6 +218,7 @@ export function FlowCanvas({
     containerData,
     volumeData,
     networkData,
+    serviceData,
     loading: detailLoading,
     error: detailError,
     handleInfoClick,
@@ -161,23 +230,40 @@ export function FlowCanvas({
   const handleInfoClickWithSelect = useCallback(
     (nodeId: string) => {
       handleInfoClick(nodeId);
-      selectNodeRef.current?.(nodeId);
+      if (canvasIdsRef.current.has(nodeId)) selectNodeRef.current?.(nodeId);
     },
     [handleInfoClick],
+  );
+
+  // Per-node service cards (and their task rows) open the service's panel.
+  // The service has no node of its own in that view, so the clicked card
+  // stays the selection.
+  const handleTaskInfoClick = useCallback(
+    (serviceId: string) => handleInfoClick(resolveNodeRef(dgNodes, serviceId)),
+    [dgNodes, handleInfoClick],
   );
 
   // Floating log windows. `openContainerInfo` re-opens the side panel for a
   // container (windows store the bare name; the panel expects a node id).
   const logWindows = useLogWindows();
   const openContainerInfo = useCallback(
-    (containerId: string) => handleInfoClickWithSelect(`container:${containerId}`),
-    [handleInfoClickWithSelect],
+    (containerId: string) => handleInfoClickWithSelect(resolveNodeRef(dgNodes, `container:${containerId}`)),
+    [dgNodes, handleInfoClickWithSelect],
+  );
+
+  // Names of the workloads in scope, used by the logs view to narrow the
+  // standalone scope client-side (the backend only filters named stacks).
+  const scopeNames = useMemo(
+    () => new Set(dgNodes.filter((n) => n.type === "container" || n.type === "service").map((n) => n.name)),
+    [dgNodes],
   );
 
   // Inject live stats and info callback into container and volume node data (doesn't affect layout).
   const enrichedNodes = useMemo(() => {
     return nodes.map((n) => {
-      if (n.type === "containerNode") {
+      // Services are keyed by service name in the stats stream (per-service
+      // aggregates), which is also their node name.
+      if (n.type === "containerNode" || n.type === "serviceNode") {
         const dgNode = (n.data as { dgNode: DGNode }).dgNode;
         const s = statsMap.get(dgNode.name);
         return {
@@ -191,9 +277,59 @@ export function FlowCanvas({
       if (n.type === "networkGroup") {
         return { ...n, data: { ...n.data, onInfoClick: handleInfoClickWithSelect } };
       }
+      // Swarm node boxes carry the node aggregate (`node:{hostname}`); task
+      // cards the per-task entry reported by the node agent.
+      if (n.type === "nodeGroup") {
+        const d = n.data as unknown as SwarmNodeGroupData;
+        const stats = d.unassigned ? undefined : statsMap.get(nodeStatsKey(d.dgNode.name));
+        return { ...n, data: { ...n.data, stats, onInfoClick: handleInfoClickWithSelect } };
+      }
+      if (n.type === "nodeServiceCard") {
+        const d = n.data as unknown as NodeServiceCardData;
+        const taskStats: Record<string, ContainerStatsData> = {};
+        for (const t of d.tasks) {
+          const s = statsMap.get(taskContainerName(d.serviceName, t));
+          if (s) taskStats[t.id] = s;
+        }
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            taskStats,
+            peerHover: hoveredServiceId !== null && d.serviceId === hoveredServiceId,
+            onInfoClick: handleTaskInfoClick,
+          },
+        };
+      }
       return n;
     });
-  }, [nodes, statsMap, handleInfoClickWithSelect]);
+  }, [nodes, statsMap, handleInfoClickWithSelect, handleTaskInfoClick, hoveredServiceId]);
+
+  // Dashboard cards reference workloads as `container:{name}`; resolve those
+  // to the real node (a swarm service, or a prefixed compose name).
+  const handleInspectRef = useCallback(
+    (ref: string) => handleInfoClickWithSelect(resolveNodeRef(dgNodes, ref)),
+    [dgNodes, handleInfoClickWithSelect],
+  );
+  // Every stack change (header selector or dashboard) closes the detail
+  // panel: the resource it shows may be out of the new scope, and it would
+  // otherwise keep fetching that resource's details and logs.
+  const changeStack = useCallback(
+    (stack: string | null) => {
+      if (stack === selectedStack) return;
+      closeDetail();
+      onSelectStack?.(stack);
+    },
+    [closeDetail, onSelectStack, selectedStack],
+  );
+  // Dashboard drill-down: scope to the stack and show it in the graph.
+  const handleSelectStack = useCallback(
+    (stack: string) => {
+      changeStack(stack);
+      setActiveView("graph");
+    },
+    [changeStack],
+  );
 
   // Search & filter.
   const search = useSearchFilter(dgNodes);
@@ -204,11 +340,11 @@ export function FlowCanvas({
   // match count) surface in the search bar automatically.
   const { clearAll, toggleStatus } = search;
   const handleStatusFilter = useCallback(
-    (status: string) => {
+    (status: string, tab: ResourceTab) => {
       closeDetail();
       clearAll();
       toggleStatus(status);
-      setTableTab("containers");
+      setTableTab(tab);
       setActiveView("table");
     },
     [closeDetail, clearAll, toggleStatus],
@@ -223,11 +359,30 @@ export function FlowCanvas({
     [closeDetail, clearAll],
   );
 
+  // Per-node view links: the Managers → Workers control spokes always, plus
+  // overlay links from a selected service card to its network peers.
+  const controlLinks = useMemo(
+    () => (effectiveGroupBy === "node" ? controlLinkEdges(dgNodes) : []),
+    [effectiveGroupBy, dgNodes],
+  );
+  const linkEdgesFor = useCallback(
+    (selection: SelectionState | null): RFEdge[] => {
+      if (effectiveGroupBy !== "node") return [];
+      const links = [...controlLinks];
+      const selected = selection?.type === "node" ? nodes.find((n) => n.id === selection.id) : undefined;
+      const serviceId = serviceIdOf(selected);
+      if (serviceId) links.push(...overlayLinkEdges(dgNodes, dgEdges, nodes, serviceId));
+      return links;
+    },
+    [effectiveGroupBy, controlLinks, nodes, dgNodes, dgEdges],
+  );
+
   const {
     styledNodes,
     styledEdges,
     canvasEdges,
     svgEdges,
+    linkEdges,
     onNodeClick,
     onEdgeClick,
     onPaneClick,
@@ -238,8 +393,17 @@ export function FlowCanvas({
     edges,
     largeGraph,
     search.matchingNodeIds,
+    linkEdgesFor,
   );
   useEffect(() => { selectNodeRef.current = selectNode; }, [selectNode]);
+  // Swarm links need live node positions, so they are always SVG edges.
+  const displayedEdges = useMemo(
+    () => {
+      const base = largeGraph ? svgEdges : styledEdges;
+      return linkEdges.length > 0 ? [...base, ...linkEdges] : base;
+    },
+    [largeGraph, svgEdges, styledEdges, linkEdges],
+  );
 
   // Canvas edge hit-test helper — returns the edge if hit, null otherwise.
   const canvasEdgeHit = useCallback(
@@ -317,10 +481,14 @@ export function FlowCanvas({
         header={
           variant.kind === 'group' ? (
             <ResourceHeader name="Unmanaged" subtitle="Default bridge network" theme={theme} />
-          ) : variant.kind === 'ghost-container' || variant.kind === 'ghost-volume' || variant.kind === 'ghost-network' ? (
+          ) : variant.kind === 'ghost-container' || variant.kind === 'ghost-volume' || variant.kind === 'ghost-network' || variant.kind === 'ghost-service' ? (
             <GhostHeader node={variant.node} theme={theme} />
           ) : (variant.kind === 'network' || variant.kind === 'volume') && detailDgNode ? (
             <ResourceHeader name={detailDgNode.name} subtitle={detailDgNode.driver} theme={theme} />
+          ) : variant.kind === 'swarmnode' ? (
+            <DetailPanelSwarmNodeHeader node={variant.node} />
+          ) : variant.kind === 'service' && serviceData ? (
+            <DetailPanelServiceHeader detail={serviceData} />
           ) : containerData ? (
             <DetailPanelHeader detail={containerData} />
           ) : null
@@ -337,8 +505,14 @@ export function FlowCanvas({
           <GhostVolumePanel node={variant.node} mounts={volumeMounts} onNavigate={handleNavigate} />
         ) : variant.kind === 'ghost-network' ? (
           <GhostNetworkPanel node={variant.node} containers={groupContainers} onNavigate={handleNavigate} />
-        ) : variant.kind === 'ghost-container' ? (
+        ) : variant.kind === 'ghost-container' || variant.kind === 'ghost-service' ? (
           <GhostContainerPanel node={variant.node} onNavigate={handleNavigate} />
+        ) : variant.kind === 'swarmnode' ? (
+          <DetailPanelSwarmNode node={variant.node} dgNodes={dgNodes} statsMap={statsMap} onNavigate={handleNavigate} />
+        ) : variant.kind === 'service' ? (
+          serviceData ? (
+            <DetailPanelService detail={serviceData} statsMap={statsMap} active={detailOpen} onNavigate={handleNavigate} />
+          ) : null
         ) : variant.kind === 'network' && networkData ? (
           <DetailPanelNetworkInfo network={networkData} onNavigate={handleNavigate} />
         ) : variant.kind === 'volume' && volumeData ? (
@@ -402,6 +576,12 @@ export function FlowCanvas({
             style={{ width: 1, height: 20, background: theme.panelBorder, flex: "0 0 auto" }}
           />
           <ViewTabs activeView={activeView} onViewChange={setActiveView} />
+          {onSelectStack && (
+            <StackSelector stacks={stacks} selected={selectedStack} onSelect={changeStack} />
+          )}
+          {activeView === "graph" && hasSwarmNodes && (
+            <GroupByToggle value={groupBy} onChange={setGroupBy} />
+          )}
         </div>
         <SearchFilter search={search} />
         <div style={{ flex: "1 1 0", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
@@ -432,12 +612,20 @@ export function FlowCanvas({
             statsMap={statsMap}
             onStatusFilter={handleStatusFilter}
             onResourceTab={handleResourceTab}
-            onInspect={handleInfoClickWithSelect}
+            onInspect={handleInspectRef}
+            stack={selectedStack}
+            onSelectStack={onSelectStack ? handleSelectStack : undefined}
           />
         </Suspense>
       ) : activeView === "logs" ? (
         <Suspense fallback={<ViewFallback />}>
-          <CommonLogs active={activeView === "logs"} onOpenContainer={openContainerInfo} />
+          <CommonLogs
+            key={selectedStack ?? ''}
+            active={activeView === "logs"}
+            onOpenContainer={openContainerInfo}
+            stack={selectedStack}
+            scopeNames={scopeNames}
+          />
         </Suspense>
       ) : (
       <div style={{ position: "absolute", inset: 0, top: 50 }}>
@@ -446,7 +634,9 @@ export function FlowCanvas({
           <p style={{ color: theme.nodeSubtext, fontSize: 14 }}>
             {!ready
               ? "Connecting to backend..."
-              : "No containers detected. Start a container to visualize the graph."}
+              : selectedStack
+                ? "Nothing to show in this stack. Pick another stack or \"All stacks\" above."
+                : "No containers detected. Start a container to visualize the graph."}
           </p>
         </Overlay>
       )}
@@ -473,13 +663,18 @@ export function FlowCanvas({
 
       <ReactFlow
         nodes={styledNodes}
-        edges={largeGraph ? svgEdges : styledEdges}
+        edges={displayedEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={largeGraph ? handleNodeClick : onNodeClick}
         onPaneClick={handlePaneClick}
+        onNodeMouseEnter={handleNodeMouseEnter}
+        onNodeMouseLeave={handleNodeMouseLeave}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        // Only nodes that opt in via `draggable: true` move: the per-node
+        // view's role groups. Everything else (incl. the network view) stays
+        // fixed, and dragging on a fixed node or the pane pans the canvas.
         nodesDraggable={false}
         nodesConnectable={false}
         elevateNodesOnSelect={false}
@@ -534,12 +729,25 @@ export function FlowCanvas({
             nodeColor={(node) => {
               if (node.type === "networkGroup") {
                 return (
-                  networkColor((node.data as { dgNode: DGNode }).dgNode.name) +
+                  networkColor(
+                    (node.data as { dgNode: DGNode }).dgNode.name,
+                    projectOf((node.data as { dgNode: DGNode }).dgNode),
+                  ) +
                   "40"
                 );
               }
               if (node.type === "volumeNode") {
                 return "#f9731640";
+              }
+              if (node.type === "roleGroup") {
+                return swarmRoleColor((node.data as unknown as RoleGroupData).role, theme.mode) + "30";
+              }
+              if (node.type === "nodeGroup") {
+                const role = (node.data as unknown as SwarmNodeGroupData).role;
+                return role ? swarmRoleColor(role, theme.mode) + "60" : theme.nodeGhostBorder + "60";
+              }
+              if (node.type === "nodeServiceCard") {
+                return stackColor((node.data as unknown as NodeServiceCardData).stack);
               }
               return theme.nodeBorder;
             }}

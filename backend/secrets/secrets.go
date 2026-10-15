@@ -26,3 +26,20 @@ func IsSensitiveKey(key string) bool {
 	}
 	return false
 }
+
+// MaskLabels returns a copy of labels with credential-looking values masked,
+// using the same key rule as environment variables. Labels often carry
+// reverse-proxy settings such as Traefik basic-auth user hashes.
+func MaskLabels(labels map[string]string) map[string]string {
+	if labels == nil {
+		return nil
+	}
+	out := make(map[string]string, len(labels))
+	for k, v := range labels {
+		if IsSensitiveKey(k) {
+			v = Masked
+		}
+		out[k] = v
+	}
+	return out
+}

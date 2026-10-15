@@ -4,7 +4,7 @@ import { Copyable } from './Copyable';
 
 // Re-export panel styles so existing imports from './shared' keep working.
 // eslint-disable-next-line react-refresh/only-export-components
-export { navLinkStyle, monoStyle } from './panelStyles';
+export { navLinkStyle, navButtonReset, monoStyle } from './panelStyles';
 
 /** Collapsible section with a mono uppercase title and a fold toggle. */
 export function Section({ title, children, defaultOpen = true }: { title: string; children: ReactNode; defaultOpen?: boolean }) {

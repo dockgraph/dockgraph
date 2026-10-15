@@ -1,0 +1,34 @@
+services:
+  web:
+    image: nginx:1.25
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    networks:
+      - front
+      - back
+    volumes:
+      - data:/data
+    deploy:
+      replicas: 3
+  db:
+    image: postgres:16
+    networks:
+      - back
+  agent:
+    image: agent:latest
+    deploy:
+      mode: global
+  dockgraph:
+    image: dockgraph:latest
+    deploy:
+      labels:
+        dockgraph.self: "true"
+
+volumes:
+  data:
+
+networks:
+  front:
+  back:

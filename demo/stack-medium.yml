@@ -1,0 +1,171 @@
+# Demo: E-commerce platform for Docker Swarm
+# 14 services across 4 overlay networks plus the shared external network.
+#
+#   docker network create -d overlay --attachable demo_shared   # once
+#   docker stack deploy -c demo/stack-medium.yml swarm-medium
+#   docker stack rm swarm-medium
+
+networks:
+  public:
+    driver: overlay
+  api:
+    driver: overlay
+  data:
+    driver: overlay
+  messaging:
+    driver: overlay
+  shared:
+    external: true
+    name: demo_shared
+
+volumes:
+  pg_data:
+  redis_data:
+  rabbitmq_data:
+
+services:
+
+  # ── Edge ─────────────────────────────────────────────────────
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    networks:
+      - public
+    deploy:
+      replicas: 2
+
+  web-app:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - public
+    deploy:
+      replicas: 2
+
+  api-gateway:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - public
+      - api
+    deploy:
+      replicas: 2
+
+  # ── Application ──────────────────────────────────────────────
+
+  auth-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - data
+    deploy:
+      replicas: 2
+
+  product-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - data
+    deploy:
+      replicas: 3
+
+  order-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - data
+      - messaging
+    deploy:
+      replicas: 2
+
+  notification-service:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - messaging
+    deploy:
+      replicas: 1
+
+  # ── Messaging ────────────────────────────────────────────────
+
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    networks:
+      - messaging
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  order-worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - messaging
+      - data
+    deploy:
+      replicas: 3
+
+  email-worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - messaging
+    deploy:
+      replicas: 2
+
+  # ── Data ─────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: demo
+    networks:
+      - data
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - data
+    volumes:
+      - redis_data:/data
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  # ── Observability (shared with other stacks) ─────────────────
+
+  metrics:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - api
+      - shared
+    deploy:
+      replicas: 1
+
+  node-exporter:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - shared
+    deploy:
+      mode: global

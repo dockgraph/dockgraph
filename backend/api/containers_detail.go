@@ -75,7 +75,7 @@ func buildResources(info containertypes.InspectResponse) map[string]any {
 func buildHealth(info containertypes.InspectResponse) map[string]any {
 	h := info.State.Health
 	resp := map[string]any{
-		"status":        h.Status,
+		fieldStatus:     h.Status,
 		"failingStreak": h.FailingStreak,
 	}
 	logs := make([]map[string]any, 0, len(h.Log))

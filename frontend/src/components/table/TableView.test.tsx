@@ -84,3 +84,40 @@ describe("TableView", () => {
     expect(screen.getByText("app-network")).toBeDefined();
   });
 });
+
+describe("TableView services tab", () => {
+  const swarmNodes: DGNode[] = [
+    ...nodes,
+    { id: "service:shop_web", type: "service", name: "shop_web", image: "nginx", status: "degraded", stack: "shop",
+      service: { mode: "replicated", replicas: { running: 1, desired: 2 } } },
+  ];
+
+  function SwarmHarness() {
+    const [tab, setTab] = useState<ResourceTab>("containers");
+    return (
+      <TableView
+        nodes={swarmNodes}
+        edges={edges}
+        statsMap={statsMap}
+        matchingNodeIds={null}
+        selectedNodeId={null}
+        onRowClick={() => {}}
+        activeTab={tab}
+        onTabChange={setTab}
+      />
+    );
+  }
+
+  it("hides the Services tab when there are no services", () => {
+    render(<Harness />);
+    expect(screen.queryByText("Services")).toBeNull();
+  });
+
+  it("lists services with their replicas in a Services tab", () => {
+    render(<SwarmHarness />);
+    fireEvent.click(screen.getByText("Services"));
+    expect(screen.getByText("shop_web")).toBeDefined();
+    expect(screen.getByText("1/2")).toBeDefined();
+    expect(screen.queryByText("api")).toBeNull();
+  });
+});

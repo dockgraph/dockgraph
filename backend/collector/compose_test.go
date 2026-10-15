@@ -165,6 +165,7 @@ func TestBuildComposeConfigMasksSecretsAndCapturesLabels(t *testing.T) {
 			},
 			Labels: composetypes.Labels{
 				"com.example.team": "platform",
+				"traefik.http.middlewares.auth.basicauth.users": "admin:$apr1$hash",
 			},
 		},
 	}
@@ -179,6 +180,9 @@ func TestBuildComposeConfigMasksSecretsAndCapturesLabels(t *testing.T) {
 	}
 	if got := cfg.Labels["com.example.team"]; got != "platform" {
 		t.Errorf("expected label captured, got %q", got)
+	}
+	if got := cfg.Labels["traefik.http.middlewares.auth.basicauth.users"]; got != "********" {
+		t.Errorf("expected credential label masked, got %q", got)
 	}
 }
 
@@ -291,4 +295,30 @@ func filterEdges(edges []Edge, edgeType string) []Edge {
 		}
 	}
 	return filtered
+}
+
+func TestStackServiceInfoDesiredReplicas(t *testing.T) {
+	three := 3
+	tests := []struct {
+		name   string
+		deploy *composetypes.DeployConfig
+		mode   string
+		want   int
+	}{
+		{"no deploy", nil, serviceModeReplicated, 1},
+		{"replicated", &composetypes.DeployConfig{Replicas: &three}, serviceModeReplicated, 3},
+		{"replicated job", &composetypes.DeployConfig{Mode: serviceModeReplicatedJob, Replicas: &three}, serviceModeReplicatedJob, 3},
+		{"replicated job default", &composetypes.DeployConfig{Mode: serviceModeReplicatedJob}, serviceModeReplicatedJob, 1},
+		// The manager computes these per eligible node: no count yet.
+		{"global", &composetypes.DeployConfig{Mode: serviceModeGlobal}, serviceModeGlobal, 0},
+		{"global job", &composetypes.DeployConfig{Mode: serviceModeGlobalJob}, serviceModeGlobalJob, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := stackServiceInfo(composetypes.ServiceConfig{Name: "s", Deploy: tt.deploy})
+			if info.Mode != tt.mode || info.Replicas.Desired != tt.want {
+				t.Errorf("mode %q desired %d, want %q %d", info.Mode, info.Replicas.Desired, tt.mode, tt.want)
+			}
+		})
+	}
 }

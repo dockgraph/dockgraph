@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -61,13 +62,30 @@ func (r *dockerLogReader) next() (string, []byte, error) {
 	return streamType, payload, nil
 }
 
+// logOpener opens a Docker multiplexed log stream for one container or
+// service; ContainerLogs and ServiceLogs share this shape.
+type logOpener func(ctx context.Context, id string, options containertypes.LogsOptions) (io.ReadCloser, error)
+
 // HandleContainerLogsHistory returns a handler for GET /api/containers/{id}/logs/history.
 // Returns a paginated JSON array of log lines, newest last.
 func HandleContainerLogsHistory(logger ContainerLogger) http.HandlerFunc {
+	return handleLogsHistory("container", logger.ContainerLogs)
+}
+
+// HandleContainerLogs returns a handler for GET /api/containers/{id}/logs.
+// Streams container logs as Server-Sent Events.
+// Accepts optional `since` query param to only stream lines after a timestamp.
+func HandleContainerLogs(logger ContainerLogger) http.HandlerFunc {
+	return handleLogsStream("container", logger.ContainerLogs)
+}
+
+// handleLogsHistory serves a paginated JSON page of a resource's log lines.
+// kind ("container" or "service") only shapes error messages.
+func handleLogsHistory(kind string, open logOpener) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if !validResourceName.MatchString(id) {
-			jsonError(w, "invalid container ID", http.StatusBadRequest)
+			jsonError(w, "invalid "+kind+" ID", http.StatusBadRequest)
 			return
 		}
 
@@ -78,29 +96,15 @@ func HandleContainerLogsHistory(logger ContainerLogger) http.HandlerFunc {
 			}
 		}
 
-		opts := containertypes.LogsOptions{
-			ShowStdout: true,
-			ShowStderr: true,
-			Timestamps: true,
-			Tail:       strconv.Itoa(limit),
-		}
-
-		if before := r.URL.Query().Get("before"); before != "" {
-			opts.Until = before
-		}
-
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
-		reader, err := logger.ContainerLogs(ctx, id, opts)
+		lines, err := fetchLogHistory(ctx, open, id, kind == "service", r.URL.Query().Get("before"), limit)
 		if err != nil {
-			log.Printf("logs history %s: %v", id, err)
+			log.Printf("%s logs history %s: %v", kind, id, err)
 			jsonError(w, "failed to read logs", http.StatusInternalServerError)
 			return
 		}
-		defer reader.Close()
-
-		lines := readLogLines(reader, limit)
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -109,14 +113,13 @@ func HandleContainerLogsHistory(logger ContainerLogger) http.HandlerFunc {
 	}
 }
 
-// HandleContainerLogs returns a handler for GET /api/containers/{id}/logs.
-// Streams container logs as Server-Sent Events.
-// Accepts optional `since` query param to only stream lines after a timestamp.
-func HandleContainerLogs(logger ContainerLogger) http.HandlerFunc {
+// handleLogsStream streams a resource's logs as Server-Sent Events.
+// kind ("container" or "service") only shapes error messages.
+func handleLogsStream(kind string, open logOpener) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if !validResourceName.MatchString(id) {
-			jsonError(w, "invalid container ID", http.StatusBadRequest)
+			jsonError(w, "invalid "+kind+" ID", http.StatusBadRequest)
 			return
 		}
 
@@ -143,9 +146,9 @@ func HandleContainerLogs(logger ContainerLogger) http.HandlerFunc {
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
 
-		reader, err := logger.ContainerLogs(ctx, id, opts)
+		reader, err := open(ctx, id, opts)
 		if err != nil {
-			log.Printf("logs %s: %v", id, err)
+			log.Printf("%s logs %s: %v", kind, id, err)
 			jsonError(w, "failed to open logs", http.StatusInternalServerError)
 			return
 		}
@@ -161,6 +164,8 @@ func HandleContainerLogs(logger ContainerLogger) http.HandlerFunc {
 			http.Error(w, "streaming not supported", http.StatusInternalServerError)
 			return
 		}
+
+		disableWriteDeadline(w)
 
 		// Flush headers immediately so the EventSource client sees the
 		// connection as open even when no log lines have arrived yet.
@@ -190,6 +195,123 @@ func readLogLines(reader io.Reader, limit int) []logEntry {
 	return lines
 }
 
+// serviceHistoryTailFactor widens the per-task tail requested for service log
+// history, since the service endpoint ignores Until and the lines before the
+// cursor must be found by filtering a larger window. serviceHistoryMaxLines
+// caps that per-task tail.
+const (
+	serviceHistoryTailFactor = 10
+	serviceHistoryMaxLines   = 10000
+)
+
+// fetchLogHistory reads up to limit log lines older than before (if set).
+// Container logs honour Until and Tail directly. Service logs ignore Until,
+// apply Tail per task and group lines by task, so for them a wider window is
+// read in full, lines at or after before are dropped, and the newest limit
+// kept in order.
+func fetchLogHistory(ctx context.Context, open logOpener, id string, service bool, before string, limit int) ([]logEntry, error) {
+	tail := limit
+	if service && before != "" {
+		tail = min(limit*serviceHistoryTailFactor, serviceHistoryMaxLines)
+	}
+	opts := containertypes.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Timestamps: true,
+		Tail:       strconv.Itoa(tail),
+		Until:      before,
+	}
+	reader, err := open(ctx, id, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	if !service {
+		return readLogLines(reader, limit), nil
+	}
+	return readNewestLinesBefore(reader, before, limit), nil
+}
+
+// readNewestLinesBefore reads a whole log stream and returns its newest limit
+// lines older than before. The stream is read to the end rather than cut at a
+// line count: Docker sends a service's tasks one after another, so a cut would
+// drop whole later tasks, often holding the newest lines.
+func readNewestLinesBefore(reader io.Reader, before string, limit int) []logEntry {
+	kept := newNewestLines(before, limit)
+	dlr := &dockerLogReader{reader: reader}
+	for {
+		streamType, payload, err := dlr.next()
+		if err != nil {
+			break
+		}
+		scanner := bufio.NewScanner(bytes.NewReader(payload))
+		for scanner.Scan() {
+			kept.add(parseLogEntry(streamType, scanner.Text()))
+		}
+	}
+	return kept.result()
+}
+
+// newestLinesBefore drops lines whose timestamp is at or after before (when
+// it parses as RFC 3339), sorts the rest by timestamp and keeps the newest limit.
+func newestLinesBefore(lines []logEntry, before string, limit int) []logEntry {
+	kept := newNewestLines(before, limit)
+	for _, l := range lines {
+		kept.add(l)
+	}
+	return kept.result()
+}
+
+// newestLines keeps the newest limit lines older than a cursor out of any
+// number added. It holds at most twice limit lines, trimming back to the
+// newest limit whenever it fills, so memory stays bounded however long the
+// stream is.
+type newestLines struct {
+	cut    time.Time
+	hasCut bool
+	limit  int
+	lines  []logEntry
+}
+
+func newNewestLines(before string, limit int) *newestLines {
+	n := &newestLines{limit: limit}
+	if cut, err := time.Parse(time.RFC3339Nano, before); err == nil {
+		n.cut, n.hasCut = cut, true
+	}
+	return n
+}
+
+// add keeps l unless its timestamp is at or after the cursor.
+func (n *newestLines) add(l logEntry) {
+	if n.hasCut {
+		if ts, err := time.Parse(time.RFC3339Nano, l.Timestamp); err == nil && !ts.Before(n.cut) {
+			return
+		}
+	}
+	n.lines = append(n.lines, l)
+	if len(n.lines) >= 2*n.limit {
+		n.trim()
+	}
+}
+
+// trim sorts the held lines by timestamp and drops all but the newest limit.
+// The sort is stable and earlier survivors stay ahead of later lines, so
+// lines sharing a timestamp keep their stream order.
+func (n *newestLines) trim() {
+	// Docker's fixed-width RFC 3339 UTC timestamps sort correctly as strings.
+	sort.SliceStable(n.lines, func(i, j int) bool { return n.lines[i].Timestamp < n.lines[j].Timestamp })
+	if len(n.lines) > n.limit {
+		n.lines = append(n.lines[:0], n.lines[len(n.lines)-n.limit:]...)
+	}
+}
+
+// result returns the kept lines, oldest first.
+func (n *newestLines) result() []logEntry {
+	n.trim()
+	return n.lines
+}
+
 // findTimestampEnd returns the index of the space separating a Docker
 // log timestamp from the message, or -1 if no timestamp is found.
 // Docker format: "2006-01-02T15:04:05.999999999Z message..."
@@ -216,6 +338,16 @@ func parseLogEntry(streamType, raw string) logEntry {
 		entry.Line = raw[idx+1:]
 	}
 	return entry
+}
+
+// disableWriteDeadline lifts the server's WriteTimeout for a long-lived SSE
+// response. http.Server.WriteTimeout is an absolute deadline from the start
+// of the request, so without this every log stream is cut after it expires
+// even while lines are flowing. Streams still end when the client
+// disconnects (request context). Writers that don't support deadlines, such
+// as test recorders, are left unchanged.
+func disableWriteDeadline(w http.ResponseWriter) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 }
 
 // streamDockerLogs reads Docker's multiplexed log stream and writes SSE events.

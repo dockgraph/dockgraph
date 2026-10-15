@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -10,13 +11,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	networktypes "github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/swarm"
 	volumetypes "github.com/docker/docker/api/types/volume"
 )
 
@@ -349,13 +354,90 @@ func TestReadLogLinesMultipleLinesPerFrame(t *testing.T) {
 func newTestServer(logger *stubContainerLogger) *httptest.Server {
 	hub := NewHub()
 	fs := fstest.MapFS{"index.html": {Data: []byte("ok")}}
-	handler := NewServer(hub, fs, &stubHealth{}, nil, &stubDockerAPI{logger: logger}, nil, nil, nil)
+	handler := NewServer(hub, fs, &stubHealth{}, nil, &stubDockerAPI{logger: logger}, nil, nil, nil, "")
 	return httptest.NewServer(handler)
 }
 
 // stubDockerAPI implements DockerAPI by delegating log calls to the embedded logger.
+// The swarm fields back the service endpoints; serviceLogs maps a service
+// name or ID to canned multiplexed log bytes.
 type stubDockerAPI struct {
 	logger *stubContainerLogger
+
+	services    []swarm.Service
+	tasks       []swarm.Task
+	nodes       []swarm.Node
+	serviceLogs map[string]string
+	networks    map[string]string // network ID -> name
+
+	// Swarm's own task counts, returned by ServiceList with Status set.
+	serviceStatus map[string]*swarm.ServiceStatus
+	// Failure injection for the list calls.
+	taskErr, nodeErr, serviceListErr, serviceInspectErr error
+	serviceListCalls                                    int
+}
+
+func (s *stubDockerAPI) findService(id string) (swarm.Service, bool) {
+	for _, svc := range s.services {
+		if svc.ID == id || svc.Spec.Name == id {
+			return svc, true
+		}
+	}
+	return swarm.Service{}, false
+}
+
+func (s *stubDockerAPI) ServiceInspectWithRaw(_ context.Context, id string, _ swarm.ServiceInspectOptions) (swarm.Service, []byte, error) {
+	if s.serviceInspectErr != nil {
+		return swarm.Service{}, nil, s.serviceInspectErr
+	}
+	if svc, ok := s.findService(id); ok {
+		return svc, nil, nil
+	}
+	return swarm.Service{}, nil, cerrdefs.ErrNotFound.WithMessage("service " + id + " not found")
+}
+
+func (s *stubDockerAPI) ServiceList(_ context.Context, opts swarm.ServiceListOptions) ([]swarm.Service, error) {
+	s.serviceListCalls++
+	if s.serviceListErr != nil {
+		return nil, s.serviceListErr
+	}
+	if !opts.Status {
+		return s.services, nil
+	}
+	out := make([]swarm.Service, len(s.services))
+	for i, svc := range s.services {
+		svc.ServiceStatus = s.serviceStatus[svc.ID]
+		out[i] = svc
+	}
+	return out, nil
+}
+
+func (s *stubDockerAPI) TaskList(_ context.Context, opts swarm.TaskListOptions) ([]swarm.Task, error) {
+	if s.taskErr != nil {
+		return nil, s.taskErr
+	}
+	var out []swarm.Task
+	for _, t := range s.tasks {
+		if opts.Filters.Len() == 0 || opts.Filters.ExactMatch("service", t.ServiceID) {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (s *stubDockerAPI) NodeList(_ context.Context, _ swarm.NodeListOptions) ([]swarm.Node, error) {
+	if s.nodeErr != nil {
+		return nil, s.nodeErr
+	}
+	return s.nodes, nil
+}
+
+func (s *stubDockerAPI) ServiceLogs(_ context.Context, id string, _ containertypes.LogsOptions) (io.ReadCloser, error) {
+	data, ok := s.serviceLogs[id]
+	if !ok {
+		return nil, fmt.Errorf("no logs for %s", id)
+	}
+	return io.NopCloser(strings.NewReader(data)), nil
 }
 
 func (s *stubDockerAPI) ContainerLogs(ctx context.Context, containerID string, opts containertypes.LogsOptions) (io.ReadCloser, error) {
@@ -363,14 +445,17 @@ func (s *stubDockerAPI) ContainerLogs(ctx context.Context, containerID string, o
 }
 
 func (s *stubDockerAPI) ContainerInspect(_ context.Context, _ string) (containertypes.InspectResponse, error) {
-	return containertypes.InspectResponse{}, fmt.Errorf("not implemented")
+	return containertypes.InspectResponse{}, errNotFoundStub
 }
 
 func (s *stubDockerAPI) VolumeInspect(_ context.Context, _ string) (volumetypes.Volume, error) {
 	return volumetypes.Volume{}, fmt.Errorf("not implemented")
 }
 
-func (s *stubDockerAPI) NetworkInspect(_ context.Context, _ string, _ networktypes.InspectOptions) (networktypes.Inspect, error) {
+func (s *stubDockerAPI) NetworkInspect(_ context.Context, id string, _ networktypes.InspectOptions) (networktypes.Inspect, error) {
+	if name, ok := s.networks[id]; ok {
+		return networktypes.Inspect{ID: id, Name: name}, nil
+	}
 	return networktypes.Inspect{}, fmt.Errorf("not implemented")
 }
 
@@ -847,4 +932,139 @@ func TestLogsStreamInvalidTailIgnored(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewestLinesBefore(t *testing.T) {
+	lines := []logEntry{
+		{Line: "b2", Timestamp: "2024-01-01T00:00:04.000000000Z"},
+		{Line: "a1", Timestamp: "2024-01-01T00:00:01.000000000Z"},
+		{Line: "a3", Timestamp: "2024-01-01T00:00:05.000000000Z"},
+		{Line: "b1", Timestamp: "2024-01-01T00:00:02.000000000Z"},
+		{Line: "a2", Timestamp: "2024-01-01T00:00:03.000000000Z"},
+	}
+	got := newestLinesBefore(append([]logEntry(nil), lines...), "2024-01-01T00:00:04.000000000Z", 2)
+	if len(got) != 2 || got[0].Line != "b1" || got[1].Line != "a2" {
+		t.Errorf("before-filtered page = %+v", got)
+	}
+	got = newestLinesBefore(append([]logEntry(nil), lines...), "", 3)
+	if len(got) != 3 || got[0].Line != "a2" || got[2].Line != "a3" {
+		t.Errorf("newest page = %+v", got)
+	}
+}
+
+// taskGroupedServiceLogs opens a service log stream the way Docker sends it:
+// opts.Tail lines per task, one whole task after another. Task k's line i is
+// stamped base+(i*tasks+k)ms, so the tasks interleave in time and the newest
+// lines are spread across all of them.
+func taskGroupedServiceLogs(tasks int, base time.Time) logOpener {
+	return func(_ context.Context, _ string, opts containertypes.LogsOptions) (io.ReadCloser, error) {
+		tail, err := strconv.Atoi(opts.Tail)
+		if err != nil {
+			return nil, err
+		}
+		var buf bytes.Buffer
+		for k := range tasks {
+			for i := range tail {
+				ts := base.Add(time.Duration(i*tasks+k) * time.Millisecond).Format("2006-01-02T15:04:05.000000000Z")
+				buf.Write(buildLogFrame(1, fmt.Sprintf("%s task%d line%d\n", ts, k, i)))
+			}
+		}
+		return io.NopCloser(&buf), nil
+	}
+}
+
+func TestFetchLogHistoryServiceKeepsNewestLinesOfEveryTask(t *testing.T) {
+	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name   string
+		tasks  int
+		limit  int
+		before string
+	}{
+		// Tail 2000 per task: 16000 lines in all.
+		{"before cursor", 8, 200, base.Add(time.Hour).Format(time.RFC3339Nano)},
+		// Tail 1000 per task: 11000 lines in all.
+		{"no cursor", 11, 1000, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines, err := fetchLogHistory(context.Background(), taskGroupedServiceLogs(tt.tasks, base), "svc", true, tt.before, tt.limit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(lines) != tt.limit {
+				t.Fatalf("got %d lines, want %d", len(lines), tt.limit)
+			}
+			perTask := map[string]int{}
+			for i, l := range lines {
+				if i > 0 && l.Timestamp < lines[i-1].Timestamp {
+					t.Fatalf("lines out of order at %d: %q after %q", i, l.Timestamp, lines[i-1].Timestamp)
+				}
+				perTask[strings.Fields(l.Line)[0]]++
+			}
+			for k := range tt.tasks {
+				if got, want := perTask[fmt.Sprintf("task%d", k)], tt.limit/tt.tasks; got < want {
+					t.Errorf("task%d: %d lines in page, want at least %d (per task: %v)", k, got, want, perTask)
+				}
+			}
+			if last := lines[len(lines)-1].Line; !strings.HasPrefix(last, fmt.Sprintf("task%d ", tt.tasks-1)) {
+				t.Errorf("newest line = %q, want the last task's newest line", last)
+			}
+		})
+	}
+}
+
+// tickingLogger follows forever, emitting one log line per interval until
+// the request is cancelled.
+type tickingLogger struct{ interval time.Duration }
+
+func (l tickingLogger) ContainerLogs(ctx context.Context, _ string, _ containertypes.LogsOptions) (io.ReadCloser, error) {
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		t := time.NewTicker(l.interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if _, err := pw.Write(frame("2026-06-11T10:00:00.000000000Z tick")); err != nil {
+					return
+				}
+			}
+		}
+	}()
+	return pr, nil
+}
+
+// A log stream must outlive http.Server.WriteTimeout, which is an absolute
+// deadline from the start of the request: without lifting it, the server
+// cuts every SSE stream once it expires, even while lines are flowing.
+func TestHandleContainerLogsOutlivesWriteTimeout(t *testing.T) {
+	const writeTimeout = 200 * time.Millisecond
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/containers/{id}/logs", HandleContainerLogs(tickingLogger{interval: 20 * time.Millisecond}))
+	srv := httptest.NewUnstartedServer(mux)
+	srv.Config.WriteTimeout = writeTimeout
+	srv.Start()
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/containers/web/logs", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	start := time.Now()
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		if strings.HasPrefix(scanner.Text(), "data: ") && time.Since(start) > 4*writeTimeout {
+			return // still streaming well past the write deadline
+		}
+	}
+	t.Fatalf("stream ended after %v (write timeout %v): %v", time.Since(start), writeTimeout, scanner.Err())
 }

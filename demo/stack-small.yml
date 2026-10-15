@@ -1,0 +1,85 @@
+# Demo: Simple web stack for Docker Swarm
+# 6 services across 2 overlay networks plus the shared external network.
+#
+#   docker network create -d overlay --attachable demo_shared   # once
+#   docker stack deploy -c demo/stack-small.yml swarm-small
+#   docker stack rm swarm-small
+
+networks:
+  frontend:
+    driver: overlay
+  backend:
+    driver: overlay
+  shared:
+    external: true
+    name: demo_shared
+
+volumes:
+  db_data:
+
+services:
+
+  # ── Edge ─────────────────────────────────────────────────────
+
+  web:
+    image: nginx:alpine
+    ports:
+      - "8071:80"
+    networks:
+      - frontend
+    deploy:
+      replicas: 2
+
+  # ── Application ──────────────────────────────────────────────
+
+  app:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - frontend
+      - backend
+      - shared
+    deploy:
+      replicas: 3
+
+  worker:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - backend
+    deploy:
+      replicas: 2
+
+  # ── Data ─────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: demo
+    networks:
+      - backend
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    deploy:
+      replicas: 1
+      placement:
+        # Keep the named volume on one node.
+        constraints:
+          - node.role == manager
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+
+  # ── Per-node ─────────────────────────────────────────────────
+
+  log-shipper:
+    image: busybox
+    command: sh -c "sleep infinity"
+    networks:
+      - shared
+    deploy:
+      mode: global

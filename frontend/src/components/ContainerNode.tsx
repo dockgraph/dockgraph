@@ -6,7 +6,7 @@ import { InspectButton } from './InspectButton';
 import { StatsMini } from './StatsMini';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
-import { ghostBorder, railColor } from '../utils/nodeStyles';
+import { ghostBorder, railColor, CARD_SHADOW, CARD_RADIUS } from '../utils/nodeStyles';
 import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY, zoomSelector } from '../utils/constants';
 import type { ContainerNodeData } from '../types';
 
@@ -34,7 +34,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
     background: theme.nodeBg,
     ...ghostBorder(isGhost, theme),
     borderLeft: `3px solid ${rail}`,
-    borderRadius: 6,
+    borderRadius: CARD_RADIUS,
     padding: '7px 10px',
     width: w,
     height: CONTAINER_NODE_HEIGHT,
@@ -42,8 +42,8 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
     overflow: 'hidden',
     opacity,
     boxShadow: isActive
-      ? `0 2px 6px -3px rgba(0, 0, 0, 0.45), inset 9px 0 18px -14px ${statusColor}`
-      : '0 2px 6px -3px rgba(0, 0, 0, 0.45)',
+      ? `${CARD_SHADOW}, inset 9px 0 18px -14px ${statusColor}`
+      : CARD_SHADOW,
   };
 
   // Simplified render at low zoom — just a colored block with the name.

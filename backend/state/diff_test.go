@@ -223,3 +223,21 @@ func TestDiffNodeWithLabelsChanged(t *testing.T) {
 		t.Errorf("expected updated labels, got %+v", delta.NodesUpdated[0].Labels)
 	}
 }
+
+func TestDiffSwarmNodeInfoChanged(t *testing.T) {
+	node := func(avail string) collector.Node {
+		return collector.Node{
+			ID: "swarmnode:mgr", Type: "swarmnode", Name: "mgr", Status: "ready",
+			SwarmNode: &collector.SwarmNodeInfo{ID: "n1", Role: "manager", Leader: true, Availability: avail, State: "ready"},
+		}
+	}
+	prev := &collector.GraphSnapshot{Nodes: []collector.Node{node("active")}}
+
+	if _, changed := diffSnapshots(prev, &collector.GraphSnapshot{Nodes: []collector.Node{node("active")}}); changed {
+		t.Error("identical swarm node info must not produce a delta")
+	}
+	delta, changed := diffSnapshots(prev, &collector.GraphSnapshot{Nodes: []collector.Node{node("drain")}})
+	if !changed || len(delta.NodesUpdated) != 1 || delta.NodesUpdated[0].SwarmNode.Availability != "drain" {
+		t.Errorf("expected swarm node update, got changed=%v delta=%+v", changed, delta)
+	}
+}

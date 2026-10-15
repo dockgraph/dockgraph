@@ -418,8 +418,8 @@ func TestNewSnapshotMessage(t *testing.T) {
 	if msg.Type != "snapshot" {
 		t.Errorf("expected type snapshot, got %s", msg.Type)
 	}
-	if msg.Version != 1 {
-		t.Errorf("expected version 1, got %d", msg.Version)
+	if msg.Version != ProtocolVersion {
+		t.Errorf("expected version %d, got %d", ProtocolVersion, msg.Version)
 	}
 }
 
@@ -432,7 +432,7 @@ func TestNewDeltaMessage(t *testing.T) {
 	if msg.Type != "delta" {
 		t.Errorf("expected type delta, got %s", msg.Type)
 	}
-	if msg.Version != 1 {
-		t.Errorf("expected version 1, got %d", msg.Version)
+	if msg.Version != ProtocolVersion {
+		t.Errorf("expected version %d, got %d", ProtocolVersion, msg.Version)
 	}
 }

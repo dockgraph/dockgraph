@@ -1,5 +1,6 @@
 import type { Node as RFNode, Edge as RFEdge } from '@xyflow/react';
 import { networkColor, VOLUME_COLOR } from './colors';
+import { isServiceLive, projectOf } from './stack';
 import type { DGNode, DGEdge } from '../types';
 import { ANIMATION_NODE_LIMIT, DEFAULT_EDGE_STROKE_WIDTH } from './constants';
 
@@ -7,8 +8,10 @@ const UNMANAGED_GROUP_ID = 'group:unmanaged';
 
 const RUNNING_STATUSES = new Set(['running']);
 
+/** True when an edge endpoint is live; a service while a replica runs. */
 function isEndpointActive(node: DGNode | undefined): boolean {
   if (!node) return false;
+  if (node.type === 'service') return isServiceLive(node);
   if (node.type !== 'container') return true;
   return RUNNING_STATUSES.has(node.status ?? '');
 }
@@ -57,12 +60,12 @@ function buildNetworkGroups(
   return rfNodes;
 }
 
-/** Creates React Flow nodes for containers, assigning each to its network group. */
+/** Creates React Flow nodes for containers and swarm services, assigning each to its network group. */
 function buildContainerNodes(containers: DGNode[], groupIds: Set<string>): RFNode[] {
   return containers.map((c) => {
     const node: RFNode = {
       id: c.id,
-      type: 'containerNode',
+      type: c.type === 'service' ? 'serviceNode' : 'containerNode',
       position: { x: 0, y: 0 },
       data: { dgNode: c },
     };
@@ -129,7 +132,9 @@ function buildVolumeNodes(
  * edge must be at the same hierarchy depth for proper cross-group edge routing.
  */
 export function toReactFlowNodes(dgNodes: DGNode[], dgEdges: DGEdge[]): RFNode[] {
-  const containers = dgNodes.filter((n) => n.type === 'container');
+  // Swarm services are laid out exactly like containers (same grouping,
+  // network parenting and volume placement); only the rendered component differs.
+  const containers = dgNodes.filter((n) => n.type === 'container' || n.type === 'service');
   const networks = dgNodes.filter((n) => n.type === 'network');
   const volumes = dgNodes.filter((n) => n.type === 'volume');
 
@@ -162,7 +167,7 @@ export function toReactFlowEdges(
     if (isVolume) stroke = VOLUME_COLOR;
     if (isSecondary) {
       const targetNet = nodeMap.get(e.target);
-      stroke = targetNet ? networkColor(targetNet.name) : defaultStroke;
+      stroke = targetNet ? networkColor(targetNet.name, projectOf(targetNet)) : defaultStroke;
     }
 
     const sourceNode = nodeMap.get(e.source);

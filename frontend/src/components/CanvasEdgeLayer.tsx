@@ -71,13 +71,16 @@ export const CanvasEdgeLayer = forwardRef<CanvasEdgeLayerHandle, CanvasEdgeLayer
       return result;
     }, [edges]);
 
-    // Build animated edge descriptors for depends_on edges with active endpoints.
+    // Build animated edge descriptors for depends_on and volume_mount edges
+    // (the "live" connections — service dependencies and storage — rendered
+    // in the accent/orange strokes) with active endpoints.
     const animatedEdges = useMemo(() => {
       const result: AnimatedEdge[] = [];
 
       for (const edge of edges) {
         const data = edge.data as ElkEdgeData | undefined;
-        if (!data?.path || !data.animated || data.edgeType !== 'depends_on') continue;
+        if (!data?.path || !data.animated) continue;
+        if (data.edgeType !== 'depends_on' && data.edgeType !== 'volume_mount') continue;
 
         const points = parsePolyline(data.path);
         if (points.length < 2) continue;

@@ -54,7 +54,7 @@ func TestHandleSystemInfo(t *testing.T) {
 			CgroupVersion:   "2",
 		},
 	}
-	handler := HandleSystemInfo(stub)
+	handler := HandleSystemInfo(stub, "standalone")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/system/info", nil)
 	w := httptest.NewRecorder()
@@ -81,7 +81,7 @@ func TestHandleSystemInfo(t *testing.T) {
 
 func TestHandleSystemInfo_Error(t *testing.T) {
 	stub := &stubSystemInfoProvider{err: fmt.Errorf("daemon unreachable")}
-	handler := HandleSystemInfo(stub)
+	handler := HandleSystemInfo(stub, "standalone")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/system/info", nil)
 	w := httptest.NewRecorder()

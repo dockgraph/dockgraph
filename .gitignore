@@ -50,3 +50,6 @@ tmp/
 
 # Design docs
 docs/superpowers/
+
+# AI tools
+.codegraph

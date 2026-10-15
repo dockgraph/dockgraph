@@ -92,3 +92,19 @@ export function polylinePointAt(points: Point[], t: number, totalLen: number): P
 
   return points[points.length - 1];
 }
+
+/**
+ * Unit vector of travel direction at fraction t (0..1) along a polyline,
+ * used to orient an arrowhead marker tangent to the path.
+ */
+export function polylineDirectionAt(points: Point[], t: number, totalLen: number): Point {
+  if (points.length < 2) return { x: 1, y: 0 };
+
+  const eps = 1 / Math.max(totalLen, 1);
+  const p0 = polylinePointAt(points, Math.max(0, t - eps), totalLen);
+  const p1 = polylinePointAt(points, Math.min(1, t + eps), totalLen);
+  const dx = p1.x - p0.x;
+  const dy = p1.y - p0.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  return len > 0 ? { x: dx / len, y: dy / len } : { x: 1, y: 0 };
+}

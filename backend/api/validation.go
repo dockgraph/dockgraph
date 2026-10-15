@@ -13,6 +13,11 @@ import (
 // volume names, network names). Used across all inspect and log handlers.
 var validResourceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
 
+// validStackName matches compose project / swarm stack names used by the
+// ?stack= filters. Unlike validResourceName it accepts a single character,
+// since compose allows one-character project names.
+var validStackName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+
 // jsonError writes a JSON error response with the correct Content-Type header.
 func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
