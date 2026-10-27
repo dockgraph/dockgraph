@@ -14,9 +14,15 @@ export function isGroupType(type: string | undefined): boolean {
   return type !== undefined && GROUP_TYPES.has(type);
 }
 
-/** Padding for network group nodes. */
+/**
+ * Layout options of network group nodes: padding, and fixed edge endpoints.
+ * Flexible nodes (ELK_OPTIONS) let ELK slide an endpoint anywhere along the
+ * side to keep an edge straight, so edges from services beside a network end
+ * on its very corners; on a group they are spread along the side instead.
+ */
 const GROUP_OPTIONS = {
   'elk.padding': '[top=35,left=15,bottom=12,right=15]',
+  'elk.layered.nodePlacement.networkSimplex.nodeFlexibility': 'NONE',
 };
 
 /** ELK layout options for the inner component graphs. */
