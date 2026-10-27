@@ -9,6 +9,9 @@ import {
   CONTROL_SUMMARY_ID,
   roleGroupId,
   isSwarmNodeInactive,
+  canvasNodesShowing,
+  taskSlot,
+  taskLabel,
 } from './nodeTransform';
 import { filterGraphByStack } from './stack';
 import type { DGNode, NodeServiceCardData, SwarmNodeGroupData, RoleGroupData, ControlSummaryData } from '../types';
@@ -54,7 +57,6 @@ describe('toNodeGroupedFlowNodes', () => {
     const rf = toNodeGroupedFlowNodes(all, 'n1');
     const roles = rf.filter((n) => n.type === 'roleGroup');
     expect(roles.map((g) => g.id)).toEqual([roleGroupId('manager'), roleGroupId('worker')]);
-    expect(roles.every((g) => g.draggable === true)).toBe(true);
     expect(roles[0].data as unknown as RoleGroupData).toEqual({ role: 'manager', nodeCount: 1, taskCount: 3 });
     expect(roles[1].data as unknown as RoleGroupData).toEqual({ role: 'worker', nodeCount: 1, taskCount: 1 });
 
@@ -64,9 +66,15 @@ describe('toNodeGroupedFlowNodes', () => {
       ['swarmnode:wrk', 'rolegroup:worker'],
       [UNASSIGNED_NODE_GROUP_ID, undefined],
     ]);
-    expect(boxes.every((b) => b.draggable === false)).toBe(true);
     expect((boxes[0].data as unknown as SwarmNodeGroupData).role).toBe('manager');
     expect((boxes[2].data as unknown as SwarmNodeGroupData).unassigned).toBe(true);
+  });
+
+  it('leaves dragging to the canvas, like the network view: no node opts in', () => {
+    // FlowCanvas sets nodesDraggable={false}; a per-node `draggable` would
+    // override it and let a section (with every box and card) be moved.
+    const rf = toNodeGroupedFlowNodes(all, 'n1');
+    expect(rf.filter((n) => n.draggable !== undefined).map((n) => n.id)).toEqual([]);
   });
 
   it('lists parents before their children', () => {
@@ -86,7 +94,6 @@ describe('toNodeGroupedFlowNodes', () => {
     const rf = toNodeGroupedFlowNodes(all, 'n1');
     const summary = rf.find((n) => n.id === CONTROL_SUMMARY_ID)!;
     expect(summary.type).toBe('controlSummary');
-    expect(summary.draggable).toBe(false);
     expect(summary.selectable).toBe(false);
     // wrk is drained but still "ready" — counts as up, like the old aggregate link did.
     expect(summary.data as unknown as ControlSummaryData).toEqual({ ready: 1, total: 1, healthy: true });
@@ -118,6 +125,7 @@ describe('toNodeGroupedFlowNodes', () => {
     expect(d.serviceId).toBe('service:shop_web');
     expect(d.serviceName).toBe('shop_web');
     expect(d.stack).toBe('shop');
+    expect(d.mode).toBe('replicated');
     // Only running-desired tasks: the shut-down "old" task is gone.
     expect(d.tasks.map((t) => t.id)).toEqual(['t1']);
     expect((rf.find((n) => n.id === 'swarmnode:mgr')!.data as unknown as SwarmNodeGroupData).taskCount).toBe(3);
@@ -171,6 +179,39 @@ describe('toNodeGroupedFlowNodes', () => {
   });
 });
 
+describe('canvasNodesShowing', () => {
+  const rf = toNodeGroupedFlowNodes(all, 'n1');
+
+  it('returns a node that is drawn itself', () => {
+    expect(canvasNodesShowing(rf, 'swarmnode:wrk')).toEqual(['swarmnode:wrk']);
+    expect(canvasNodesShowing(rf, 'container:lone')).toEqual(['container:lone']);
+  });
+
+  it('returns every card of a service that has no node of its own', () => {
+    expect(canvasNodesShowing(rf, 'service:shop_web')).toEqual([
+      'nodesvc:mgr:shop_web',
+      'nodesvc:wrk:shop_web',
+      'nodesvc:*:shop_web',
+    ]);
+  });
+
+  it('returns nothing for a resource the canvas does not show', () => {
+    expect(canvasNodesShowing(rf, 'network:shop_net')).toEqual([]);
+  });
+
+  it('narrows a service to its card inside a given box', () => {
+    expect(canvasNodesShowing(rf, 'service:shop_web', 'swarmnode:wrk')).toEqual(['nodesvc:wrk:shop_web']);
+  });
+
+  it('keeps every card when the given box holds none of them', () => {
+    expect(canvasNodesShowing(rf, 'service:blog_api', 'swarmnode:wrk')).toEqual(['nodesvc:mgr:blog_api']);
+  });
+
+  it('ignores the box for a node that is drawn itself', () => {
+    expect(canvasNodesShowing(rf, 'swarmnode:mgr', 'swarmnode:wrk')).toEqual(['swarmnode:mgr']);
+  });
+});
+
 describe('nodeGroupedTopologyKey', () => {
   const withTasks = (tasks: NonNullable<DGNode['service']>['tasks']): DGNode => ({ ...web, service: { ...web.service!, tasks } });
 
@@ -206,6 +247,31 @@ describe('nodeUsage', () => {
   it('relates stats to capacity', () => {
     expect(nodeUsage(mgr.swarmNode, { cpuPercent: 200, memUsage: 2e9 })).toEqual({ cores: 4, cpuPercent: 50, memPercent: 25 });
     expect(nodeUsage(wrk.swarmNode, undefined)).toEqual({ cores: undefined });
+  });
+});
+
+describe('taskSlot and taskLabel', () => {
+  const at = (slot?: number) => ({ id: 't', state: 'running', desiredState: 'running', ...(slot === undefined ? {} : { slot }) });
+
+  it('numbers replicated tasks from their slot', () => {
+    expect(taskSlot(at(2), 'replicated')).toBe(2);
+    expect(taskLabel('shop_web', at(2), 'replicated')).toBe('shop_web.2');
+  });
+
+  it('gives a replicated-job task slot 0, which the API omits, rather than calling it global', () => {
+    expect(taskSlot(at(), 'replicated-job')).toBe(0);
+    expect(taskLabel('etl', at(), 'replicated-job')).toBe('etl.0');
+  });
+
+  it('gives global tasks no slot', () => {
+    expect(taskSlot(at(), 'global')).toBeUndefined();
+    expect(taskSlot(at(), 'global-job')).toBeUndefined();
+    expect(taskLabel('agent', at(), 'global')).toBe('agent');
+  });
+
+  it('falls back to the slot alone when the mode is unknown', () => {
+    expect(taskSlot(at(3), undefined)).toBe(3);
+    expect(taskSlot(at(), undefined)).toBeUndefined();
   });
 });
 

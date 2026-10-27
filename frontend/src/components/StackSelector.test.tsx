@@ -3,7 +3,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { ThemeProvider } from '../theme';
 import { StackSelector } from './StackSelector';
+import { GroupByToggle } from './GroupByToggle';
 import { STANDALONE_STACK, type StackSummary } from '../utils/stack';
+import { CONTROL_HEIGHT } from '../utils/constants';
 
 afterEach(() => cleanup());
 
@@ -24,6 +26,22 @@ function renderSelector(props: Partial<React.ComponentProps<typeof StackSelector
 }
 
 describe('StackSelector', () => {
+  it('is as tall as the Group switch next to it in the header', () => {
+    renderSelector();
+    render(
+      <ThemeProvider>
+        <GroupByToggle value="network" onChange={vi.fn()} />
+      </ThemeProvider>,
+    );
+    const stack = screen.getByRole('button', { name: 'Stack' });
+    const group = screen.getByRole('group', { name: 'Group' });
+    expect(stack.style.height).toBe(`${CONTROL_HEIGHT}px`);
+    expect(group.style.height).toBe(`${CONTROL_HEIGHT}px`);
+    // Borders inside the height, so both outer boxes match.
+    expect(stack.style.boxSizing).toBe('border-box');
+    expect(group.style.boxSizing).toBe('border-box');
+  });
+
   it('shows "All stacks" when nothing is selected', () => {
     renderSelector();
     expect(screen.getByRole('button', { name: 'Stack' }).textContent).toContain('All stacks');

@@ -77,6 +77,21 @@ describe('DetailPanelService', () => {
     expect(screen.getByText('rollback_completed — rollback done')).toBeDefined();
   });
 
+  it("shows a replicated job's slot 0, which the API omits, and no slot for global tasks", () => {
+    const job: ServiceDetail = {
+      ...detail, mode: 'replicated-job',
+      tasks: [{ id: 'j0', nodeId: 'node-a', nodeHostname: 'worker-1', state: 'complete', desiredState: 'complete' }],
+    };
+    const { unmount } = render(<ThemeProvider><DetailPanelService detail={job} statsMap={new Map()} active={false} onNavigate={vi.fn()} /></ThemeProvider>);
+    const slotCell = (screen.getByText('worker-1').closest('tr') as HTMLElement).querySelector('td')!;
+    expect(slotCell.textContent).toBe('0');
+    unmount();
+
+    const global: ServiceDetail = { ...job, mode: 'global' };
+    render(<ThemeProvider><DetailPanelService detail={global} statsMap={new Map()} active={false} onNavigate={vi.fn()} /></ThemeProvider>);
+    expect((screen.getByText('worker-1').closest('tr') as HTMLElement).querySelector('td')!.textContent).toBe('—');
+  });
+
   it('shows how many tasks a job completed', () => {
     const job: ServiceDetail = { ...detail, mode: 'replicated-job', status: 'completed', replicas: { running: 0, desired: 1, completed: 3 } };
     render(<ThemeProvider><DetailPanelService detail={job} statsMap={new Map()} active={false} onNavigate={vi.fn()} /></ThemeProvider>);

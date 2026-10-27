@@ -192,10 +192,19 @@ export function FlowCanvas({
     if (node.type === "nodeServiceCard") setHoveredServiceId(null);
   }, []);
 
-  // Ids on the canvas, so a detail click only selects what is actually drawn
+  // Ids on the canvas, so opening a panel only selects what is actually drawn
   // (a swarm node opened from the dashboard has no box in the network view).
+  // Built from the layout, so it holds in the table and dashboard views too.
   const canvasIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => { canvasIdsRef.current = new Set(nodes.map((n) => n.id)); }, [nodes]);
+
+  // Every panel opening (☰, table row, dashboard, a link inside a panel)
+  // highlights what it shows, so the panel and the graph agree. For a
+  // per-node service card that's the card: the service has no node of its
+  // own in that view.
+  const highlightOnCanvas = useCallback((canvasId: string) => {
+    if (canvasIdsRef.current.has(canvasId)) selectNodeRef.current?.(canvasId);
+  }, []);
 
   const hasVisibleNodes = effectiveGroupBy === "node" || dgNodes.some(
     (n) => n.type === "container" || n.type === "service" || n.type === "volume",
@@ -224,31 +233,14 @@ export function FlowCanvas({
     handleInfoClick,
     handleNavigate,
     closeDetail,
-  } = useDetailPanel(dgNodes, dgEdges);
-
-  // Wire info click to also select the node in the graph.
-  const handleInfoClickWithSelect = useCallback(
-    (nodeId: string) => {
-      handleInfoClick(nodeId);
-      if (canvasIdsRef.current.has(nodeId)) selectNodeRef.current?.(nodeId);
-    },
-    [handleInfoClick],
-  );
-
-  // Per-node service cards (and their task rows) open the service's panel.
-  // The service has no node of its own in that view, so the clicked card
-  // stays the selection.
-  const handleTaskInfoClick = useCallback(
-    (serviceId: string) => handleInfoClick(resolveNodeRef(dgNodes, serviceId)),
-    [dgNodes, handleInfoClick],
-  );
+  } = useDetailPanel(dgNodes, dgEdges, highlightOnCanvas);
 
   // Floating log windows. `openContainerInfo` re-opens the side panel for a
   // container (windows store the bare name; the panel expects a node id).
   const logWindows = useLogWindows();
   const openContainerInfo = useCallback(
-    (containerId: string) => handleInfoClickWithSelect(resolveNodeRef(dgNodes, `container:${containerId}`)),
-    [dgNodes, handleInfoClickWithSelect],
+    (containerId: string) => handleInfoClick(resolveNodeRef(dgNodes, `container:${containerId}`)),
+    [dgNodes, handleInfoClick],
   );
 
   // Names of the workloads in scope, used by the logs view to narrow the
@@ -268,21 +260,21 @@ export function FlowCanvas({
         const s = statsMap.get(dgNode.name);
         return {
           ...n,
-          data: { ...n.data, stats: s, onInfoClick: handleInfoClickWithSelect },
+          data: { ...n.data, stats: s, onInfoClick: handleInfoClick },
         };
       }
       if (n.type === "volumeNode") {
-        return { ...n, data: { ...n.data, onInfoClick: handleInfoClickWithSelect } };
+        return { ...n, data: { ...n.data, onInfoClick: handleInfoClick } };
       }
       if (n.type === "networkGroup") {
-        return { ...n, data: { ...n.data, onInfoClick: handleInfoClickWithSelect } };
+        return { ...n, data: { ...n.data, onInfoClick: handleInfoClick } };
       }
       // Swarm node boxes carry the node aggregate (`node:{hostname}`); task
       // cards the per-task entry reported by the node agent.
       if (n.type === "nodeGroup") {
         const d = n.data as unknown as SwarmNodeGroupData;
         const stats = d.unassigned ? undefined : statsMap.get(nodeStatsKey(d.dgNode.name));
-        return { ...n, data: { ...n.data, stats, onInfoClick: handleInfoClickWithSelect } };
+        return { ...n, data: { ...n.data, stats, onInfoClick: handleInfoClick } };
       }
       if (n.type === "nodeServiceCard") {
         const d = n.data as unknown as NodeServiceCardData;
@@ -297,19 +289,19 @@ export function FlowCanvas({
             ...n.data,
             taskStats,
             peerHover: hoveredServiceId !== null && d.serviceId === hoveredServiceId,
-            onInfoClick: handleTaskInfoClick,
+            onInfoClick: (serviceId: string) => handleInfoClick(resolveNodeRef(dgNodes, serviceId), n.id),
           },
         };
       }
       return n;
     });
-  }, [nodes, statsMap, handleInfoClickWithSelect, handleTaskInfoClick, hoveredServiceId]);
+  }, [nodes, dgNodes, statsMap, handleInfoClick, hoveredServiceId]);
 
   // Dashboard cards reference workloads as `container:{name}`; resolve those
   // to the real node (a swarm service, or a prefixed compose name).
   const handleInspectRef = useCallback(
-    (ref: string) => handleInfoClickWithSelect(resolveNodeRef(dgNodes, ref)),
-    [dgNodes, handleInfoClickWithSelect],
+    (ref: string) => handleInfoClick(resolveNodeRef(dgNodes, ref)),
+    [dgNodes, handleInfoClick],
   );
   // Every stack change (header selector or dashboard) closes the detail
   // panel: the resource it shows may be out of the new scope, and it would
@@ -599,7 +591,7 @@ export function FlowCanvas({
               statsMap={statsMap}
               matchingNodeIds={search.matchingNodeIds}
               selectedNodeId={detailNodeId}
-              onRowClick={handleInfoClickWithSelect}
+              onRowClick={handleInfoClick}
               activeTab={tableTab}
               onTabChange={setTableTab}
             />
@@ -672,9 +664,8 @@ export function FlowCanvas({
         onNodeMouseLeave={handleNodeMouseLeave}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        // Only nodes that opt in via `draggable: true` move: the per-node
-        // view's role groups. Everything else (incl. the network view) stays
-        // fixed, and dragging on a fixed node or the pane pans the canvas.
+        // The layout is fixed in both groupings: no node sets its own
+        // `draggable`, and dragging on a node or the pane pans the canvas.
         nodesDraggable={false}
         nodesConnectable={false}
         elevateNodesOnSelect={false}

@@ -4,12 +4,17 @@ import { DashboardCard } from "./DashboardCard";
 import { useSystemInfo } from "../../hooks/useSystemInfo";
 import { formatBytes } from "../../utils/format";
 
-export const HostInfoCard = memo(function HostInfoCard() {
+interface Props {
+  /** Swarm node the figures belong to (see DashboardCard). */
+  node?: string;
+}
+
+export const HostInfoCard = memo(function HostInfoCard({ node }: Props) {
   const { theme } = useTheme();
   const { data } = useSystemInfo();
 
   if (!data) {
-    return <DashboardCard title="Docker Host" loading />;
+    return <DashboardCard title="Docker Host" node={node} loading />;
   }
 
   const rows: [string, string][] = [
@@ -23,7 +28,7 @@ export const HostInfoCard = memo(function HostInfoCard() {
   ];
 
   return (
-    <DashboardCard title="Docker Host">
+    <DashboardCard title="Docker Host" node={node}>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {rows.map(([label, value]) => (
           <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

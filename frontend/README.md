@@ -21,7 +21,7 @@ src/
 │   ├── ServiceNode.tsx          # Swarm service node with mode chip and replica badge
 │   ├── SwarmNodeGroup.tsx       # Node view: one swarm node box with CPU/memory bars and service cards
 │   ├── NodeServiceCard.tsx      # Node view: service card listing its tasks on that node
-│   ├── RoleGroup.tsx            # Node view: draggable Managers / Workers group
+│   ├── RoleGroup.tsx            # Node view: Managers / Workers group
 │   ├── SwarmNodeBadges.tsx      # Role (leader), availability and state chips
 │   ├── SwarmLinkEdge.tsx        # Node view: floating control-plane and overlay-network links
 │   ├── GroupByToggle.tsx        # Network | Node graph grouping toggle
@@ -104,7 +104,7 @@ src/
 │   │   ├── LogsToolbar.tsx          # Text/regex filter, chips, stream, pause, counts
 │   │   └── LogRowMenu.tsx           # Per-row contextual filter actions
 │   └── logwindow/               # Log rendering and floating window components
-│       ├── LogStream.tsx            # Shared scroll/render/search log list (panel, windows, global view)
+│       ├── LogStream.tsx            # Shared scroll/render/search log list (panel, windows, global view); follows the tail at the bottom, holds the viewed lines still when scrolled up
 │       ├── LogWindow.tsx            # Movable, resizable, tabbed window chrome
 │       ├── LogWindowLayer.tsx       # Overlay manager + drag-to-merge/detach hit-testing
 │       └── LogDock.tsx              # Minimized-window dock strip
@@ -126,7 +126,7 @@ src/
 │   ├── useTableSort.ts             # Generic column sort with toggle
 │   ├── useTableGrouping.ts         # Group by compose/network/status/driver
 │   ├── useRowHover.ts              # Shared row hover/selected state
-│   ├── useLogs.ts                  # Log stream management (history + SSE, dedupe, buffer)
+│   ├── useLogs.ts                  # Log stream management (history + SSE, dedupe, buffer); stops appending when a scrolled-up reader would lose their lines, then catches up on demand
 │   ├── useAggregateLogs.ts         # All-container merged log stream wrapper
 │   ├── useLogFilters.ts            # Global-log filter chips + text/regex predicate
 │   ├── useLogWindows.ts            # Floating log window state controller
@@ -236,7 +236,7 @@ Backend (WebSocket) → useDockGraph → App (stack scope) → FlowCanvas
 
 8. **Pop-out log windows**: Any container's logs can open in a floating window managed by `useLogWindows`. Windows drag and resize (`useDragResize`), merge into tabs when dropped together, detach back out, and minimize into a dock — all reusing `LogStream` for rendering.
 
-9. **Detail panels**: Clicking any resource in graph or table view opens a detail panel. Container panels fetch live stats, logs, and inspect data. Network and volume panels show IPAM configuration and mount relationships. Service panels list tasks with their nodes and stream service logs; swarm node panels show role, state, capacity and the tasks placed on the node.
+9. **Detail panels**: A resource's ☰ in the graph (both groupings), or its row in the table view, opens a detail panel and highlights it; a plain click on a graph node only highlights it. Container panels fetch live stats, logs, and inspect data. Network and volume panels show IPAM configuration and mount relationships. Service panels list tasks with their nodes and stream service logs; swarm node panels show role, state, capacity and the tasks placed on the node.
 
 ### Key Design Decisions
 

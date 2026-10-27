@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTheme } from "../theme";
+import { CONTROL_HEIGHT } from "../utils/constants";
 import type { GroupBy } from "../hooks/useGroupBy";
 
 interface SegmentOption<T extends string> {
@@ -35,6 +36,8 @@ export function SegmentedToggle<T extends string>({ label, options, value, onCha
         display: "flex",
         alignItems: "center",
         flex: "0 0 auto",
+        height: CONTROL_HEIGHT,
+        boxSizing: "border-box",
         background: theme.canvasBg,
         border: `1px solid ${theme.panelBorder}`,
         borderRadius: 8,

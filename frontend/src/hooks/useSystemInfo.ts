@@ -1,6 +1,8 @@
 import { usePollingFetch } from "./usePollingFetch";
 
 export interface SystemInfo {
+  /** Host name of the daemon DockGraph reads (in a swarm, the server's node). */
+  hostname?: string;
   dockerVersion: string;
   os: string;
   arch: string;

@@ -15,6 +15,17 @@ export interface LogsResult {
   loadingMore: boolean;
   hasMore: boolean;
   loadMore: () => void;
+  /**
+   * True when the buffer no longer reaches the newest line: it was cut to
+   * make room for older lines, or the live tail filled it while the reader
+   * was scrolled up. Live lines wait until loadNewer catches up.
+   */
+  hasNewer: boolean;
+  loadingNewer: boolean;
+  /** Replaces the buffer with the newest page and resumes the live tail. */
+  loadNewer: () => void;
+  /** Tells the hook whether the reader is at the bottom, following the tail. */
+  onFollowChange: (following: boolean) => void;
 }
 
 interface LogsConfig {
@@ -58,6 +69,13 @@ function appendParam(url: string, param: string): string {
  * 1. Fetch initial page via REST (newest N lines)
  * 2. Open SSE with since=<newest_timestamp> for live tail
  * 3. On loadMore(): fetch older page via REST with before=<oldest_timestamp>
+ * 4. On loadNewer(): fetch the newest page again and reopen the live tail
+ *
+ * The buffer is always one contiguous run of lines. While the reader follows
+ * the tail, live lines push the oldest out. When it can't reach the newest
+ * line any more (older lines took the room, or the reader scrolled up and
+ * the tail would push out what they read), it is detached: live lines are
+ * held back rather than appended after a hole, until loadNewer catches up.
  */
 export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE_SIZE, bufferSize = LOG_BUFFER_SIZE, dedupeKey }: LogsConfig): LogsResult {
   const [lines, setLines] = useState<LogLine[]>([]);
@@ -65,11 +83,26 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [hasNewer, setHasNewer] = useState(false);
+  const [loadingNewer, setLoadingNewer] = useState(false);
 
   const linesRef = useRef<LogLine[]>([]);
   const sourceRef = useRef<EventSource | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
+  const loadNewerAbortRef = useRef<AbortController | null>(null);
+  // Refs, not state: read by the SSE batch flush outside React's render.
+  const detachedRef = useRef(false);
+  const followingRef = useRef(true);
+
+  const detach = useCallback(() => {
+    detachedRef.current = true;
+    setHasNewer(true);
+  }, []);
+
+  const onFollowChange = useCallback((following: boolean) => {
+    followingRef.current = following;
+  }, []);
 
   // Tears down the EventSource without triggering a state update.
   // Use inside effects to avoid the set-state-in-effect lint rule.
@@ -103,7 +136,19 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
       const newLines = batch;
       batch = [];
 
+      // A batch from a stream that was since replaced (loadNewer) is already
+      // in the page that replaced it.
+      if (sourceRef.current !== source) return;
+      // Detached, the buffer doesn't end at the newest line: these would
+      // land after a hole. loadNewer brings them back.
+      if (detachedRef.current) return;
       const buf = linesRef.current;
+      // Scrolled up with a full buffer, the oldest lines may be the ones
+      // being read: stop the tail rather than pull them away.
+      if (!followingRef.current && buf.length + newLines.length > bufferSize) {
+        detach();
+        return;
+      }
       buf.push(...newLines);
       if (buf.length > bufferSize) {
         buf.splice(0, buf.length - bufferSize);
@@ -130,7 +175,21 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
       source.close();
       sourceRef.current = null;
     };
-  }, [bufferSize]);
+  }, [bufferSize, detach]);
+
+  // Shows the newest page and opens the live tail right after its newest
+  // line, so no line is skipped between the two.
+  const showLatest = useCallback((fetched: LogLine[]) => {
+    linesRef.current = fetched;
+    setLines([...fetched]);
+    setHasMore(fetched.length >= pageSize);
+    detachedRef.current = false;
+    setHasNewer(false);
+    if (streamUrl) {
+      const newest = fetched.length > 0 ? fetched[fetched.length - 1].timestamp : undefined;
+      openSSE(newest ? appendParam(streamUrl, `since=${encodeURIComponent(newest)}`) : streamUrl);
+    }
+  }, [pageSize, streamUrl, openSSE]);
 
   // Main effect: fetch initial history, then open SSE.
   useEffect(() => {
@@ -138,7 +197,9 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
     teardownSSE();
     abortRef.current?.abort();
     loadMoreAbortRef.current?.abort();
+    loadNewerAbortRef.current?.abort();
     linesRef.current = [];
+    detachedRef.current = false;
 
     if (!historyUrl || !active) {
       // Defer state reset to avoid synchronous setState in the effect body.
@@ -147,6 +208,8 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
         setLines([]);
         setLoading(false);
         setHasMore(true);
+        setHasNewer(false);
+        setLoadingNewer(false);
       });
       return () => cancelAnimationFrame(id);
     }
@@ -163,6 +226,8 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
       setConnected(false);
       setLines([]);
       setHasMore(true);
+      setHasNewer(false);
+      setLoadingNewer(false);
       setLoading(true);
 
       const url = appendParam(historyUrl, `limit=${pageSize}`);
@@ -170,20 +235,8 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
       fetchHistory(url, abort.signal)
         .then((fetched) => {
           if (abort.signal.aborted) return;
-
-          linesRef.current = fetched;
-          setLines([...fetched]);
-          setHasMore(fetched.length >= pageSize);
+          showLatest(fetched);
           setLoading(false);
-
-          // Open SSE for live tail, starting after the newest timestamp.
-          if (streamUrl) {
-            const newest = fetched.length > 0 ? fetched[fetched.length - 1].timestamp : undefined;
-            const sseUrl = newest
-              ? appendParam(streamUrl, `since=${encodeURIComponent(newest)}`)
-              : streamUrl;
-            openSSE(sseUrl);
-          }
         })
         .catch((err) => {
           if (abort.signal.aborted) return;
@@ -201,9 +254,10 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
       cancelAnimationFrame(resetId);
       abort.abort();
       loadMoreAbortRef.current?.abort();
+      loadNewerAbortRef.current?.abort();
       teardownSSE();
     };
-  }, [historyUrl, streamUrl, active, pageSize, fetchHistory, openSSE, teardownSSE]);
+  }, [historyUrl, streamUrl, active, pageSize, fetchHistory, openSSE, showLatest, teardownSSE]);
 
   // Load older logs (scroll-up pagination).
   const loadMore = useCallback(() => {
@@ -245,11 +299,14 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
           }
         }
 
-        // Prepend older lines.
+        // Prepend older lines. Over the limit, the newest lines give way so
+        // the buffer stays one contiguous run; it no longer reaches the live
+        // tail, so detach until loadNewer.
         const buf = linesRef.current;
         linesRef.current = [...older, ...buf];
         if (linesRef.current.length > bufferSize) {
           linesRef.current = linesRef.current.slice(0, bufferSize);
+          detach();
         }
         setLines([...linesRef.current]);
         setLoadingMore(false);
@@ -259,7 +316,31 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
           setLoadingMore(false);
         }
       });
-  }, [historyUrl, loadingMore, hasMore, pageSize, bufferSize, dedupeKey, fetchHistory]);
+  }, [historyUrl, loadingMore, hasMore, pageSize, bufferSize, dedupeKey, fetchHistory, detach]);
 
-  return { lines, connected, loading, loadingMore, hasMore, loadMore };
+  // Catch up after a detach: the newest page replaces the buffer and the live
+  // tail resumes after it. Older lines are one scroll-up away again.
+  const loadNewer = useCallback(() => {
+    if (!historyUrl || loadingNewer || !detachedRef.current) return;
+
+    setLoadingNewer(true);
+    loadNewerAbortRef.current?.abort();
+    const abort = new AbortController();
+    loadNewerAbortRef.current = abort;
+
+    fetchHistory(appendParam(historyUrl, `limit=${pageSize}`), abort.signal)
+      .then((fetched) => {
+        if (abort.signal.aborted) return;
+        teardownSSE();
+        showLatest(fetched);
+        setLoadingNewer(false);
+      })
+      .catch(() => {
+        if (!abort.signal.aborted) {
+          setLoadingNewer(false);
+        }
+      });
+  }, [historyUrl, loadingNewer, pageSize, fetchHistory, showLatest, teardownSSE]);
+
+  return { lines, connected, loading, loadingMore, hasMore, loadMore, hasNewer, loadingNewer, loadNewer, onFollowChange };
 }

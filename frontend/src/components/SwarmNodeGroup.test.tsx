@@ -56,11 +56,20 @@ describe('SwarmNodeGroup', () => {
     expect(screen.getByTestId('no-agent').textContent).toContain('no agent');
   });
 
-  it('opens the node panel from the header', () => {
+  it('highlights on a header click and opens the node panel only from ☰', () => {
     const onInfoClick = vi.fn();
-    renderGroup({ onInfoClick });
+    // Stands in for React Flow's node click, which toggles the highlight.
+    const onNodeClick = vi.fn();
+    const props = { data: { dgNode: mgr, taskCount: 3, onInfoClick } } as unknown as NodeProps;
+    render(<ThemeProvider><div onClick={onNodeClick}><SwarmNodeGroup {...props} /></div></ThemeProvider>);
+
     fireEvent.click(screen.getByText('mgr'));
+    expect(onNodeClick).toHaveBeenCalledTimes(1);
+    expect(onInfoClick).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect mgr' }));
     expect(onInfoClick).toHaveBeenCalledWith('swarmnode:mgr');
+    expect(onNodeClick).toHaveBeenCalledTimes(1);
   });
 
   it('renders the Unassigned box without an inspect action', () => {
@@ -110,6 +119,13 @@ describe('RoleGroup', () => {
     expect(screen.getByTestId('role-group').getAttribute('data-role')).toBe('manager');
   });
 
+  it('is fixed in place like the network view: no grab cursor or drag hint', () => {
+    renderRole({ role: 'worker', nodeCount: 2, taskCount: 3 });
+    const group = screen.getByTestId('role-group') as HTMLElement;
+    expect(group.style.cursor).toBe('');
+    expect(group.title).toBe('Workers: 2 nodes, 3 tasks');
+  });
+
   it('uses a distinct colour per role', () => {
     renderRole({ role: 'worker', nodeCount: 1, taskCount: 1 });
     const worker = (screen.getByTestId('role-group') as HTMLElement).style.borderColor;
@@ -148,20 +164,35 @@ describe('NodeServiceCard', () => {
     expect(rows[1].textContent).toContain('no suitable node');
   });
 
+  it('labels a running replicated-job task in slot 0 by its slot, not as global', () => {
+    renderCard({ mode: 'replicated-job', tasks: [{ id: 'j0', state: 'running', desiredState: 'complete' }] });
+    const row = screen.getByTestId('task-row');
+    expect(row.textContent).toContain('.0');
+    expect(row.textContent).not.toContain('global');
+    expect(row.title).toContain('shop_web.0');
+  });
+
   it('labels global tasks and sizes the card to its rows', () => {
     renderCard({ tasks: [{ id: 'g', state: 'running', desiredState: 'running' }] });
     expect(screen.getByTestId('task-row').textContent).toContain('global');
     expect((screen.getByTestId('node-service-card') as HTMLElement).style.height).toBe(`${serviceCardHeight(1)}px`);
   });
 
-  it('opens the service from the card and from a task row', () => {
+  it('highlights on a card or task-row click and opens the service only from ☰', () => {
     const onInfoClick = vi.fn();
-    renderCard({ onInfoClick });
+    // Stands in for React Flow's node click, which toggles the highlight.
+    const onNodeClick = vi.fn();
+    const props = { data: { ...base, onInfoClick } } as unknown as NodeProps;
+    render(<ThemeProvider><div onClick={onNodeClick}><NodeServiceCard {...props} /></div></ThemeProvider>);
+
     fireEvent.click(screen.getByTestId('node-service-card'));
     fireEvent.click(screen.getAllByTestId('task-row')[1]);
-    expect(onInfoClick).toHaveBeenCalledTimes(2);
-    expect(onInfoClick).toHaveBeenNthCalledWith(1, 'service:shop_web');
-    expect(onInfoClick).toHaveBeenNthCalledWith(2, 'service:shop_web');
+    expect(onNodeClick).toHaveBeenCalledTimes(2);
+    expect(onInfoClick).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect shop_web' }));
+    expect(onInfoClick).toHaveBeenCalledWith('service:shop_web');
+    expect(onNodeClick).toHaveBeenCalledTimes(2);
   });
 
   it('outlines peers on hover and dims cards on inactive nodes', () => {

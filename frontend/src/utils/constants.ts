@@ -120,6 +120,13 @@ export const STATS_THROTTLE_CRIT = 50;
 /** Debounce delay for search input (ms). */
 export const SEARCH_DEBOUNCE_MS = 150;
 
+/**
+ * Outer height of compact toolbar controls (px): the stack selector and the
+ * segmented toggles (Group, dashboard "By"), so neighbours line up whatever
+ * their padding and font metrics.
+ */
+export const CONTROL_HEIGHT = 30;
+
 // --- Floating log windows ---
 
 /** Top header bar height (px). Windows are clamped to stay below this. */
