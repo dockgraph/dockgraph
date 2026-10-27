@@ -16,10 +16,15 @@ interface Props {
 export function DetailPanelVolume({ volume, mounts, onNavigate }: Props) {
   const { theme } = useTheme();
   const mono = monoStyle(theme.panelText);
+  // Swarm volumes are node-local: a service's volume can exist, with the
+  // same name, on several nodes. The details describe one of them.
+  const otherNodes = (volume.nodes ?? []).filter((n) => n !== volume.node);
 
   return (
     <>
       <Section title="General">
+        {volume.node && <Row label="Node" value={volume.node} mono={mono} subtext={theme.nodeSubtext} />}
+        {otherNodes.length > 0 && <Row label="Also on" value={otherNodes.join(', ')} mono={mono} subtext={theme.nodeSubtext} />}
         <Row label="Driver" value={volume.driver} mono={mono} subtext={theme.nodeSubtext} />
         <Row label="Scope" value={volume.scope} mono={mono} subtext={theme.nodeSubtext} />
         <div style={{ marginBottom: 4 }}>

@@ -101,6 +101,77 @@ func TestCollectHistory_MergeSortsAndExcludesSelf(t *testing.T) {
 	}
 }
 
+// stallingReader returns its canned bytes, then blocks until ctx ends, like
+// a service log stream waiting on a task whose node is unreachable.
+type stallingReader struct {
+	ctx  context.Context
+	data io.Reader
+}
+
+func (s *stallingReader) Read(p []byte) (int, error) {
+	if n, err := s.data.Read(p); err != io.EOF {
+		return n, err
+	}
+	<-s.ctx.Done()
+	return 0, s.ctx.Err()
+}
+
+func (s *stallingReader) Close() error { return nil }
+
+// stallingLogger stalls the sources in stall after their canned bytes.
+type stallingLogger struct {
+	byID  map[string]string
+	stall map[string]bool
+}
+
+func (m stallingLogger) ContainerLogs(ctx context.Context, id string, _ containertypes.LogsOptions) (io.ReadCloser, error) {
+	// Like the Docker client, refuse to open a stream on a finished context.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if m.stall[id] {
+		return &stallingReader{ctx: ctx, data: strings.NewReader(m.byID[id])}, nil
+	}
+	return io.NopCloser(strings.NewReader(m.byID[id])), nil
+}
+
+func TestCollectHistoryStalledSourceKeepsTheOthers(t *testing.T) {
+	old := logSourceTimeout
+	logSourceTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { logSourceTimeout = old })
+
+	lister := mockLister{summaries: []containertypes.Summary{
+		{ID: "stuck", Names: []string{"/stuck"}}, // listed first: it used to drain the shared deadline
+		{ID: "b", Names: []string{"/db"}},
+	}}
+	logger := stallingLogger{
+		byID: map[string]string{
+			"stuck": frameStr("2026-06-11T10:00:01.000000000Z stuck-line"),
+			"b":     frameStr("2026-06-11T10:00:02.000000000Z db-line"),
+		},
+		stall: map[string]bool{"stuck": true},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := time.Now()
+	lines, err := collectHistory(ctx, logScope{}, lister, logger, "", 50)
+	if err != nil {
+		t.Fatalf("collectHistory: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("took %s: a stalled source must only cost its own timeout", elapsed)
+	}
+	got := map[string]bool{}
+	for _, l := range lines {
+		got[l.Line] = true
+	}
+	// The healthy source, and what the stalled one sent before stalling.
+	if !got["db-line"] || !got["stuck-line"] {
+		t.Errorf("lines = %+v, want db-line and stuck-line", lines)
+	}
+}
+
 func TestHandleAggregateLogsHistory(t *testing.T) {
 	lister := mockLister{summaries: []containertypes.Summary{
 		{ID: "a", Names: []string{"/web"}},

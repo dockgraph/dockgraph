@@ -79,6 +79,10 @@ export interface VolumeDetail {
   usageSize: number;
   usageRefCount: number;
   status: Record<string, string>;
+  /** Swarm node these details come from (swarm mode with agents only). */
+  node?: string;
+  /** Every swarm node holding a volume of this name, sorted. */
+  nodes?: string[];
 }
 
 export interface NetworkDetail {
@@ -103,7 +107,7 @@ export interface ServiceDetail {
   id: string;
   name: string;
   stack?: string;
-  /** "running" | "degraded" | "updating" | "stopped", or "unknown" when the counts can't be read. */
+  /** "running" | "degraded" | "updating" | "stopped" | "completed", or "unknown" when the counts can't be read. */
   status: string;
   mode?: string;
   /** Null when swarm couldn't report the counts. */

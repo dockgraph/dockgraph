@@ -668,6 +668,17 @@ func TestHandleServiceInspectJobDesiredCount(t *testing.T) {
 		}
 	})
 
+	t.Run("a finished job is completed without its task list", func(t *testing.T) {
+		stub := swarmStub()
+		stub.services[2].Spec.Mode = swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{TotalCompletions: u64(3)}}
+		stub.serviceStatus = map[string]*swarm.ServiceStatus{"svc-blog": {RunningTasks: 0, DesiredTasks: 1, CompletedTasks: 3}}
+		stub.taskErr = errors.New("swarm manager unavailable")
+		status, replicas, _ := inspectReplicas(t, stub, "blog_app")
+		if status != "completed" || replicas == nil || *replicas != (collector.ReplicaCount{Running: 0, Desired: 1, Completed: 3}) {
+			t.Errorf("status %q replicas %+v, want completed 0/1 (3 completed)", status, replicas)
+		}
+	})
+
 	t.Run("unknown when swarm's counts are unavailable", func(t *testing.T) {
 		stub := swarmStub()
 		stub.services[2].Spec.Mode = swarm.ServiceMode{GlobalJob: &swarm.GlobalJob{}}

@@ -63,6 +63,14 @@ describe('STATUS_COLORS', () => {
   });
 });
 
+describe('STATUS_COLORS for swarm services', () => {
+  it('has entries for every service status the backend reports', () => {
+    for (const status of ['running', 'degraded', 'updating', 'stopped', 'completed', 'unknown']) {
+      expect(STATUS_COLORS[status]).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+});
+
 describe('STATUS_LABELS', () => {
   it('has a label for every status color', () => {
     for (const status of Object.keys(STATUS_COLORS)) {

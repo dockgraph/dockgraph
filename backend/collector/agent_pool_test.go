@@ -47,6 +47,7 @@ type fakeAgent struct {
 	nodeID     string
 	samples    []ContainerSample
 	statsCalls atomic.Int32
+	infoCalls  atomic.Int32
 }
 
 func newFakeAgent(t *testing.T, nodeID string, samples ...ContainerSample) *fakeAgent {
@@ -60,6 +61,7 @@ func newFakeAgent(t *testing.T, nodeID string, samples ...ContainerSample) *fake
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case AgentAPIPrefix + "/info":
+			a.infoCalls.Add(1)
 			_ = json.NewEncoder(w).Encode(AgentInfo{NodeID: a.nodeID, Hostname: "host-" + a.nodeID})
 		case AgentAPIPrefix + "/stats":
 			a.statsCalls.Add(1)
@@ -118,6 +120,23 @@ func TestAgentPoolSamplesSkipsLocalNode(t *testing.T) {
 	}
 }
 
+func TestAgentPoolRemoteAgentsSortedWithoutLocal(t *testing.T) {
+	local := newFakeAgent(t, "node-a")
+	c := newFakeAgent(t, "node-c")
+	b := newFakeAgent(t, "node-b")
+	p := newTestPool(&stubResolver{addrs: []string{c.addr(), local.addr(), b.addr()}}, "node-a", nil)
+	p.Refresh(context.Background())
+
+	got := p.RemoteAgents()
+	want := []RemoteAgent{
+		{Hostname: "host-node-b", BaseURL: b.srv.URL},
+		{Hostname: "host-node-c", BaseURL: c.srv.URL},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("RemoteAgents() = %v, want %v", got, want)
+	}
+}
+
 func TestAgentPoolRejectsBadToken(t *testing.T) {
 	a := newFakeAgent(t, "node-1")
 	p := NewAgentPool(AgentPoolConfig{
@@ -125,8 +144,76 @@ func TestAgentPoolRejectsBadToken(t *testing.T) {
 		Resolver: &stubResolver{addrs: []string{a.addr()}},
 	})
 	p.Refresh(context.Background())
-	if n := len(p.remoteAgents()); n != 0 {
+	if n := len(p.remoteEndpoints()); n != 0 {
 		t.Fatalf("agent with rejected token must be dropped, got %d", n)
+	}
+}
+
+func TestAgentPoolLogsTokenRejectionOnce(t *testing.T) {
+	buf := captureLog(t)
+	a, b := newFakeAgent(t, "node-1"), newFakeAgent(t, "node-2")
+	p := NewAgentPool(AgentPoolConfig{
+		Addr: "tasks.agent", Port: "7801", Token: "wrong",
+		Resolver: &stubResolver{addrs: []string{a.addr(), b.addr()}},
+	})
+	for range 3 {
+		p.Refresh(context.Background())
+	}
+
+	if !p.TokenRejected() {
+		t.Error("TokenRejected() = false after every agent answered 401")
+	}
+	if n := strings.Count(buf.String(), "rejected the token"); n != 1 {
+		t.Errorf("rejection logged %d times, want once; log:\n%s", n, buf.String())
+	}
+	if strings.Contains(buf.String(), "status 401") {
+		t.Errorf("raw per-agent 401s logged:\n%s", buf.String())
+	}
+}
+
+func TestAgentPoolTokenRejectionClears(t *testing.T) {
+	buf := captureLog(t)
+	rejecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(rejecting.Close)
+	res := &stubResolver{addrs: []string{strings.TrimPrefix(rejecting.URL, "http://")}}
+	p := newTestPool(res, "node-local", nil)
+
+	p.Refresh(context.Background())
+	if !p.TokenRejected() {
+		t.Fatal("TokenRejected() = false with a rejecting agent")
+	}
+
+	// The agent is redeployed with the right token.
+	res.set([]string{newFakeAgent(t, "node-1").addr()})
+	p.Refresh(context.Background())
+	if p.TokenRejected() {
+		t.Error("TokenRejected() = true after the agents accepted the token")
+	}
+	if !strings.Contains(buf.String(), "accept the token") {
+		t.Errorf("recovery not logged:\n%s", buf.String())
+	}
+}
+
+// Rejecting agents that vanish (stack removed) did not accept anything.
+func TestAgentPoolTokenRejectionGoneWithAgentsIsNotRecovery(t *testing.T) {
+	buf := captureLog(t)
+	rejecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(rejecting.Close)
+	res := &stubResolver{addrs: []string{strings.TrimPrefix(rejecting.URL, "http://")}}
+	p := newTestPool(res, "node-local", nil)
+	p.Refresh(context.Background())
+
+	res.set(nil)
+	p.Refresh(context.Background())
+	if p.TokenRejected() {
+		t.Error("TokenRejected() = true with no agent left")
+	}
+	if strings.Contains(buf.String(), "accept the token") {
+		t.Errorf("recovery logged although no agent accepted the token:\n%s", buf.String())
 	}
 }
 
@@ -147,20 +234,20 @@ func TestAgentPoolKeepsAgentsOnTransientDNSError(t *testing.T) {
 	res := &stubResolver{addrs: []string{a1.addr()}}
 	p := newTestPool(res, "", nil)
 	p.Refresh(context.Background())
-	if n := len(p.remoteAgents()); n != 1 {
+	if n := len(p.remoteEndpoints()); n != 1 {
 		t.Fatalf("want 1 agent, got %d", n)
 	}
 
 	res.err = &net.DNSError{Err: "i/o timeout", Name: "tasks.agent", IsTimeout: true}
 	p.Refresh(context.Background())
-	if n := len(p.remoteAgents()); n != 1 {
+	if n := len(p.remoteEndpoints()); n != 1 {
 		t.Fatalf("transient DNS error must keep known agents, got %d", n)
 	}
 
 	res.err = &net.DNSError{Err: "no such host", Name: "tasks.agent", IsNotFound: true}
 	res.addrs = nil
 	p.Refresh(context.Background())
-	if n := len(p.remoteAgents()); n != 0 {
+	if n := len(p.remoteEndpoints()); n != 0 {
 		t.Fatalf("NXDOMAIN must drop agents, got %d", n)
 	}
 }
@@ -171,12 +258,12 @@ func TestAgentPoolReresolveDropsGoneAgents(t *testing.T) {
 	res := &stubResolver{addrs: []string{a1.addr(), a2.addr()}}
 	p := newTestPool(res, "", nil)
 	p.Refresh(context.Background())
-	if n := len(p.remoteAgents()); n != 2 {
+	if n := len(p.remoteEndpoints()); n != 2 {
 		t.Fatalf("want 2 agents, got %d", n)
 	}
 	res.set([]string{a2.addr()})
 	p.Refresh(context.Background())
-	agents := p.remoteAgents()
+	agents := p.remoteEndpoints()
 	if _, ok := agents["node-2"]; len(agents) != 1 || !ok {
 		t.Fatalf("want only node-2, got %v", agents)
 	}
@@ -418,6 +505,46 @@ func TestAgentPoolKeepsIntervalWithAgents(t *testing.T) {
 	defer res.mu.Unlock()
 	if len(res.hosts) != 1 {
 		t.Errorf("resolved %d times, want 1", len(res.hosts))
+	}
+}
+
+// An agent that registers in DNS between full refreshes (a node joined) is
+// picked up on the next change check, not a whole ResolveInterval later.
+func TestAgentPoolPicksUpNewAgentBeforeInterval(t *testing.T) {
+	a, b := newFakeAgent(t, "node-1"), newFakeAgent(t, "node-2")
+	res := &stubResolver{addrs: []string{a.addr()}}
+	p := NewAgentPool(AgentPoolConfig{
+		Addr: "tasks.agent", Port: "7801", Token: testAgentToken, Resolver: res,
+		ResolveInterval: time.Hour,
+		ChangeInterval:  5 * time.Millisecond,
+	})
+	p.Start(context.Background())
+	defer p.Stop()
+
+	res.set([]string{a.addr(), b.addr()})
+	deadline := time.Now().Add(2 * time.Second)
+	for p.agentCount() != 2 {
+		if time.Now().After(deadline) {
+			t.Fatal("new agent not picked up before the hour-long resolve interval")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Change checks only resolve DNS: unchanged agents are not queried again.
+func TestAgentPoolChangeCheckSkipsUnchangedAgents(t *testing.T) {
+	a := newFakeAgent(t, "node-1")
+	p := NewAgentPool(AgentPoolConfig{
+		Addr: "tasks.agent", Port: "7801", Token: testAgentToken,
+		Resolver:        &stubResolver{addrs: []string{a.addr()}},
+		ResolveInterval: time.Hour,
+		ChangeInterval:  time.Millisecond,
+	})
+	p.Start(context.Background())
+	time.Sleep(50 * time.Millisecond)
+	p.Stop()
+	if n := a.infoCalls.Load(); n != 1 {
+		t.Errorf("/info called %d times, want 1", n)
 	}
 }
 

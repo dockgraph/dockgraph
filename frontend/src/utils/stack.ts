@@ -1,4 +1,4 @@
-import type { DGNode, DGEdge, TaskInfo } from '../types';
+import type { DGNode, DGEdge, ReplicaCount, TaskInfo } from '../types';
 import type { ContainerStatsData } from '../types/stats';
 
 /** Label Docker Compose sets on every resource of a project. */
@@ -58,6 +58,14 @@ export function showsSwarmWorkloads(nodes: DGNode[], swarm: boolean, stack: stri
 export function isServiceLive(node: DGNode): boolean {
   const running = node.service?.replicas?.running;
   return running !== undefined ? running > 0 : node.status === 'running';
+}
+
+/**
+ * Replica text of a service: running/desired, or the completed tasks once a
+ * job has finished, since swarm leaves a finished job at 0/1 or 0/0.
+ */
+export function replicaText(replicas: ReplicaCount, status?: string): string {
+  return status === 'completed' ? `${replicas.completed ?? 0} done` : `${replicas.running}/${replicas.desired}`;
 }
 
 /** Prefix of the per-swarm-node aggregate keys in the live stats map and history. */

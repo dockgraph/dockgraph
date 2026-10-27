@@ -26,6 +26,8 @@ export interface ComposeConfig {
 export interface ReplicaCount {
   running: number;
   desired: number;
+  /** Finished tasks of a job service (replicated-job, global-job). */
+  completed?: number;
 }
 
 /** A single swarm task of a service, placed on a cluster node. */

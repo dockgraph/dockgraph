@@ -22,9 +22,10 @@ import (
 
 // Service display statuses. "running" reuses StateRunning.
 const (
-	serviceStatusDegraded = "degraded"
-	serviceStatusStopped  = "stopped"
-	serviceStatusUpdating = "updating"
+	serviceStatusDegraded  = "degraded"
+	serviceStatusStopped   = "stopped"
+	serviceStatusUpdating  = "updating"
+	serviceStatusCompleted = "completed" // a job whose tasks all finished
 )
 
 // Service mode names reported in ServiceInfo.Mode.
@@ -289,7 +290,7 @@ func buildSwarmServiceNode(svc swarm.Service, sc serviceContext) (Node, []Edge) 
 		Type:    nodeTypeService,
 		Name:    name,
 		Image:   image,
-		Status:  serviceStatus(info.Replicas.Running, info.Replicas.Desired, svc.UpdateStatus),
+		Status:  ServiceStatusOf(svc, info.Replicas),
 		Ports:   servicePorts(svc.Endpoint.Ports),
 		Labels:  projectLabels(svc.Spec.Labels),
 		Stack:   stack,
@@ -428,6 +429,10 @@ func buildServiceInfo(svc swarm.Service, tasks []swarm.Task, hostnames map[strin
 	}
 
 	info.Replicas.Desired = desiredReplicas(svc, eligibleNodes)
+	if IsJobMode(svc.Spec.Mode) {
+		// Counted before the history below is trimmed for display.
+		info.Replicas.Completed = completedInCurrentRun(svc, completed)
+	}
 
 	// Keep only the most recent history.
 	completed = mostRecentTasks(completed, maxCompletedTasks)
@@ -512,21 +517,54 @@ func desiredReplicas(svc swarm.Service, eligibleNodes int) int {
 	return 0
 }
 
-// serviceStatus derives a display status from replica counts and the
-// rolling-update state: "updating" while an update or rollback is in flight,
-// "stopped" when scaled to zero, "running" when all replicas are up and
-// "degraded" otherwise.
-func serviceStatus(running, desired int, update *swarm.UpdateStatus) string {
-	if update != nil && (update.State == swarm.UpdateStateUpdating || update.State == swarm.UpdateStateRollbackStarted) {
-		return serviceStatusUpdating
+// IsJobMode reports whether a service runs to completion (replicated-job or
+// global-job) rather than continuously.
+func IsJobMode(m swarm.ServiceMode) bool {
+	return m.ReplicatedJob != nil || m.GlobalJob != nil
+}
+
+// jobFinished reports whether a job service has run all its tasks to
+// completion. Swarm keeps a finished replicated job's desired count at its
+// concurrency (0/1 once 3 of 3 completed), so its completions are compared
+// with the job's total; a finished global job drops to 0 desired.
+func jobFinished(mode swarm.ServiceMode, r ReplicaCount) bool {
+	switch {
+	case mode.ReplicatedJob != nil:
+		return r.Completed >= jobTotalCompletions(mode.ReplicatedJob)
+	case mode.GlobalJob != nil:
+		return r.Completed > 0 && r.Running == 0 && r.Desired == 0
 	}
-	if desired == 0 {
-		return serviceStatusStopped
+	return false
+}
+
+// completedInCurrentRun counts the completed tasks of a job's current run.
+// Updating a job (e.g. service update --force) runs it again under a new
+// JobIteration while the previous run's tasks stay listed; like the Docker
+// CLI, only the current iteration counts. Tasks or services without an
+// iteration (older engines) all count.
+func completedInCurrentRun(svc swarm.Service, completed []swarm.Task) int {
+	if svc.JobStatus == nil {
+		return len(completed)
 	}
-	if running >= desired {
-		return StateRunning
+	n := 0
+	for _, t := range completed {
+		if t.JobIteration == nil || t.JobIteration.Index == svc.JobStatus.JobIteration.Index {
+			n++
+		}
 	}
-	return serviceStatusDegraded
+	return n
+}
+
+// jobTotalCompletions is how many tasks a replicated job must complete. As
+// in swarm, it defaults to the job's concurrency, which defaults to 1.
+func jobTotalCompletions(job *swarm.ReplicatedJob) int {
+	switch {
+	case job.TotalCompletions != nil:
+		return int(*job.TotalCompletions)
+	case job.MaxConcurrent != nil:
+		return int(*job.MaxConcurrent)
+	}
+	return 1
 }
 
 // nodeHostnames maps swarm node IDs to their hostnames.
@@ -592,9 +630,23 @@ func SummarizeService(svc swarm.Service, tasks []swarm.Task, nodes []swarm.Node)
 }
 
 // ServiceStatusOf derives a service's display status from its replica counts
-// and rolling-update state.
+// and rolling-update state: "updating" while an update or rollback is in
+// flight, "completed" once a job has finished, "stopped" when scaled to zero,
+// "running" when all replicas are up and "degraded" otherwise.
 func ServiceStatusOf(svc swarm.Service, replicas ReplicaCount) string {
-	return serviceStatus(replicas.Running, replicas.Desired, svc.UpdateStatus)
+	if u := svc.UpdateStatus; u != nil && (u.State == swarm.UpdateStateUpdating || u.State == swarm.UpdateStateRollbackStarted) {
+		return serviceStatusUpdating
+	}
+	if jobFinished(svc.Spec.Mode, replicas) {
+		return serviceStatusCompleted
+	}
+	if replicas.Desired == 0 {
+		return serviceStatusStopped
+	}
+	if replicas.Running >= replicas.Desired {
+		return StateRunning
+	}
+	return serviceStatusDegraded
 }
 
 // ServiceStatusUnknown is the status of a service whose replica counts could

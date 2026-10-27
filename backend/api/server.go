@@ -85,7 +85,7 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 		mux.HandleFunc("GET /api/logs/history", HandleAggregateLogsHistory(docker, docker, services))
 		mux.HandleFunc("GET /api/logs", HandleAggregateLogs(docker, docker, docker, services))
 		mux.HandleFunc("GET /api/containers/{id}", remote.wrap(HandleContainerInspect(docker), docker, "", false))
-		mux.HandleFunc("GET /api/volumes/{name}", HandleVolumeInspect(docker))
+		mux.HandleFunc("GET /api/volumes/{name}", remote.inspectVolume(docker))
 		mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(docker))
 	}
 	if system != nil {

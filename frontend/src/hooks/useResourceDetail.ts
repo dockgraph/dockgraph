@@ -9,6 +9,23 @@ interface DetailResult<T> {
 const EMPTY: DetailResult<never> = { data: null, loading: false, error: null };
 
 /**
+ * Returns the `{"error": ...}` message of a failed API response, which
+ * names the cause (e.g. a swarm agent rejecting the token), or the HTTP
+ * status when the body carries none.
+ */
+async function errorMessage(res: Response): Promise<string> {
+  try {
+    const body: unknown = await res.json();
+    if (body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' && body.error) {
+      return body.error;
+    }
+  } catch {
+    // Not JSON: fall back to the status.
+  }
+  return `HTTP ${res.status}`;
+}
+
+/**
  * Generic fetch-on-change hook for Docker resource inspection endpoints.
  * Cancels in-flight requests when the URL changes or on unmount.
  *
@@ -52,8 +69,8 @@ export function useResourceDetail<T>(url: string | null): DetailResult<T> {
     abortRef.current = controller;
 
     fetch(url, { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await errorMessage(res));
         return res.json();
       })
       .then((data: T) => {

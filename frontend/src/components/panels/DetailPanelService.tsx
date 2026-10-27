@@ -93,6 +93,9 @@ export function DetailPanelService({ detail, statsMap, active, onNavigate }: Pro
           mono={mono}
           subtext={theme.nodeSubtext}
         />
+        {detail.replicas?.completed !== undefined && (
+          <Row label="Completed" value={String(detail.replicas.completed)} mono={mono} subtext={theme.nodeSubtext} />
+        )}
         {detail.mode && <Row label="Mode" value={detail.mode} mono={mono} subtext={theme.nodeSubtext} />}
         {detail.updateStatus?.state && (
           <Row
