@@ -49,7 +49,8 @@ src/
 │   │   ├── DetailPanelEnv.tsx       # Environment variables
 │   │   ├── DetailPanelLabels.tsx    # Container labels
 │   │   ├── DetailPanelNetwork.tsx   # Network interfaces and IPs
-│   │   ├── DetailPanelNetworkInfo.tsx # Network detail (IPAM, containers)
+│   │   ├── DetailPanelNetworkInfo.tsx # Network detail (IPAM, services, containers)
+│   │   ├── NetworkServiceList.tsx   # A swarm network's services cluster-wide: VIP, tasks with node and address
 │   │   ├── DetailPanelSecurity.tsx  # Security options (privileged, caps)
 │   │   ├── DetailPanelHealth.tsx    # Health check configuration and status
 │   │   ├── DetailPanelLogs.tsx      # Live log streaming

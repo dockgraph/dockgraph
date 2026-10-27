@@ -168,7 +168,7 @@ Demo stacks for swarm are in [`demo/stack-small.yml`](demo/stack-small.yml) and 
 
 ### Remote task limits
 
-- **Without agents** (no `DG_AGENT_TOKEN`), topology, replica counts and service logs still cover the whole cluster (they come from the manager's swarm API), but container stats, container inspect and container logs are only available for tasks on the server's own node.
+- **Without agents** (no `DG_AGENT_TOKEN`), topology, replica counts, service logs and the services of a network (with their tasks' addresses) still cover the whole cluster (they come from the manager's swarm API), but container stats, container inspect and container logs are only available for tasks on the server's own node.
 - **With agents**, the server resolves `tasks.agent` periodically, polls each agent for stats and proxies container inspect/logs to the node running the container. Volumes are node-local in a swarm, so a volume's detail panel is looked up on every node and names the node it describes (and any other node with a volume of the same name). A node whose agent is down or unreachable simply has no stats until it comes back.
 - Agents need the same token as the server. A mismatched token is rejected and that node's data is missing: the server logs the rejection once (and again once it is fixed), and container or volume details that cannot be reached because of it show an "agent rejected token" error rather than "not found".
 - Running the standalone image on a swarm worker is refused in `auto` mode; set `DG_MODE=agent` there (or `DG_MODE=standalone` for a local-only view).

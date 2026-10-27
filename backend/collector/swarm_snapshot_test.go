@@ -582,6 +582,32 @@ func TestServiceNetworksFallbackToVirtualIPs(t *testing.T) {
 	}
 }
 
+func TestServiceOnNetwork(t *testing.T) {
+	byID := swarm.Service{}
+	byID.Spec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{{Target: "n1"}}
+	byName := swarm.Service{}
+	byName.Spec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{{Target: "app_net"}}
+	byVIP := swarm.Service{}
+	byVIP.Endpoint.VirtualIPs = []swarm.EndpointVirtualIP{{NetworkID: "n1"}}
+	elsewhere := swarm.Service{}
+	elsewhere.Spec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{{Target: "n2"}}
+
+	for name, tc := range map[string]struct {
+		svc  swarm.Service
+		want bool
+	}{
+		"attached by network ID":   {byID, true},
+		"attached by network name": {byName, true},
+		"attached by virtual IP":   {byVIP, true},
+		"on another network":       {elsewhere, false},
+		"on no network":            {swarm.Service{}, false},
+	} {
+		if got := ServiceOnNetwork(tc.svc, "n1", "app_net"); got != tc.want {
+			t.Errorf("%s: got %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
 // --- fingerprint ---
 
 func TestTaskFingerprint(t *testing.T) {

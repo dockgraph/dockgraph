@@ -72,8 +72,10 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 		// Service logs are only aggregated in swarm mode; a standalone daemon
 		// rejects swarm API calls.
 		var services StackServiceAPI
+		var networkMembers NetworkMemberLister
 		if mode == collector.ModeSwarm {
 			services = docker
+			networkMembers = docker
 			mux.HandleFunc("GET /api/services/{id}/logs/history", HandleServiceLogsHistory(docker))
 			mux.HandleFunc("GET /api/services/{id}/logs", HandleServiceLogs(docker))
 			mux.HandleFunc("GET /api/services/{id}", HandleServiceInspect(docker, docker))
@@ -86,7 +88,7 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 		mux.HandleFunc("GET /api/logs", HandleAggregateLogs(docker, docker, docker, services))
 		mux.HandleFunc("GET /api/containers/{id}", remote.wrap(HandleContainerInspect(docker), docker, "", false))
 		mux.HandleFunc("GET /api/volumes/{name}", remote.inspectVolume(docker))
-		mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(docker))
+		mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(docker, networkMembers))
 	}
 	if system != nil {
 		mux.HandleFunc("GET /api/system/info", HandleSystemInfo(system, mode))
