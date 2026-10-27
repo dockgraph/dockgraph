@@ -10,6 +10,8 @@
 //
 //	test/swarm_cluster.sh up
 //	cd backend && go test -tags clustertest -v -timeout 60m ./clustertest/
+//
+// Set DG_CLUSTER_SOAK (e.g. 15m) to add a churn soak at the end.
 package clustertest
 
 import (
