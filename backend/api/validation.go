@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/dockgraph/dockgraph/secrets"
 )
 
@@ -23,6 +24,17 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// inspectError answers a failed Docker inspect of a `kind` resource. Only a
+// missing resource is a 404; any other error (a daemon or manager timeout)
+// says nothing about whether it exists, and must not read as "not found".
+func inspectError(w http.ResponseWriter, kind string, err error) {
+	if cerrdefs.IsNotFound(err) {
+		jsonError(w, kind+" not found", http.StatusNotFound)
+		return
+	}
+	jsonError(w, kind+" inspect failed", http.StatusBadGateway)
 }
 
 func filterEnvVars(envList []string) []map[string]string {

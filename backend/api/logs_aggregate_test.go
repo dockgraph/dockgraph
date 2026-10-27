@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -285,11 +286,13 @@ type flakyServiceLogs struct {
 	*stubDockerAPI
 	mu     sync.Mutex
 	sinces []string
+	tails  []string
 }
 
 func (f *flakyServiceLogs) ServiceLogs(ctx context.Context, _ string, opts containertypes.LogsOptions) (io.ReadCloser, error) {
 	f.mu.Lock()
 	f.sinces = append(f.sinces, opts.Since)
+	f.tails = append(f.tails, opts.Tail)
 	call := len(f.sinces)
 	f.mu.Unlock()
 	switch call {
@@ -340,9 +343,51 @@ func TestHandleAggregateLogsResumesServiceAfterStreamFailure(t *testing.T) {
 	if !strings.Contains(rec.body(), "first-line") {
 		t.Errorf("line from the stream that ended is missing; body=%q", rec.body())
 	}
-	// The reopened stream resumes just after the last line forwarded.
+	// The reopened stream resumes just after the last line forwarded...
 	if opens := flaky.opens(); len(opens) < 3 || opens[2] != "2026-06-11T10:00:01.000000001Z" {
 		t.Errorf("opens' Since = %q, want the third just after first-line", opens)
+	}
+	// ...replaying the lines logged while it was down. Without a since there
+	// is nothing to replay: only new lines.
+	flaky.mu.Lock()
+	tails := append([]string(nil), flaky.tails...)
+	flaky.mu.Unlock()
+	if len(tails) < 3 || tails[0] != "0" || tails[2] != strconv.Itoa(resumeTailLines) {
+		t.Errorf("opens' Tail = %q, want \"0\" first, then %d once resuming", tails, resumeTailLines)
+	}
+}
+
+func TestHandleAggregateLogsResumesAfterTheClientsNewestLine(t *testing.T) {
+	// The client already shows its newest line: the stream starts just after
+	// it and replays what was logged since its history fetch.
+	svc := swarm.Service{ID: "svc-api"}
+	svc.Spec.Name = "shop_api"
+	flaky := &flakyServiceLogs{stubDockerAPI: &stubDockerAPI{services: []swarm.Service{svc}}}
+	flaky.sinces = []string{""} // skip the scripted failing first open
+	flaky.tails = []string{""}
+	h := HandleAggregateLogs(mockLister{}, mockLogger{}, noEvents{}, flaky)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/logs?since=2026-06-11T10:00:00Z", nil).WithContext(ctx)
+	rec := newSyncWriter()
+	done := make(chan struct{})
+	go func() { h(rec, req); close(done) }()
+	for len(flaky.opens()) < 2 {
+		select {
+		case <-ctx.Done():
+			t.Fatal("service stream not opened")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	cancel()
+	<-done
+
+	flaky.mu.Lock()
+	defer flaky.mu.Unlock()
+	if flaky.sinces[1] != "2026-06-11T10:00:00.000000001Z" || flaky.tails[1] != strconv.Itoa(resumeTailLines) {
+		t.Errorf("first open: Since %q Tail %q, want just after the client's line with Tail %d",
+			flaky.sinces[1], flaky.tails[1], resumeTailLines)
 	}
 }
 

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	cerrdefs "github.com/containerd/errdefs"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
@@ -60,13 +59,7 @@ func HandleServiceInspect(inspector ServiceInspector, networks NetworkInspector)
 		svc, _, err := inspector.ServiceInspectWithRaw(ctx, id, swarm.ServiceInspectOptions{})
 		if err != nil {
 			log.Printf("service inspect %s: %v", id, err)
-			// Only a missing service is a 404; a manager error or timeout
-			// must not read as "the service is gone".
-			if cerrdefs.IsNotFound(err) {
-				jsonError(w, "service not found", http.StatusNotFound)
-			} else {
-				jsonError(w, "service inspect failed", http.StatusBadGateway)
-			}
+			inspectError(w, "service", err)
 			return
 		}
 

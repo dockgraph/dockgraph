@@ -131,8 +131,10 @@ func handleLogsStream(kind string, open logOpener) http.HandlerFunc {
 		}
 
 		if since := r.URL.Query().Get("since"); since != "" {
-			opts.Since = since
-			opts.Tail = "0"
+			// Resume after the client's newest line, replaying what was
+			// logged since (see resumeTailLines).
+			opts.Since = afterTimestamp(since)
+			opts.Tail = strconv.Itoa(resumeTailLines)
 		} else {
 			tail := "100"
 			if v := r.URL.Query().Get("tail"); v != "" {
@@ -193,6 +195,24 @@ func readLogLines(reader io.Reader, limit int) []logEntry {
 	}
 
 	return lines
+}
+
+// resumeTailLines bounds the backlog replayed when a log stream resumes from
+// a timestamp (?since=, or a service stream reopening). Docker's Tail "0"
+// means "only new lines" and drops Since, skipping everything logged in
+// between; a bounded tail replays it without rescanning a whole large log
+// file on every open.
+const resumeTailLines = 10000
+
+// afterTimestamp returns the position just after since: Docker's Since is
+// inclusive, and the line at since was already delivered. A value that isn't
+// an RFC 3339 timestamp (Docker also accepts unix seconds) is passed through.
+func afterTimestamp(since string) string {
+	ts, err := time.Parse(time.RFC3339Nano, since)
+	if err != nil {
+		return since
+	}
+	return ts.Add(time.Nanosecond).Format(time.RFC3339Nano)
 }
 
 // serviceHistoryTailFactor widens the per-task tail requested for service log

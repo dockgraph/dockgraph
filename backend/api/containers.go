@@ -31,7 +31,7 @@ func HandleContainerInspect(inspector ContainerInspector) http.HandlerFunc {
 		info, err := inspector.ContainerInspect(ctx, id)
 		if err != nil {
 			log.Printf("inspect %s: %v", id, err)
-			jsonError(w, "container not found", http.StatusNotFound)
+			inspectError(w, "container", err)
 			return
 		}
 

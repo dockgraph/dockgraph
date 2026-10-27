@@ -344,10 +344,12 @@ func (a *logAggregator) follow(ctx context.Context, src logSource, since string)
 		ShowStderr: true,
 		Follow:     true,
 		Timestamps: true,
-		Tail:       "0",
+		Tail:       "0", // no cursor: only new lines
 	}
 	if since != "" {
+		// Replay what was logged since the cursor (see resumeTailLines).
 		opts.Since = since
+		opts.Tail = strconv.Itoa(resumeTailLines)
 	}
 	rc, err := src.open(ctx, src.id, opts)
 	if err != nil {
@@ -415,7 +417,11 @@ func HandleAggregateLogs(lister ContainerLister, logger ContainerLogger, eventsS
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
 
-		agg := newLogAggregator(logger, r.URL.Query().Get("since"))
+		since := r.URL.Query().Get("since")
+		if since != "" {
+			since = afterTimestamp(since) // the client already shows that line
+		}
+		agg := newLogAggregator(logger, since)
 
 		// Seed followers from the currently running, in-scope containers.
 		if summaries, err := lister.ContainerList(ctx, containertypes.ListOptions{}); err == nil {

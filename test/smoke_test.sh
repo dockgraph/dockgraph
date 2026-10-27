@@ -1,5 +1,21 @@
 #!/usr/bin/env bash
+# Standalone end-to-end smoke test: builds the image (unless --skip-build),
+# runs it against the local Docker daemon on port 7801, checks the health
+# endpoint, static file serving and the WebSocket upgrade, then removes the
+# container.
+#
+# Usage: test/smoke_test.sh [--skip-build]
+#   --skip-build  reuse an existing dockgraph:test image
 set -euo pipefail
+
+SKIP_BUILD=false
+for arg in "$@"; do
+  case "$arg" in
+    --skip-build) SKIP_BUILD=true ;;
+    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
+    *) echo "unknown argument: $arg" >&2; exit 2 ;;
+  esac
+done
 
 CONTAINER_NAME="dockgraph-test"
 HOST_PORT=7801
@@ -43,11 +59,6 @@ fi
 DOCKER_SOCK="${DOCKER_SOCK:-/var/run/docker.sock}"
 
 # ── Build & run ──────────────────────────────────────────────
-
-SKIP_BUILD=false
-if [ "${1:-}" = "--skip-build" ]; then
-  SKIP_BUILD=true
-fi
 
 echo "=== DockGraph Smoke Test ==="
 

@@ -30,7 +30,7 @@ func HandleNetworkInspect(inspector NetworkInspector) http.HandlerFunc {
 		network, err := inspector.NetworkInspect(ctx, name, networktypes.InspectOptions{})
 		if err != nil {
 			log.Printf("inspect network %s: %v", name, err)
-			jsonError(w, "network not found", http.StatusNotFound)
+			inspectError(w, "network", err)
 			return
 		}
 

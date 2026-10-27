@@ -3,12 +3,12 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	networktypes "github.com/docker/docker/api/types/network"
 )
 
@@ -200,25 +200,31 @@ func TestHandleNetworkInspect_InvalidName(t *testing.T) {
 }
 
 func TestHandleNetworkInspect_DockerError(t *testing.T) {
-	stub := &stubNetworkInspector{
-		err: fmt.Errorf("network not found"),
+	// Only a missing network is a 404: a daemon timeout says nothing about
+	// whether it exists.
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+		wantMsg  string
+	}{
+		{"not found", cerrdefs.ErrNotFound.WithMessage("network nonexistent-net not found"), http.StatusNotFound, "network not found"},
+		{"daemon timeout", context.DeadlineExceeded, http.StatusBadGateway, "network inspect failed"},
 	}
-	mux := newNetworkInspectServer(stub)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := newNetworkInspectServer(&stubNetworkInspector{err: tc.err})
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/networks/nonexistent-net", nil))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/networks/nonexistent-net", nil)
-	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
-	}
-
-	var errBody map[string]any
-	if err := json.NewDecoder(w.Body).Decode(&errBody); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if errBody["error"] != "network not found" {
-		t.Errorf("error = %q, want %q", errBody["error"], "network not found")
+			var errBody map[string]any
+			if err := json.NewDecoder(w.Body).Decode(&errBody); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if w.Code != tc.wantCode || errBody["error"] != tc.wantMsg {
+				t.Errorf("got %d %q, want %d %q", w.Code, errBody["error"], tc.wantCode, tc.wantMsg)
+			}
+		})
 	}
 }
 

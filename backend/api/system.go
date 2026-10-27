@@ -52,6 +52,9 @@ func HandleSystemInfo(provider SystemInfoProvider, mode string) http.HandlerFunc
 		}
 
 		resp := map[string]any{
+			// In swarm mode, names the node this daemon (and so the host,
+			// disk and image figures) belongs to.
+			"hostname":      info.Name,
 			"dockerVersion": info.ServerVersion,
 			"os":            info.OperatingSystem,
 			"arch":          info.Architecture,
