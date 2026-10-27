@@ -119,6 +119,24 @@ export interface NetworkService {
 /** A current task of a network's service, with its addresses on the network. */
 export type NetworkTask = import('../types').TaskInfo & { addresses?: string[] };
 
+/** A swarm manager's place in the raft consensus. */
+export interface SwarmManager {
+  /** Swarm node ID; unique, unlike the name (a rejoined manager leaves a stale entry under its hostname). */
+  id: string;
+  /** Hostname, as the graph names it (`swarmnode:{name}`). */
+  name: string;
+  leader: boolean;
+  /** "reachable", "unreachable" or "unknown". */
+  reachability: string;
+  /** Raft address (host:port). */
+  addr?: string;
+}
+
+/** Response of GET /api/swarm/managers, read live from the swarm. */
+export interface SwarmManagers {
+  managers: SwarmManager[];
+}
+
 /** Response of GET /api/services/{id}: a swarm service with its tasks. */
 export interface ServiceDetail {
   id: string;

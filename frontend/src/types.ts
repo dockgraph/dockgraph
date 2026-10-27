@@ -154,6 +154,8 @@ export interface RoleGroupData {
   nodeCount: number;
   /** Number of tasks (and local containers) across those boxes. */
   taskCount: number;
+  /** Opens the group's panel; called with the group's id. */
+  onInfoClick?: (nodeId: string) => void;
 }
 
 /**

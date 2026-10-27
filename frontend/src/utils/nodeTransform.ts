@@ -117,9 +117,28 @@ export function swarmRole(n: DGNode): SwarmRole {
   return n.swarmNode?.role === 'manager' ? 'manager' : 'worker';
 }
 
+/** Title of a role's group in the per-node view: "Managers" or "Workers". */
+export function roleTitle(role: SwarmRole): string {
+  return role === 'manager' ? 'Managers' : 'Workers';
+}
+
+const ROLE_GROUP_PREFIX = 'rolegroup:';
+
 /** Id of the "Managers" / "Workers" container of the per-node view. */
 export function roleGroupId(role: SwarmRole): string {
-  return `rolegroup:${role}`;
+  return `${ROLE_GROUP_PREFIX}${role}`;
+}
+
+/** The role of a role group id, or undefined for any other id. */
+export function roleOfGroupId(id: string): SwarmRole | undefined {
+  if (!id.startsWith(ROLE_GROUP_PREFIX)) return undefined;
+  const role = id.slice(ROLE_GROUP_PREFIX.length);
+  return role === 'manager' || role === 'worker' ? role : undefined;
+}
+
+/** True for a role group id, known role or not. */
+export function isRoleGroupId(id: string): boolean {
+  return id.startsWith(ROLE_GROUP_PREFIX);
 }
 
 /** Hostname segment used in card ids for tasks without a node. */
@@ -284,6 +303,20 @@ export function toNodeGroupedFlowNodes(dgNodes: DGNode[], localNodeId?: string |
 }
 
 /**
+ * Number of tasks each swarm node's box shows (its placed tasks, plus the
+ * standalone containers in the local node's box), read from the boxes
+ * themselves so a role group's panel adds up to what the canvas shows.
+ * Keyed by swarmnode id.
+ */
+export function boxTaskCounts(dgNodes: DGNode[], localNodeId?: string | null): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const n of toNodeGroupedFlowNodes(dgNodes, localNodeId)) {
+    if (n.type === 'nodeGroup') counts.set(n.id, (n.data as unknown as SwarmNodeGroupData).taskCount);
+  }
+  return counts;
+}
+
+/**
  * Ids of the canvas nodes that show graph node `id`: the node itself when it
  * is drawn, otherwise the per-node service cards standing for it (a service
  * has no node of its own in the per-node view, one card per swarm node it
@@ -334,12 +367,16 @@ export function nodeUsage(
 ): NodeUsage {
   const cores = info?.nanoCpus ? info.nanoCpus / 1e9 : undefined;
   if (!stats) return { cores };
-  const clamp = (v: number) => Math.max(0, Math.min(100, v));
   return {
     cores,
-    cpuPercent: cores ? clamp(stats.cpuPercent / cores) : undefined,
-    memPercent: info?.memoryBytes ? clamp((stats.memUsage / info.memoryBytes) * 100) : undefined,
+    cpuPercent: cores ? clampPercent(stats.cpuPercent / cores) : undefined,
+    memPercent: info?.memoryBytes ? clampPercent((stats.memUsage / info.memoryBytes) * 100) : undefined,
   };
+}
+
+/** Keeps a usage percentage within 0-100, the range its bar can show. */
+export function clampPercent(v: number): number {
+  return Math.max(0, Math.min(100, v));
 }
 
 /** Formats a core count: "4 cores", "0.5 cores", "1 core". */

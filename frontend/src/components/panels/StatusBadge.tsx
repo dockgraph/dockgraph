@@ -1,14 +1,14 @@
 import { STATUS_COLORS, STATUS_LABELS } from '../../utils/colors';
 
-interface Props {
-  status: string;
+interface PillProps {
+  label: string;
+  color: string;
+  /** Glows the dot, for a live (running) status. */
+  glow?: boolean;
 }
 
-/** Pill badge showing a container/resource status with a coloured dot. */
-export function StatusBadge({ status }: Props) {
-  const color = STATUS_COLORS[status] ?? STATUS_COLORS.exited;
-  const running = status === 'running';
-
+/** Uppercase pill with a coloured dot, as detail panel headers show a status. */
+export function Pill({ label, color, glow = false }: PillProps) {
   return (
     <span
       style={{
@@ -26,8 +26,18 @@ export function StatusBadge({ status }: Props) {
         color,
       }}
     >
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: running ? `0 0 6px ${color}` : 'none' }} />
-      {STATUS_LABELS[status] ?? status}
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: glow ? `0 0 6px ${color}` : 'none' }} />
+      {label}
     </span>
   );
+}
+
+interface Props {
+  status: string;
+}
+
+/** Pill badge showing a container/resource status with a coloured dot. */
+export function StatusBadge({ status }: Props) {
+  const color = STATUS_COLORS[status] ?? STATUS_COLORS.exited;
+  return <Pill label={STATUS_LABELS[status] ?? status} color={color} glow={status === 'running'} />;
 }

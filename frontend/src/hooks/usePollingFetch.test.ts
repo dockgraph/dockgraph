@@ -63,6 +63,12 @@ describe('usePollingFetch', () => {
     expect(result.current.data).toBeNull();
   });
 
+  it("reports the API's error message, not just the status", async () => {
+    stubFetch({ '/a': { ok: false, status: 503, body: { error: 'the swarm has no leader' } } });
+    const { result } = renderHook(() => usePollingFetch<{ v: string }>('/a', 60_000));
+    await waitFor(() => expect(result.current.error).toBe('the swarm has no leader'));
+  });
+
   it('keeps the same URL data when a later poll fails', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = stubFetch({ '/a': { ok: true, body: { v: 'a' } } });

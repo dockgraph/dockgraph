@@ -97,6 +97,33 @@ describe('useDetailPanel viewport focus', () => {
     expect(onOpen).toHaveBeenLastCalledWith('nodesvc:wrk:shop_web');
   });
 
+  it("opens a role group's panel from the graph data alone, centred on the group", () => {
+    canvas = toNodeGroupedFlowNodes(graph, null);
+    const fetchMock = vi.fn(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(() => useDetailPanel(graph, []));
+    act(() => result.current.handleInfoClick('rolegroup:worker'));
+    expect(result.current.variant).toEqual({ kind: 'rolegroup', role: 'worker' });
+    expect(result.current.loading).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fittedIds()).toEqual(['rolegroup:worker']);
+  });
+
+  it("opens a node linked from its role group's panel, centred on that node", () => {
+    canvas = toNodeGroupedFlowNodes(graph, null);
+    const { result } = renderHook(() => useDetailPanel(graph, []));
+    act(() => result.current.handleInfoClick('rolegroup:worker'));
+    act(() => result.current.handleNavigate('swarmnode:wrk'));
+    expect(result.current.variant).toEqual({ kind: 'swarmnode', node: wrk });
+    expect(fittedIds()).toEqual(['swarmnode:wrk']);
+  });
+
+  it('opens nothing for an unknown role', () => {
+    const { result } = renderHook(() => useDetailPanel(graph, []));
+    act(() => result.current.handleInfoClick('rolegroup:observer'));
+    expect(result.current.variant).toEqual({ kind: 'none' });
+  });
+
   it('leaves the view alone for a resource the canvas does not show', () => {
     canvas = toNodeGroupedFlowNodes(graph, null);
     const { result } = renderHook(() => useDetailPanel(graph, []));
