@@ -390,3 +390,24 @@ func TestHubSessionSweepKeepsValidClients(t *testing.T) {
 		t.Error("valid clients should not be removed")
 	}
 }
+
+// Heartbeats keep flowing on an otherwise idle connection, so a client can
+// tell a quiet server from one that vanished without closing the socket.
+func TestHubSendsHeartbeats(t *testing.T) {
+	hub := NewHub()
+	hub.HeartbeatPeriod = 50 * time.Millisecond
+	server, ws := dialHub(t, hub)
+	defer server.Close()
+	defer ws.Close()
+
+	for i := range 3 {
+		ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+		var msg collector.WireMessage
+		if err := ws.ReadJSON(&msg); err != nil {
+			t.Fatalf("heartbeat %d: %v", i, err)
+		}
+		if msg.Type != collector.MsgTypeHeartbeat || msg.Version != collector.ProtocolVersion || msg.Data != nil {
+			t.Fatalf("heartbeat %d: got %+v", i, msg)
+		}
+	}
+}

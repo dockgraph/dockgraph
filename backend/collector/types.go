@@ -188,6 +188,12 @@ func NewSnapshotMessage(s GraphSnapshot) WireMessage {
 	return WireMessage{Type: MsgTypeSnapshot, Version: ProtocolVersion, Data: s}
 }
 
+// NewHeartbeatMessage builds the payload-less message the server sends
+// periodically so a client can tell a silent connection from a dead one.
+func NewHeartbeatMessage() WireMessage {
+	return WireMessage{Type: MsgTypeHeartbeat, Version: ProtocolVersion}
+}
+
 // NewDeltaMessage wraps an incremental update for WebSocket transmission.
 func NewDeltaMessage(d DeltaUpdate) WireMessage {
 	return WireMessage{Type: MsgTypeDelta, Version: ProtocolVersion, Data: d}
