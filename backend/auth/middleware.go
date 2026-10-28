@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// assetsPathPrefix is where the built bundle's hashed files are served.
+const assetsPathPrefix = "/assets/"
+
 type contextKey string
 
 const claimsContextKey contextKey = "auth_claims"
@@ -84,6 +87,13 @@ func isPublicPath(method, path string) bool {
 		return true
 	}
 	if method == http.MethodGet && path == LoginScriptPath {
+		return true
+	}
+	// The built bundle ships in the public image, so its files hold nothing
+	// to protect. Served without a session, they also reach a replica
+	// fetching one from its peers during a rolling update (see
+	// api.WithAssetPeers) with no cookie to forward.
+	if method == http.MethodGet && strings.HasPrefix(path, assetsPathPrefix) {
 		return true
 	}
 	return false

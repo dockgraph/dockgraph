@@ -189,3 +189,15 @@ func TestMiddlewareRejectsRotatedPassword(t *testing.T) {
 		}
 	}
 }
+
+func TestMiddlewareServesAssetsWithoutSession(t *testing.T) {
+	svc, _ := testServiceWithKey(t)
+	h := svc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	for path, want := range map[string]int{"/assets/app.js": http.StatusOK, "/api/containers": http.StatusUnauthorized} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != want {
+			t.Errorf("GET %s without a session: %d, want %d", path, w.Code, want)
+		}
+	}
+}

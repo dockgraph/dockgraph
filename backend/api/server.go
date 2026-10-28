@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/dockgraph/dockgraph/auth"
 	"github.com/dockgraph/dockgraph/collector"
@@ -42,6 +41,7 @@ type ServerOption func(*serverOptions)
 
 type serverOptions struct {
 	agentProxy   *AgentProxy
+	assetPeers   PeerFinder
 	allowedHosts *HostAllowlist
 	proxies      auth.TrustedProxies
 }
@@ -141,7 +141,7 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 	if eventHistory != nil {
 		mux.HandleFunc("GET /api/events/recent", HandleRecentEvents(eventHistory))
 	}
-	mux.HandleFunc("/", spaHandler(staticFS))
+	mux.HandleFunc("/", spaHandler(staticFS, o.assetPeers))
 
 	var handler http.Handler = mux
 	if authService != nil {
@@ -175,23 +175,4 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-XSS-Protection", "0")
 		next.ServeHTTP(w, r)
 	})
-}
-
-// spaHandler serves static files and falls back to index.html for client-side routing.
-func spaHandler(fsys fs.FS) http.HandlerFunc {
-	fileServer := http.FileServerFS(fsys)
-
-	return func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if path == "/" {
-			path = indexHTMLPath
-		} else {
-			path = strings.TrimPrefix(path, "/")
-		}
-
-		if _, err := fs.Stat(fsys, path); err != nil {
-			r.URL.Path = "/"
-		}
-		fileServer.ServeHTTP(w, r)
-	}
 }

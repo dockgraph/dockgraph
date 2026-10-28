@@ -37,6 +37,10 @@ type Config struct {
 	// AgentAddr is the DNS name resolving to every agent task
 	// (DG_AGENT_ADDR, default "tasks.agent"), optionally with ":port".
 	AgentAddr string
+	// PeersAddr is the DNS name resolving to every server replica
+	// (DG_PEERS_ADDR, default "tasks.server"). Replicas fetch static assets
+	// missing from their own build from each other during a rolling update.
+	PeersAddr string
 	// AgentKey is the server's private key, which signs every request to an
 	// agent (DG_AGENT_KEY or the file named by DG_AGENT_KEY_FILE, a Docker
 	// secret); nil when unset. Agents must never be given it.
@@ -90,6 +94,7 @@ func LoadConfig() Config {
 		Mode:              collector.ModeAuto,
 		SwarmPollInterval: 5 * time.Second,
 		AgentPort:         defaultAgentPort,
+		PeersAddr:         "tasks.server",
 		AgentAddr:         "tasks.agent",
 	}
 
@@ -100,6 +105,9 @@ func LoadConfig() Config {
 	cfg.AgentPort = parsePort("DG_AGENT_PORT", cfg.AgentPort)
 	if v := strings.TrimSpace(os.Getenv("DG_AGENT_ADDR")); v != "" {
 		cfg.AgentAddr = v
+	}
+	if v := strings.TrimSpace(os.Getenv("DG_PEERS_ADDR")); v != "" {
+		cfg.PeersAddr = v
 	}
 	cfg.AgentToken = loadAgentToken()
 	// A broken key must never silently fall back to the token or to no
