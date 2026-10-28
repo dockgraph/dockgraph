@@ -168,7 +168,7 @@ func TestCredentialGeneration(t *testing.T) {
 	if g == CredentialGeneration(other, "pw") {
 		t.Error("generation does not depend on the signing key")
 	}
-	if strings.Contains(g, "pw") {
-		t.Error("generation leaks the password")
+	if got := CredentialGeneration([]byte(strings.Repeat("k", 32)), "pw"); got != "IB4oB0peXG24AHaFiv9Cow" {
+		t.Errorf("generation = %q, want %q", got, "IB4oB0peXG24AHaFiv9Cow")
 	}
 }
