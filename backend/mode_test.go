@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,6 +100,30 @@ func TestDetectModeInfoFailure(t *testing.T) {
 			}
 			if *calls != fastRetry.attempts {
 				t.Errorf("calls %d, want %d", *calls, fastRetry.attempts)
+			}
+		})
+	}
+}
+
+func TestDetectModeInfoFailureNamesTheFix(t *testing.T) {
+	// Behind a socket proxy that blocks /info, auto can't pick a mode, but
+	// standalone doesn't need it: say so. Explicit swarm genuinely needs it.
+	tests := []struct {
+		requested string
+		wantHint  bool
+	}{
+		{"auto", true},
+		{"swarm", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.requested, func(t *testing.T) {
+			info, _ := flakyInfo(fastRetry.attempts)
+			_, _, _, err := detectMode(context.Background(), tt.requested, info, fastRetry)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if got := strings.Contains(err.Error(), "set DG_MODE=standalone"); got != tt.wantHint {
+				t.Errorf("hint in %q = %v, want %v", err, got, tt.wantHint)
 			}
 		})
 	}

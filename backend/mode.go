@@ -73,7 +73,14 @@ func detectMode(ctx context.Context, requested string, info func(context.Context
 			log.Printf("WARN  failed to query docker info: %v", err)
 			return requested, swarm.Info{}, "", nil
 		}
-		return "", swarm.Info{}, "", fmt.Errorf("query docker info (needed for DG_MODE=%s): %w", requested, err)
+		// A socket proxy may block /info while allowing everything
+		// standalone needs, so auto names the way out. Explicit swarm
+		// mode really needs it.
+		hint := ""
+		if requested == collector.ModeAuto {
+			hint = "; set DG_MODE=standalone to start without it"
+		}
+		return "", swarm.Info{}, "", fmt.Errorf("query docker info (needed for DG_MODE=%s%s): %w", requested, hint, err)
 	}
 	mode, err := resolveMode(requested, raw.Swarm)
 	if err != nil {
