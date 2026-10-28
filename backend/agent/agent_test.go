@@ -14,9 +14,11 @@ import (
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	systemtypes "github.com/docker/docker/api/types/system"
+	volumetypes "github.com/docker/docker/api/types/volume"
 	"github.com/dockgraph/dockgraph/collector"
 )
 
@@ -60,7 +62,7 @@ func (s *stubDocker) ContainerStats(context.Context, string, bool) (containertyp
 
 func (s *stubDocker) ContainerInspect(_ context.Context, id string) (containertypes.InspectResponse, error) {
 	if id != "shop_web.1.t1" {
-		return containertypes.InspectResponse{}, errors.New("not found")
+		return containertypes.InspectResponse{}, cerrdefs.ErrNotFound.WithMessage("No such container: " + id)
 	}
 	return containertypes.InspectResponse{
 		ContainerJSONBase: &containertypes.ContainerJSONBase{
@@ -71,6 +73,13 @@ func (s *stubDocker) ContainerInspect(_ context.Context, id string) (containerty
 		Config:          &containertypes.Config{Image: "nginx", Env: []string{"DB_PASSWORD=hunter2", "PORT=80"}},
 		NetworkSettings: &containertypes.NetworkSettings{},
 	}, nil
+}
+
+func (s *stubDocker) VolumeInspect(_ context.Context, name string) (volumetypes.Volume, error) {
+	if name != "shop_data" {
+		return volumetypes.Volume{}, cerrdefs.ErrNotFound.WithMessage("get " + name + ": no such volume")
+	}
+	return volumetypes.Volume{Name: "shop_data", Driver: "local", Scope: "local"}, nil
 }
 
 func (s *stubDocker) ContainerLogs(context.Context, string, containertypes.LogsOptions) (io.ReadCloser, error) {
@@ -210,6 +219,23 @@ func TestContainerInspectMasksAndValidates(t *testing.T) {
 	}
 	if resp := get(t, ts.URL+collector.AgentAPIPrefix+"/containers/missing", token); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("missing: status %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestVolumeInspect(t *testing.T) {
+	_, ts := newTestServer(t, &stubDocker{})
+	url := ts.URL + collector.AgentAPIPrefix + "/volumes/"
+
+	resp := get(t, url+"shop_data", token)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"name":"shop_data"`) {
+		t.Fatalf("status %d: %s", resp.StatusCode, body)
+	}
+	if resp := get(t, url+"missing", token); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("missing: status %d, want 404", resp.StatusCode)
+	}
+	if resp := get(t, url+"shop_data", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("no token: status %d, want 401", resp.StatusCode)
 	}
 }
 

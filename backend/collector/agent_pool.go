@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -38,6 +39,7 @@ type AgentStats struct {
 // Agent pool defaults.
 const (
 	defaultAgentResolveInterval = 30 * time.Second
+	defaultAgentChangeInterval  = 5 * time.Second
 	// agentRetryInitial is the first retry delay while no agent is known (e.g.
 	// the server started before the agent tasks registered in DNS). It
 	// doubles up to ResolveInterval.
@@ -48,6 +50,9 @@ const (
 	// maxAgentResponseBytes bounds a decoded agent response.
 	maxAgentResponseBytes = 16 << 20
 )
+
+// errAgentUnauthorized reports an agent that rejected the server's token.
+var errAgentUnauthorized = errors.New("agent rejected the token")
 
 // HostResolver resolves a DNS name to addresses; *net.Resolver satisfies it.
 type HostResolver interface {
@@ -82,6 +87,10 @@ type AgentPoolConfig struct {
 	Client *http.Client
 	// ResolveInterval defaults to 30s.
 	ResolveInterval time.Duration
+	// ChangeInterval is how often, between full refreshes, the agent DNS
+	// name is re-resolved to pick up agents that came or went (e.g. a node
+	// joined). Defaults to 5s.
+	ChangeInterval time.Duration
 	// RequestTimeout bounds each /info and /stats call (default 5s).
 	RequestTimeout time.Duration
 }
@@ -99,6 +108,9 @@ type AgentPool struct {
 
 	mu     sync.RWMutex
 	agents map[string]agentEndpoint // nodeID → agent
+	// resolved holds the addresses the agent DNS name resolved to at the
+	// last refresh, to detect agents that came or went in between.
+	resolved []string
 	// owners maps the container IDs seen in the last remote stats poll to
 	// the node that reported them.
 	owners map[string]string
@@ -114,6 +126,7 @@ type AgentPool struct {
 	reporting []string
 
 	lastCount int           // agents found by the previous refresh; -1 before the first
+	rejected  int           // agents that rejected the token at the last refresh
 	retryMin  time.Duration // first retry delay while no agent is known
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
@@ -135,6 +148,9 @@ func NewAgentPool(cfg AgentPoolConfig) *AgentPool {
 	if cfg.ResolveInterval <= 0 {
 		cfg.ResolveInterval = defaultAgentResolveInterval
 	}
+	if cfg.ChangeInterval <= 0 {
+		cfg.ChangeInterval = defaultAgentChangeInterval
+	}
 	return &AgentPool{
 		cfg:        cfg,
 		agents:     make(map[string]agentEndpoint),
@@ -149,7 +165,9 @@ func NewAgentPool(cfg AgentPoolConfig) *AgentPool {
 // Start resolves agents immediately, then every ResolveInterval until ctx is
 // cancelled or Stop is called. While no agent is known it retries sooner,
 // from retryMin doubling up to ResolveInterval: the server often starts
-// before the global agent tasks are registered in DNS.
+// before the global agent tasks are registered in DNS. In between, the DNS
+// name is checked every ChangeInterval, and an agent that came or went
+// (e.g. a node joined) triggers a refresh at once.
 func (p *AgentPool) Start(ctx context.Context) {
 	ctx, p.cancel = context.WithCancel(ctx)
 	p.Refresh(ctx)
@@ -165,16 +183,34 @@ func (p *AgentPool) Start(ctx context.Context) {
 				delay = retry
 				retry *= 2
 			}
-			timer := time.NewTimer(delay)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
+			if !p.waitForRefresh(ctx, delay) {
 				return
-			case <-timer.C:
-				p.Refresh(ctx)
 			}
+			p.Refresh(ctx)
 		}
 	}()
+}
+
+// waitForRefresh waits until delay has passed or the agents' DNS answer
+// changes, checking it every ChangeInterval. It returns false when ctx is
+// cancelled.
+func (p *AgentPool) waitForRefresh(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	check := time.NewTicker(p.cfg.ChangeInterval)
+	defer check.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-timer.C:
+			return true
+		case <-check.C:
+			if p.agentsChanged(ctx) {
+				return true
+			}
+		}
+	}
 }
 
 // agentCount returns how many agents the last refresh found.
@@ -195,14 +231,7 @@ func (p *AgentPool) Stop() {
 // Refresh re-resolves the agent DNS name and queries every address's /info
 // to map nodes to agents. Unreachable agents are dropped until they answer.
 func (p *AgentPool) Refresh(ctx context.Context) {
-	host, port := p.cfg.Addr, p.cfg.Port
-	if h, pt, err := net.SplitHostPort(p.cfg.Addr); err == nil {
-		host, port = h, pt
-	}
-
-	rctx, cancel := context.WithTimeout(ctx, agentResolveTimeout)
-	ips, err := p.cfg.Resolver.LookupHost(rctx, host)
-	cancel()
+	host, addrs, err := p.resolve(ctx)
 	if err != nil && ctx.Err() != nil {
 		return
 	}
@@ -210,21 +239,12 @@ func (p *AgentPool) Refresh(ctx context.Context) {
 	// known agent until the next refresh; only an authoritative "no such
 	// host" (no agent task running) empties the pool.
 	if err != nil && !isDNSNotFound(err) {
-		log.Printf("agents: resolving %s: %v; keeping %d known agent(s)", host, err, len(p.remoteAgents()))
+		log.Printf("agents: resolving %s: %v; keeping %d known agent(s)", host, err, len(p.remoteEndpoints()))
 		return
 	}
 
-	addrs := make([]string, 0, len(ips))
-	for _, ip := range ips {
-		if _, _, splitErr := net.SplitHostPort(ip); splitErr == nil {
-			addrs = append(addrs, ip)
-		} else {
-			addrs = append(addrs, net.JoinHostPort(ip, port))
-		}
-	}
-	sort.Strings(addrs)
-
 	infos := make([]*AgentInfo, len(addrs))
+	unauthorized := make([]bool, len(addrs))
 	var wg sync.WaitGroup
 	for i, addr := range addrs {
 		wg.Add(1)
@@ -232,7 +252,13 @@ func (p *AgentPool) Refresh(ctx context.Context) {
 			defer wg.Done()
 			var info AgentInfo
 			if getErr := p.getJSON(ctx, addr, "/info", &info); getErr != nil {
-				log.Printf("agents: %s /info: %v", addr, getErr)
+				// Rejections are summarised once below rather than logged
+				// per agent on every refresh.
+				if errors.Is(getErr, errAgentUnauthorized) {
+					unauthorized[i] = true
+				} else {
+					log.Printf("agents: %s /info: %v", addr, getErr)
+				}
 				return
 			}
 			if info.NodeID == "" {
@@ -257,6 +283,7 @@ func (p *AgentPool) Refresh(ctx context.Context) {
 
 	p.mu.Lock()
 	p.agents = agents
+	p.resolved = addrs
 	changed := len(agents) != p.lastCount
 	p.lastCount = len(agents)
 	p.mu.Unlock()
@@ -276,6 +303,81 @@ func (p *AgentPool) Refresh(ctx context.Context) {
 			log.Printf("agents: %d via %s", len(agents), host)
 		}
 	}
+
+	rejected := 0
+	for _, u := range unauthorized {
+		if u {
+			rejected++
+		}
+	}
+	p.recordRejections(host, rejected, len(agents))
+}
+
+// recordRejections stores how many agents rejected the token and logs when
+// that number changes: a mismatched token hides every container on those
+// nodes, so it must be named plainly, but only once. Recovery is only
+// announced when agents actually accepted the token, not when the rejecting
+// ones merely went away.
+func (p *AgentPool) recordRejections(host string, rejected, accepted int) {
+	p.mu.Lock()
+	prev := p.rejected
+	p.rejected = rejected
+	p.mu.Unlock()
+
+	switch {
+	case rejected == prev:
+	case rejected > 0:
+		log.Printf("agents: %d agent(s) via %s rejected the token; check that DG_AGENT_TOKEN matches on the server and every agent", rejected, host)
+	case accepted > 0:
+		log.Printf("agents: all agents via %s accept the token again", host)
+	}
+}
+
+// TokenRejected reports whether an agent rejected the token at the last
+// refresh. Containers on its node can then not be reached, which callers
+// should report as a misconfiguration rather than as missing containers.
+func (p *AgentPool) TokenRejected() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.rejected > 0
+}
+
+// resolve looks the agent DNS name up and returns the host it resolved and
+// the agent addresses (host:port), sorted. A resolved entry that already
+// carries a port is kept as is.
+func (p *AgentPool) resolve(ctx context.Context) (string, []string, error) {
+	host, port := p.cfg.Addr, p.cfg.Port
+	if h, pt, err := net.SplitHostPort(p.cfg.Addr); err == nil {
+		host, port = h, pt
+	}
+
+	rctx, cancel := context.WithTimeout(ctx, agentResolveTimeout)
+	ips, err := p.cfg.Resolver.LookupHost(rctx, host)
+	cancel()
+
+	addrs := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		if _, _, splitErr := net.SplitHostPort(ip); splitErr == nil {
+			addrs = append(addrs, ip)
+		} else {
+			addrs = append(addrs, net.JoinHostPort(ip, port))
+		}
+	}
+	sort.Strings(addrs)
+	return host, addrs, err
+}
+
+// agentsChanged reports whether the agent DNS name now resolves to other
+// addresses than at the last refresh: an agent task started or stopped. A
+// failed lookup reports no change; the next full refresh deals with it.
+func (p *AgentPool) agentsChanged(ctx context.Context) bool {
+	_, addrs, err := p.resolve(ctx)
+	if err != nil && !isDNSNotFound(err) {
+		return false
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return !slices.Equal(addrs, p.resolved)
 }
 
 // isDNSNotFound reports whether err is an authoritative "host not found".
@@ -289,8 +391,8 @@ func isDNSNotFound(err error) bool {
 	return true
 }
 
-// remoteAgents returns the discovered agents except the local node's.
-func (p *AgentPool) remoteAgents() map[string]agentEndpoint {
+// remoteEndpoints returns the discovered agents except the local node's.
+func (p *AgentPool) remoteEndpoints() map[string]agentEndpoint {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	out := make(map[string]agentEndpoint, len(p.agents))
@@ -302,12 +404,37 @@ func (p *AgentPool) remoteAgents() map[string]agentEndpoint {
 	return out
 }
 
+// RemoteAgent is a discovered agent on another swarm node.
+type RemoteAgent struct {
+	Hostname string
+	BaseURL  string // http://host:port
+}
+
+// RemoteAgents returns the agents on other nodes, sorted by hostname, for
+// lookups that must ask every node (e.g. node-local volumes).
+func (p *AgentPool) RemoteAgents() []RemoteAgent {
+	endpoints := p.remoteEndpoints()
+	out := make([]RemoteAgent, 0, len(endpoints))
+	for _, a := range endpoints {
+		out = append(out, RemoteAgent{Hostname: a.hostname, BaseURL: "http://" + a.addr})
+	}
+	// Hostnames can repeat (see buildSwarmNodeNodes); the URL keeps the
+	// order deterministic.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Hostname != out[j].Hostname {
+			return out[i].Hostname < out[j].Hostname
+		}
+		return out[i].BaseURL < out[j].BaseURL
+	})
+	return out
+}
+
 // Samples polls /stats on every remote agent concurrently and returns their
 // samples, each stamped with the agent's node ID and hostname. Agents that
 // fail or time out are skipped for this round. It also
 // records which node owns each sampled container for LocateContainer.
 func (p *AgentPool) Samples(ctx context.Context) []ContainerSample {
-	agents := p.remoteAgents()
+	agents := p.remoteEndpoints()
 	if len(agents) == 0 {
 		p.mu.Lock()
 		p.owners = make(map[string]string)
@@ -525,6 +652,9 @@ func (p *AgentPool) getJSON(ctx context.Context, addr, path string, out any) err
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return errAgentUnauthorized
+		}
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, maxAgentResponseBytes)).Decode(out)

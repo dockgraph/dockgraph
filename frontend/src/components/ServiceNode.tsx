@@ -6,9 +6,9 @@ import { InspectButton } from './InspectButton';
 import { StatsMini } from './StatsMini';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
-import { ghostBorder, railColor } from '../utils/nodeStyles';
+import { ghostBorder, railColor, NODE_NAME_FONT, REPLICA_BADGE_FONT } from '../utils/nodeStyles';
 import { CONTAINER_NODE_HEIGHT, INACTIVE_OPACITY, zoomSelector } from '../utils/constants';
-import { isServiceLive } from '../utils/stack';
+import { isServiceLive, replicaText } from '../utils/stack';
 import type { ServiceNodeData } from '../types';
 
 const ellipsis: React.CSSProperties = {
@@ -67,11 +67,11 @@ export const ServiceNode = memo(function ServiceNode({ data }: NodeProps) {
   const replicaBadge = replicas && (
     <span
       data-testid="replicas-badge"
-      title={`${replicas.running} of ${replicas.desired} replicas running — ${STATUS_LABELS[status] ?? status}`}
+      title={`${status === 'completed'
+        ? `${replicas.completed ?? 0} tasks completed`
+        : `${replicas.running} of ${replicas.desired} replicas running`} — ${STATUS_LABELS[status] ?? status}`}
       style={{
-        fontFamily: 'var(--dg-font-mono)',
-        fontSize: 10,
-        fontWeight: 600,
+        ...REPLICA_BADGE_FONT,
         lineHeight: '14px',
         padding: '0 5px',
         borderRadius: 4,
@@ -81,7 +81,7 @@ export const ServiceNode = memo(function ServiceNode({ data }: NodeProps) {
         whiteSpace: 'nowrap',
       }}
     >
-      {replicas.running}/{replicas.desired}
+      {replicaText(replicas, status)}
     </span>
   );
 
@@ -107,9 +107,7 @@ export const ServiceNode = memo(function ServiceNode({ data }: NodeProps) {
         <span
           style={{
             ...ellipsis,
-            fontSize: 12.5,
-            fontWeight: 600,
-            fontFamily: 'var(--dg-font-mono)',
+            ...NODE_NAME_FONT,
             letterSpacing: '-0.01em',
             color: theme.nodeText,
             minWidth: 0,

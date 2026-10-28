@@ -179,6 +179,22 @@ describe('NetworkGroup', () => {
     const style = (container.firstChild as HTMLElement).style;
     expect(style.border).toContain('solid');
   });
+
+  it('highlights on a name click and opens the network panel only from ☰', () => {
+    const onInfoClick = vi.fn();
+    // Stands in for React Flow's node click, which toggles the highlight.
+    const onNodeClick = vi.fn();
+    const data = { dgNode: { id: 'network:backend', name: 'backend', type: 'network' }, onInfoClick };
+    render(<div onClick={onNodeClick}><NetworkGroup id="network:backend" data={data} type="networkGroup" /></div>);
+
+    fireEvent.click(screen.getByText('backend'));
+    expect(onNodeClick).toHaveBeenCalledTimes(1);
+    expect(onInfoClick).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect backend' }));
+    expect(onInfoClick).toHaveBeenCalledWith('network:backend');
+    expect(onNodeClick).toHaveBeenCalledTimes(1);
+  });
 });
 
 // --- StatusIndicator ---

@@ -7,6 +7,11 @@ interface Props {
   children?: ReactNode;
   /** Render a small badge/count next to the title. */
   badge?: ReactNode;
+  /**
+   * Swarm node the card's figures come from, for cards that read the
+   * server's own daemon rather than the whole cluster.
+   */
+  node?: string;
   /** Show a centered loading indicator instead of children. */
   loading?: boolean;
   /** Show a centered empty-state message instead of children. */
@@ -41,6 +46,13 @@ const styles = (theme: Theme) => ({
     margin: 0,
     lineHeight: 1,
   },
+  node: {
+    display: "block",
+    marginTop: 4,
+    fontSize: 10,
+    lineHeight: 1,
+    color: theme.nodeSubtext,
+  },
   body: {
     padding: 14,
     flex: 1,
@@ -48,7 +60,7 @@ const styles = (theme: Theme) => ({
   },
 });
 
-export const DashboardCard = memo(function DashboardCard({ title, badge, children, loading, emptyMessage }: Props) {
+export const DashboardCard = memo(function DashboardCard({ title, badge, node, children, loading, emptyMessage }: Props) {
   const { theme } = useTheme();
   const s = styles(theme);
 
@@ -57,7 +69,14 @@ export const DashboardCard = memo(function DashboardCard({ title, badge, childre
   return (
     <div style={s.card}>
       <div style={s.header}>
-        <p style={s.title}>{title}</p>
+        <div style={{ minWidth: 0 }}>
+          <p style={s.title}>{title}</p>
+          {node && (
+            <span style={s.node} title="Only the node running DockGraph, not the whole swarm">
+              on <span style={{ fontFamily: "var(--dg-font-mono)", color: theme.nodeText }}>{node}</span>
+            </span>
+          )}
+        </div>
         {badge}
       </div>
       <div style={s.body}>

@@ -26,6 +26,8 @@ export interface ComposeConfig {
 export interface ReplicaCount {
   running: number;
   desired: number;
+  /** Finished tasks of a job service (replicated-job, global-job). */
+  completed?: number;
 }
 
 /** A single swarm task of a service, placed on a cluster node. */
@@ -152,6 +154,8 @@ export interface RoleGroupData {
   nodeCount: number;
   /** Number of tasks (and local containers) across those boxes. */
   taskCount: number;
+  /** Opens the group's panel; called with the group's id. */
+  onInfoClick?: (nodeId: string) => void;
 }
 
 /**
@@ -192,6 +196,8 @@ export interface NodeServiceCardData {
   serviceId: string;
   serviceName: string;
   stack?: string;
+  /** Service mode ("replicated", "global", ...), which decides how tasks are labelled. */
+  mode?: string;
   /** The service's running-desired tasks on this node, by slot. */
   tasks: TaskInfo[];
   /** True when the hosting node is down, drained or paused. */

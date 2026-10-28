@@ -48,8 +48,5 @@ tmp/
 # Worktrees
 .worktrees/
 
-# Design docs
-docs/superpowers/
-
 # AI tools
 .codegraph

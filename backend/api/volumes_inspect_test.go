@@ -3,11 +3,11 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	cerrdefs "github.com/containerd/errdefs"
 	volumetypes "github.com/docker/docker/api/types/volume"
 )
 
@@ -156,25 +156,31 @@ func TestHandleVolumeInspect_InvalidName(t *testing.T) {
 }
 
 func TestHandleVolumeInspect_DockerError(t *testing.T) {
-	stub := &stubVolumeInspector{
-		err: fmt.Errorf("no such volume: test-vol"),
+	// Only a missing volume is a 404: a daemon timeout says nothing about
+	// whether it exists (and, on an agent, would read as "not on this node").
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+		wantMsg  string
+	}{
+		{"not found", cerrdefs.ErrNotFound.WithMessage("get test-vol: no such volume"), http.StatusNotFound, "volume not found"},
+		{"daemon timeout", context.DeadlineExceeded, http.StatusBadGateway, "volume inspect failed"},
 	}
-	mux := newVolumeInspectServer(stub)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := newVolumeInspectServer(&stubVolumeInspector{err: tc.err})
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/volumes/test-vol", nil))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/volumes/test-vol", nil)
-	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
-	}
-
-	var errBody map[string]any
-	if err := json.NewDecoder(w.Body).Decode(&errBody); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if errBody["error"] != "volume not found" {
-		t.Errorf("error = %q, want %q", errBody["error"], "volume not found")
+			var errBody map[string]any
+			if err := json.NewDecoder(w.Body).Decode(&errBody); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if w.Code != tc.wantCode || errBody["error"] != tc.wantMsg {
+				t.Errorf("got %d %q, want %d %q", w.Code, errBody["error"], tc.wantCode, tc.wantMsg)
+			}
+		})
 	}
 }
 

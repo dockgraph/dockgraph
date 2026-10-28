@@ -30,7 +30,7 @@ func HandleVolumeInspect(inspector VolumeInspector) http.HandlerFunc {
 		vol, err := inspector.VolumeInspect(ctx, name)
 		if err != nil {
 			log.Printf("inspect volume %s: %v", name, err)
-			jsonError(w, "volume not found", http.StatusNotFound)
+			inspectError(w, "volume", err)
 			return
 		}
 

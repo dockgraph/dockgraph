@@ -2,6 +2,7 @@ import { useTheme } from '../../theme';
 import { formatBytes } from '../../utils/formatBytes';
 import { STATUS_COLORS } from '../../utils/colors';
 import { Section, Row, navLinkStyle, navButtonReset, monoStyle } from './shared';
+import { panelTableStyles } from './panelStyles';
 import { Copyable } from './Copyable';
 import { StatusBadge } from './StatusBadge';
 import { DetailPanelStats } from './DetailPanelStats';
@@ -11,6 +12,7 @@ import { DetailPanelEnv } from './DetailPanelEnv';
 import { DetailPanelLabels } from './DetailPanelLabels';
 import { DetailPanelLogs } from './DetailPanelLogs';
 import { taskContainerName } from '../../utils/stack';
+import { taskSlot } from '../../utils/nodeTransform';
 import type { ContainerStatsData, ServiceDetail } from '../../types/stats';
 
 /** Colour for each task state in the task table. */
@@ -70,17 +72,7 @@ export function DetailPanelService({ detail, statsMap, active, onNavigate }: Pro
     protocol: p.publishMode ? `${p.protocol} (${p.publishMode})` : p.protocol,
   }));
 
-  const cell: React.CSSProperties = { padding: '3px 6px 3px 0', verticalAlign: 'top' };
-  const head: React.CSSProperties = {
-    ...cell,
-    fontFamily: 'var(--dg-font-mono)',
-    fontSize: 9,
-    fontWeight: 600,
-    color: theme.nodeSubtext,
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    textAlign: 'left',
-  };
+  const { cell, head } = panelTableStyles(theme.nodeSubtext);
 
   return (
     <>
@@ -93,6 +85,9 @@ export function DetailPanelService({ detail, statsMap, active, onNavigate }: Pro
           mono={mono}
           subtext={theme.nodeSubtext}
         />
+        {detail.replicas?.completed !== undefined && (
+          <Row label="Completed" value={String(detail.replicas.completed)} mono={mono} subtext={theme.nodeSubtext} />
+        )}
         {detail.mode && <Row label="Mode" value={detail.mode} mono={mono} subtext={theme.nodeSubtext} />}
         {detail.updateStatus?.state && (
           <Row
@@ -128,7 +123,7 @@ export function DetailPanelService({ detail, statsMap, active, onNavigate }: Pro
                 const color = TASK_STATE_COLORS[t.state ?? ''] ?? STATUS_COLORS.unhealthy;
                 return (
                   <tr key={t.id} style={{ borderTop: `1px solid ${theme.panelBorder}` }}>
-                    <td style={{ ...cell, fontFamily: 'var(--dg-font-mono)' }}>{t.slot || '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'var(--dg-font-mono)' }}>{taskSlot(t, detail.mode) ?? '—'}</td>
                     <td style={{ ...cell, fontFamily: 'var(--dg-font-mono)', wordBreak: 'break-all' }} title={t.nodeId}>
                       {t.nodeHostname || t.nodeId?.slice(0, 12) || '—'}
                     </td>

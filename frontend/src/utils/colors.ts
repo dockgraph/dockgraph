@@ -99,6 +99,7 @@ export const STATUS_COLORS: Record<string, string> = {
   degraded: '#f59e0b',
   updating: '#3b82f6',
   stopped: '#ef4444',
+  completed: '#14b8a6',
   unknown: '#64748b',
 };
 
@@ -120,5 +121,6 @@ export const STATUS_LABELS: Record<string, string> = {
   degraded: 'Degraded',
   updating: 'Updating',
   stopped: 'Stopped',
+  completed: 'Completed',
   unknown: 'Unknown',
 };
