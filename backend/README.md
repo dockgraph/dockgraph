@@ -36,6 +36,7 @@ All configuration is via environment variables:
 | `DG_SWARM_POLL_INTERVAL` | `5s` | Swarm task poll interval (Go duration, min `1s`) |
 | `DG_AGENT_PORT` | `7801` | Per-node agent HTTP port (agents listen on it, the server dials it) |
 | `DG_AGENT_ADDR` | `tasks.agent` | DNS name resolving to every agent task, optionally `host:port` |
+| `DG_PEERS_ADDR` | `tasks.server` | DNS name resolving to every server replica; a replica fetches `/assets/` files missing from its build from them |
 | `DG_AGENT_TOKEN` | _(none)_ | Shared bearer secret between server and agents; required in `agent` mode. Without it the swarm server runs without agents |
 | `DG_AGENT_TOKEN_FILE` | _(none)_ | File holding the agent token, e.g. a Docker secret; `DG_AGENT_TOKEN` wins if both are set |
 | `DG_SESSION_KEY` | _(derived)_ | Key that signs session cookies, at least 32 bytes (shorter aborts startup). Defaults to a key derived from `DG_AGENT_TOKEN`, or a random key per process without a token |

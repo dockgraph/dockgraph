@@ -43,6 +43,7 @@ services:
       DG_PORT: "7800"
       DG_AGENT_ADDR: "tasks.agent"   # DNS name of every agent task in this stack
       DG_AGENT_PORT: "7801"
+      DG_PEERS_ADDR: "tasks.server"  # replicas serve each other's UI assets during a rolling update
       DG_AGENT_TOKEN_FILE: "/run/secrets/dg_agent_token"
       # DG_SWARM_POLL_INTERVAL: "5s"
       # Require a login for the web UI and WebSocket (recommended). Either

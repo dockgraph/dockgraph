@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -176,6 +177,9 @@ func main() {
 				LocalHostname: hostname,
 			}))
 		}
+	}
+	if swarmMode {
+		serverOpts = append(serverOpts, api.WithAssetPeers(peerFinder(cfg.PeersAddr, cfg.Port)))
 	}
 	sc.Start(ctx)
 	defer sc.Stop()
@@ -435,5 +439,21 @@ func pipeToHub(ctx context.Context, sub <-chan collector.StateMessage, hub *api.
 		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+// peerFinder resolves addr, the DNS name of every server replica, to their
+// base URLs on port. Resolution failures yield no peers.
+func peerFinder(addr, port string) api.PeerFinder {
+	return func(ctx context.Context) []string {
+		ips, err := net.DefaultResolver.LookupHost(ctx, addr)
+		if err != nil {
+			return nil
+		}
+		urls := make([]string, 0, len(ips))
+		for _, ip := range ips {
+			urls = append(urls, "http://"+net.JoinHostPort(ip, port))
+		}
+		return urls
 	}
 }
