@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { apiErrorMessage } from '../utils/apiError';
 
 interface DetailResult<T> {
   data: T | null;
@@ -52,8 +53,8 @@ export function useResourceDetail<T>(url: string | null): DetailResult<T> {
     abortRef.current = controller;
 
     fetch(url, { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await apiErrorMessage(res));
         return res.json();
       })
       .then((data: T) => {

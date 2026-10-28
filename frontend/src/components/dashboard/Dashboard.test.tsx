@@ -15,7 +15,8 @@ vi.mock("../../theme", () => ({
 
 const history = vi.fn();
 vi.mock("../../hooks/useStatsHistory", () => ({ useStatsHistory: () => ({ data: history() }) }));
-vi.mock("../../hooks/useSystemInfo", () => ({ useSystemInfo: () => ({ data: { mode: "swarm" } }) }));
+const systemInfo = vi.fn(() => ({ mode: "swarm", hostname: "manager-1" }));
+vi.mock("../../hooks/useSystemInfo", () => ({ useSystemInfo: () => ({ data: systemInfo() }) }));
 
 // Record the series each chart is given; the other cards fetch on their own
 // and aren't under test.
@@ -27,9 +28,11 @@ vi.mock("./ResourceChart", () => ({
   },
 }));
 vi.mock("./StatusSummaryCard", () => ({ StatusSummaryCard: () => null }));
-vi.mock("./HostInfoCard", () => ({ HostInfoCard: () => null }));
-vi.mock("./DiskUsageCard", () => ({ DiskUsageCard: () => null }));
-vi.mock("./ImagesCard", () => ({ ImagesCard: () => null }));
+// The daemon-level cards: record which node they're told they describe.
+const cardNodes = vi.fn();
+vi.mock("./HostInfoCard", () => ({ HostInfoCard: ({ node }: { node?: string }) => { cardNodes("host", node); return null; } }));
+vi.mock("./DiskUsageCard", () => ({ DiskUsageCard: ({ node }: { node?: string }) => { cardNodes("disk", node); return null; } }));
+vi.mock("./ImagesCard", () => ({ ImagesCard: ({ node }: { node?: string }) => { cardNodes("images", node); return null; } }));
 vi.mock("./TopConsumersCard", () => ({ TopConsumersCard: () => null }));
 vi.mock("./AlertsCard", () => ({ AlertsCard: () => null }));
 vi.mock("./ComposeProjectsCard", () => ({ ComposeProjectsCard: () => null }));
@@ -61,5 +64,29 @@ describe("Dashboard history charts", () => {
     for (const [keys] of charted.mock.calls) {
       expect(keys).toEqual(["shop_web", `orphan_svc.1.${id}`, "db"]);
     }
+  });
+});
+
+describe("Dashboard daemon cards", () => {
+  const renderDashboard = () => render(
+    <Dashboard nodes={[]} statsMap={new Map()} onStatusFilter={vi.fn()} onResourceTab={vi.fn()} onInspect={vi.fn()} />,
+  );
+
+  it("names the node the host, disk and image cards describe in a swarm", () => {
+    history.mockReturnValue(null);
+    cardNodes.mockClear();
+    renderDashboard();
+    // They read the server's own daemon: one node, not the cluster.
+    expect(cardNodes).toHaveBeenCalledWith("host", "manager-1");
+    expect(cardNodes).toHaveBeenCalledWith("disk", "manager-1");
+    expect(cardNodes).toHaveBeenCalledWith("images", "manager-1");
+  });
+
+  it("names no node outside a swarm, where the daemon is the whole picture", () => {
+    history.mockReturnValue(null);
+    systemInfo.mockReturnValueOnce({ mode: "standalone", hostname: "laptop" });
+    cardNodes.mockClear();
+    renderDashboard();
+    expect(cardNodes.mock.calls.every(([, node]) => node === undefined)).toBe(true);
   });
 });

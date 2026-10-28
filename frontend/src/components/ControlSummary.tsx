@@ -20,14 +20,15 @@ export const ControlSummary = memo(function ControlSummary({ data }: NodeProps) 
   // the animated links running behind it.
   const color = healthy ? theme.info : theme.danger;
   const down = total - ready;
+  // Counts workers only: manager (raft) health isn't measured here.
   const label = healthy
-    ? `control / raft tcp ${SWARM_CONTROL_PORT} / ${ready}/${total} ok`
-    : `control / raft tcp ${SWARM_CONTROL_PORT} / ${down}/${total} down`;
+    ? `control / tcp ${SWARM_CONTROL_PORT} / ${ready}/${total} workers ready`
+    : `control / tcp ${SWARM_CONTROL_PORT} / ${down}/${total} workers down`;
 
   return (
     <div
       data-testid="control-summary"
-      title={`Raft control plane on TCP ${SWARM_CONTROL_PORT}`}
+      title={`Workers reporting ready to the managers over the control plane (TCP ${SWARM_CONTROL_PORT})`}
       // One soft-tinted pill, status dot included, centered on the (x, y)
       // anchor nodeLayout.ts computed via translate(-50%, -50%) — a single
       // shape, so its visual center is the anchor. The mostly opaque canvas

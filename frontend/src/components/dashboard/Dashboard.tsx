@@ -71,6 +71,9 @@ export const Dashboard = memo(function Dashboard({ nodes, statsMap, onStatusFilt
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
   const { data: systemInfo } = useSystemInfo();
   const swarm = systemInfo?.mode === "swarm";
+  // The host, disk and image cards read the server's own daemon: in a swarm
+  // that is one node, which they name rather than pass off as the cluster.
+  const daemonNode = swarm ? systemInfo?.hostname : undefined;
   const swarmWorkloads = showsSwarmWorkloads(nodes, swarm, stack);
   // Charts plot workloads, or one series per swarm node. Node history isn't
   // per stack, so a selected stack forces the workload view.
@@ -124,9 +127,9 @@ export const Dashboard = memo(function Dashboard({ nodes, statsMap, onStatusFilt
         {/* Row 1: 4 summary cards — equal height */}
         <div style={{ display: "grid", gridTemplateColumns: cols4, gap: 12, marginBottom: 12 }}>
           <StatusSummaryCard nodes={nodes} swarm={swarmWorkloads} onStatusFilter={onStatusFilter} onResourceTab={onResourceTab} />
-          <HostInfoCard />
-          <DiskUsageCard />
-          <ImagesCard />
+          <HostInfoCard node={daemonNode} />
+          <DiskUsageCard node={daemonNode} />
+          <ImagesCard node={daemonNode} />
         </div>
 
         {/* Row 2–3: Charts in 2-col grid */}

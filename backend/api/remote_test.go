@@ -16,10 +16,17 @@ import (
 
 // stubLocator maps container IDs to agent base URLs.
 type stubLocator struct {
-	mu     sync.Mutex
-	urls   map[string]string // found by LocateContainer
-	cached map[string]string // found by LocateCached
-	calls  int               // LocateContainer calls
+	mu       sync.Mutex
+	urls     map[string]string // found by LocateContainer
+	cached   map[string]string // found by LocateCached
+	calls    int               // LocateContainer calls
+	rejected bool              // TokenRejected result
+}
+
+func (s *stubLocator) TokenRejected() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.rejected
 }
 
 func (s *stubLocator) LocateCached(id string) (string, bool) {
@@ -174,9 +181,27 @@ func TestAgentProxyAgentAuthFailureIsBadGateway(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status %d, want 502", resp.StatusCode)
+	if resp.StatusCode != http.StatusBadGateway || !strings.Contains(string(body), "DG_AGENT_TOKEN") {
+		t.Errorf("status %d body %s, want 502 naming the token", resp.StatusCode, body)
+	}
+}
+
+// When agents reject the token they are never discovered, so their
+// containers cannot be located at all: that must not read as "not found".
+func TestAgentProxyTokenRejectedIsBadGateway(t *testing.T) {
+	locator := &stubLocator{urls: map[string]string{}, rejected: true}
+	srv := newProxiedServer(t, &agentRecorder{}, locator)
+
+	resp, err := http.Get(srv.URL + "/api/containers/abcdef123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway || !strings.Contains(string(body), "DG_AGENT_TOKEN") {
+		t.Errorf("status %d body %s, want 502 naming the token", resp.StatusCode, body)
 	}
 }
 

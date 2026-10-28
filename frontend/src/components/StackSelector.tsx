@@ -1,6 +1,7 @@
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTheme } from "../theme";
 import { STANDALONE_STACK, type StackSummary } from "../utils/stack";
+import { CONTROL_HEIGHT } from "../utils/constants";
 
 interface Props {
   /** Every stack in the (unscoped) graph, from listStacks. */
@@ -153,11 +154,13 @@ export const StackSelector = memo(function StackSelector({ stacks, selected, onS
           alignItems: "center",
           gap: 6,
           maxWidth: 220,
+          height: CONTROL_HEIGHT,
+          boxSizing: "border-box",
           background: selected ? theme.rowHover : theme.canvasBg,
           color: selected ? theme.nodeText : theme.panelText,
           border: `1px solid ${selected ? theme.accent : theme.panelBorder}`,
           borderRadius: 8,
-          padding: "5px 10px",
+          padding: "0 10px",
           fontSize: 12,
           cursor: "pointer",
         }}

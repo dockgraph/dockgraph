@@ -370,23 +370,68 @@ func TestCountEligibleNodes(t *testing.T) {
 }
 
 func TestServiceStatus(t *testing.T) {
+	replicated := swarm.ServiceMode{Replicated: &swarm.ReplicatedService{}}
 	tests := []struct {
-		name             string
-		running, desired int
-		update           *swarm.UpdateStatus
-		want             string
+		name     string
+		mode     swarm.ServiceMode
+		replicas ReplicaCount
+		update   *swarm.UpdateStatus
+		want     string
 	}{
-		{"all up", 3, 3, nil, "running"},
-		{"partial", 1, 3, nil, "degraded"},
-		{"none up", 0, 3, nil, "degraded"},
-		{"scaled to zero", 0, 0, nil, "stopped"},
-		{"updating", 3, 3, &swarm.UpdateStatus{State: swarm.UpdateStateUpdating}, "updating"},
-		{"rolling back", 1, 3, &swarm.UpdateStatus{State: swarm.UpdateStateRollbackStarted}, "updating"},
-		{"update completed", 3, 3, &swarm.UpdateStatus{State: swarm.UpdateStateCompleted}, "running"},
+		{"all up", replicated, ReplicaCount{Running: 3, Desired: 3}, nil, "running"},
+		{"partial", replicated, ReplicaCount{Running: 1, Desired: 3}, nil, "degraded"},
+		{"none up", replicated, ReplicaCount{Running: 0, Desired: 3}, nil, "degraded"},
+		{"scaled to zero", replicated, ReplicaCount{}, nil, "stopped"},
+		{"updating", replicated, ReplicaCount{Running: 3, Desired: 3}, &swarm.UpdateStatus{State: swarm.UpdateStateUpdating}, "updating"},
+		{"rolling back", replicated, ReplicaCount{Running: 1, Desired: 3}, &swarm.UpdateStatus{State: swarm.UpdateStateRollbackStarted}, "updating"},
+		{"update completed", replicated, ReplicaCount{Running: 3, Desired: 3}, &swarm.UpdateStatus{State: swarm.UpdateStateCompleted}, "running"},
+		// Swarm keeps a finished replicated job's desired count at its
+		// concurrency (0/1 once 3 of 3 completed), so only the completion
+		// count tells it is done.
+		{
+			"replicated job running",
+			swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{MaxConcurrent: uptr(1), TotalCompletions: uptr(3)}},
+			ReplicaCount{Running: 1, Desired: 1, Completed: 1},
+			nil, "running",
+		},
+		{
+			"replicated job finished",
+			swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{MaxConcurrent: uptr(1), TotalCompletions: uptr(3)}},
+			ReplicaCount{Running: 0, Desired: 1, Completed: 3},
+			nil, "completed",
+		},
+		{
+			"replicated job total defaults to concurrency",
+			swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{MaxConcurrent: uptr(2)}},
+			ReplicaCount{Running: 0, Desired: 2, Completed: 2},
+			nil, "completed",
+		},
+		{
+			"replicated job defaults to one completion",
+			swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{}},
+			ReplicaCount{Running: 0, Desired: 1, Completed: 1},
+			nil, "completed",
+		},
+		// A finished global job drops to 0 desired (0/0, 5/5 completed).
+		{
+			"global job finished",
+			swarm.ServiceMode{GlobalJob: &swarm.GlobalJob{}},
+			ReplicaCount{Running: 0, Desired: 0, Completed: 5},
+			nil, "completed",
+		},
+		{
+			"global job running",
+			swarm.ServiceMode{GlobalJob: &swarm.GlobalJob{}},
+			ReplicaCount{Running: 2, Desired: 2, Completed: 3},
+			nil, "running",
+		},
+		{"global job not started", swarm.ServiceMode{GlobalJob: &swarm.GlobalJob{}}, ReplicaCount{}, nil, "stopped"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := serviceStatus(tt.running, tt.desired, tt.update); got != tt.want {
+			svc := swarm.Service{UpdateStatus: tt.update}
+			svc.Spec.Mode = tt.mode
+			if got := ServiceStatusOf(svc, tt.replicas); got != tt.want {
 				t.Errorf("got %s, want %s", got, tt.want)
 			}
 		})
@@ -473,6 +518,46 @@ func TestBuildServiceInfoCapsCompletedJobTasks(t *testing.T) {
 	if info.Replicas.Running != 1 {
 		t.Errorf("running = %d", info.Replicas.Running)
 	}
+	// Every completion counts, not only the ones listed.
+	if info.Replicas.Completed != 50 {
+		t.Errorf("completed = %d, want 50", info.Replicas.Completed)
+	}
+}
+
+// A re-run job (service update --force) starts a new iteration: the earlier
+// run's completions must not count, or the new run reads as finished at once.
+func TestBuildServiceInfoCountsOnlyTheCurrentJobRun(t *testing.T) {
+	svc := stackService("s", "st", "migrate", 1)
+	svc.Spec.Mode = swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{MaxConcurrent: uptr(1), TotalCompletions: uptr(3)}}
+	svc.JobStatus = &swarm.JobStatus{JobIteration: swarm.Version{Index: 20}}
+	inRun := func(tk swarm.Task, iteration uint64) swarm.Task {
+		tk.JobIteration = &swarm.Version{Index: iteration}
+		return tk
+	}
+	tasks := []swarm.Task{
+		inRun(task("old1", "s", "n1", 1, swarm.TaskStateComplete, swarm.TaskStateComplete), 10),
+		inRun(task("old2", "s", "n1", 2, swarm.TaskStateComplete, swarm.TaskStateComplete), 10),
+		inRun(task("old3", "s", "n1", 3, swarm.TaskStateComplete, swarm.TaskStateComplete), 10),
+		inRun(task("new1", "s", "n1", 1, swarm.TaskStateComplete, swarm.TaskStateComplete), 20),
+		inRun(task("new2", "s", "n1", 2, swarm.TaskStateRunning, swarm.TaskStateComplete), 20),
+	}
+
+	info := buildServiceInfo(svc, tasks, map[string]string{"n1": "host"}, 1)
+	if info.Replicas.Completed != 1 {
+		t.Errorf("completed = %d, want 1 (this run only)", info.Replicas.Completed)
+	}
+	if got := ServiceStatusOf(svc, info.Replicas); got == "completed" {
+		t.Errorf("a re-run in progress reads as %s", got)
+	}
+}
+
+func TestBuildServiceInfoCountsCompletionsOnlyForJobs(t *testing.T) {
+	svc := stackService("s", "st", "app", 1)
+	// A replicated service's finished task is history, not a completion.
+	tasks := []swarm.Task{task("done", "s", "n1", 1, swarm.TaskStateComplete, swarm.TaskStateRunning)}
+	if info := buildServiceInfo(svc, tasks, map[string]string{"n1": "host"}, 1); info.Replicas.Completed != 0 {
+		t.Errorf("completed = %d for a replicated service, want 0", info.Replicas.Completed)
+	}
 }
 
 func TestStripImageDigest(t *testing.T) {
@@ -494,6 +579,32 @@ func TestServiceNetworksFallbackToVirtualIPs(t *testing.T) {
 	got := serviceNetworks(svc, map[string]string{"n1": "app_net"})
 	if len(got) != 1 || got[0] != "app_net" {
 		t.Errorf("got %v", got)
+	}
+}
+
+func TestServiceOnNetwork(t *testing.T) {
+	byID := swarm.Service{}
+	byID.Spec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{{Target: "n1"}}
+	byName := swarm.Service{}
+	byName.Spec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{{Target: "app_net"}}
+	byVIP := swarm.Service{}
+	byVIP.Endpoint.VirtualIPs = []swarm.EndpointVirtualIP{{NetworkID: "n1"}}
+	elsewhere := swarm.Service{}
+	elsewhere.Spec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{{Target: "n2"}}
+
+	for name, tc := range map[string]struct {
+		svc  swarm.Service
+		want bool
+	}{
+		"attached by network ID":   {byID, true},
+		"attached by network name": {byName, true},
+		"attached by virtual IP":   {byVIP, true},
+		"on another network":       {elsewhere, false},
+		"on no network":            {swarm.Service{}, false},
+	} {
+		if got := ServiceOnNetwork(tc.svc, "n1", "app_net"); got != tc.want {
+			t.Errorf("%s: got %v, want %v", name, got, tc.want)
+		}
 	}
 }
 

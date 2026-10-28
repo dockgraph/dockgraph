@@ -138,6 +138,16 @@ func (s logScope) listServices(ctx context.Context) ([]logSource, error) {
 	return sources, nil
 }
 
+// History sources are read concurrently, each bounded on its own, so a
+// service whose task sits on an unreachable node costs its own timeout
+// instead of starving every source after it. At most
+// maxConcurrentLogSources streams are open at once, so a large stack
+// doesn't open one per service simultaneously. logSourceTimeout is a
+// variable so tests can lower it.
+var logSourceTimeout = 5 * time.Second
+
+const maxConcurrentLogSources = 8
+
 // collectHistory fetches up to `limit` recent lines (before `before`, if set) from
 // every source in scope, tags each with its container or service name, and
 // merge-sorts ascending by timestamp. One source failing is skipped
@@ -148,20 +158,44 @@ func collectHistory(ctx context.Context, scope logScope, lister ContainerLister,
 		return nil, err
 	}
 
-	var all []aggregateLine
-	for _, src := range sources {
-		lines, err := fetchLogHistory(ctx, src.open, src.id, src.service, before, limit)
-		if err != nil {
-			continue
-		}
-		for _, e := range lines {
-			all = append(all, aggregateLine{Container: src.name, Stream: e.Stream, Line: e.Line, Timestamp: e.Timestamp})
-		}
+	perSource := make([][]aggregateLine, len(sources))
+	sem := make(chan struct{}, maxConcurrentLogSources)
+	var wg sync.WaitGroup
+	for i, src := range sources {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			perSource[i] = fetchSourceHistory(ctx, src, before, limit)
+		}()
 	}
+	wg.Wait()
 
+	var all []aggregateLine
+	for _, lines := range perSource {
+		all = append(all, lines...)
+	}
 	// RFC3339Nano UTC timestamps sort correctly as strings.
 	sort.SliceStable(all, func(i, j int) bool { return all[i].Timestamp < all[j].Timestamp })
 	return all, nil
+}
+
+// fetchSourceHistory reads one source's history within logSourceTimeout and
+// tags its lines with the source name. A source that fails to open yields
+// nothing; one that times out keeps the lines it sent before.
+func fetchSourceHistory(ctx context.Context, src logSource, before string, limit int) []aggregateLine {
+	ctx, cancel := context.WithTimeout(ctx, logSourceTimeout)
+	defer cancel()
+	entries, err := fetchLogHistory(ctx, src.open, src.id, src.service, before, limit)
+	if err != nil {
+		return nil
+	}
+	lines := make([]aggregateLine, 0, len(entries))
+	for _, e := range entries {
+		lines = append(lines, aggregateLine{Container: src.name, Stream: e.Stream, Line: e.Line, Timestamp: e.Timestamp})
+	}
+	return lines
 }
 
 // HandleAggregateLogsHistory returns a handler for GET /api/logs/history.
@@ -310,10 +344,12 @@ func (a *logAggregator) follow(ctx context.Context, src logSource, since string)
 		ShowStderr: true,
 		Follow:     true,
 		Timestamps: true,
-		Tail:       "0",
+		Tail:       "0", // no cursor: only new lines
 	}
 	if since != "" {
+		// Replay what was logged since the cursor (see resumeTailLines).
 		opts.Since = since
+		opts.Tail = strconv.Itoa(resumeTailLines)
 	}
 	rc, err := src.open(ctx, src.id, opts)
 	if err != nil {
@@ -381,7 +417,11 @@ func HandleAggregateLogs(lister ContainerLister, logger ContainerLogger, eventsS
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
 
-		agg := newLogAggregator(logger, r.URL.Query().Get("since"))
+		since := r.URL.Query().Get("since")
+		if since != "" {
+			since = afterTimestamp(since) // the client already shows that line
+		}
+		agg := newLogAggregator(logger, since)
 
 		// Seed followers from the currently running, in-scope containers.
 		if summaries, err := lister.ContainerList(ctx, containertypes.ListOptions{}); err == nil {

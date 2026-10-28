@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	cerrdefs "github.com/containerd/errdefs"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
@@ -60,13 +59,7 @@ func HandleServiceInspect(inspector ServiceInspector, networks NetworkInspector)
 		svc, _, err := inspector.ServiceInspectWithRaw(ctx, id, swarm.ServiceInspectOptions{})
 		if err != nil {
 			log.Printf("service inspect %s: %v", id, err)
-			// Only a missing service is a 404; a manager error or timeout
-			// must not read as "the service is gone".
-			if cerrdefs.IsNotFound(err) {
-				jsonError(w, "service not found", http.StatusNotFound)
-			} else {
-				jsonError(w, "service inspect failed", http.StatusBadGateway)
-			}
+			inspectError(w, "service", err)
 			return
 		}
 
@@ -89,7 +82,7 @@ func HandleServiceInspect(inspector ServiceInspector, networks NetworkInspector)
 		// Job modes have no desired count in the spec, and inspect doesn't
 		// carry swarm's own counts: read them like the graph does
 		// (ServiceList with Status), so a job isn't shown 0 desired, stopped.
-		job := isJobMode(svc.Spec.Mode)
+		job := collector.IsJobMode(svc.Spec.Mode)
 		if job {
 			svc.ServiceStatus = serviceStatusCounts(ctx, inspector, svc.ID)
 		}
@@ -127,7 +120,7 @@ func fillReplicasFallback(ctx context.Context, inspector ServiceInspector, svc s
 	// service status, global counts from the node list.
 	var desiredOK bool
 	switch {
-	case isJobMode(svc.Spec.Mode):
+	case collector.IsJobMode(svc.Spec.Mode):
 		desiredOK = svc.ServiceStatus != nil
 	case svc.Spec.Mode.Global != nil:
 		desiredOK = nodesOK
@@ -145,6 +138,9 @@ func fillReplicasFallback(ctx context.Context, inspector ServiceInspector, svc s
 		if st != nil {
 			if !runningOK {
 				replicas.Running = int(st.RunningTasks)
+				if collector.IsJobMode(svc.Spec.Mode) {
+					replicas.Completed = int(st.CompletedTasks)
+				}
 				runningOK = true
 			}
 			if !desiredOK {
@@ -160,12 +156,6 @@ func fillReplicasFallback(ctx context.Context, inspector ServiceInspector, svc s
 	}
 	resp["replicas"] = replicas
 	resp[fieldStatus] = collector.ServiceStatusOf(svc, replicas)
-}
-
-// isJobMode reports whether a service runs to completion (replicated-job or
-// global-job): its desired count lives only in swarm's service status.
-func isJobMode(m swarm.ServiceMode) bool {
-	return m.ReplicatedJob != nil || m.GlobalJob != nil
 }
 
 // serviceStatusCounts returns swarm's running/desired task counts for a

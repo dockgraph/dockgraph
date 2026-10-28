@@ -60,6 +60,14 @@ describe('ServiceNode', () => {
     expect(badge.title).toContain('Degraded');
   });
 
+  it('shows a finished job by its completions, not as 0 running', () => {
+    renderNode({ dgNode: { ...baseNode, status: 'completed', service: { mode: 'replicated-job', replicas: { running: 0, desired: 1, completed: 3 } } } });
+    const badge = screen.getByTestId('replicas-badge');
+    expect(badge.textContent).toBe('3 done');
+    expect(badge.style.color).toBe(hexToRgb(STATUS_COLORS.completed));
+    expect(badge.title).toBe('3 tasks completed — Completed');
+  });
+
   it('calls onInfoClick with the node id', () => {
     const onInfoClick = vi.fn();
     renderNode({ onInfoClick });

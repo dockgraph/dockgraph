@@ -169,7 +169,12 @@ func main() {
 			pool.Start(ctx)
 			defer pool.Stop()
 			sc.SetRemote(pool)
-			serverOpts = append(serverOpts, api.WithAgentProxy(&api.AgentProxy{Locator: pool, Token: cfg.AgentToken}))
+			serverOpts = append(serverOpts, api.WithAgentProxy(&api.AgentProxy{
+				Locator:       pool,
+				Agents:        pool,
+				Token:         cfg.AgentToken,
+				LocalHostname: hostname,
+			}))
 		}
 	}
 	sc.Start(ctx)

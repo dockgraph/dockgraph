@@ -1,7 +1,7 @@
 // Package agent implements the per-node dockgraph agent (DG_MODE=agent).
 // Deployed as a global swarm service, it exposes the local daemon's
-// container stats, inspect data and logs over an authenticated HTTP API so
-// the swarm server can cover containers on every node.
+// container stats, inspect data and logs, and its volumes, over an
+// authenticated HTTP API so the swarm server can cover every node.
 package agent
 
 import (
@@ -103,6 +103,8 @@ func (s *Server) Handler() http.Handler {
 	v1.HandleFunc("GET "+p+"/containers/{id}", api.HandleContainerInspect(s.cli))
 	v1.HandleFunc("GET "+p+"/containers/{id}/logs", api.HandleContainerLogs(s.cli))
 	v1.HandleFunc("GET "+p+"/containers/{id}/logs/history", api.HandleContainerLogsHistory(s.cli))
+	// Swarm volumes are node-local; the server asks every agent for one.
+	v1.HandleFunc("GET "+p+"/volumes/{name}", api.HandleVolumeInspect(s.cli))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)

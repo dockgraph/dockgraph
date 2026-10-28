@@ -3,13 +3,16 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	networktypes "github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/swarm"
+	"github.com/dockgraph/dockgraph/collector"
 )
 
 // stubNetworkInspector implements NetworkInspector for tests.
@@ -22,11 +25,195 @@ func (s *stubNetworkInspector) NetworkInspect(_ context.Context, _ string, _ net
 	return s.result, s.err
 }
 
+// stubNetworkMembers implements NetworkMemberLister for tests. TaskList
+// honours the desired-state filter, as the daemon does.
+type stubNetworkMembers struct {
+	services []swarm.Service
+	tasks    []swarm.Task
+	nodes    []swarm.Node
+	taskErr  error
+	calls    int
+}
+
+func (s *stubNetworkMembers) ServiceList(_ context.Context, _ swarm.ServiceListOptions) ([]swarm.Service, error) {
+	s.calls++
+	return s.services, nil
+}
+
+func (s *stubNetworkMembers) TaskList(_ context.Context, opts swarm.TaskListOptions) ([]swarm.Task, error) {
+	s.calls++
+	if s.taskErr != nil {
+		return nil, s.taskErr
+	}
+	var out []swarm.Task
+	for _, t := range s.tasks {
+		if opts.Filters.ExactMatch("desired-state", string(t.DesiredState)) {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (s *stubNetworkMembers) NodeList(_ context.Context, _ swarm.NodeListOptions) ([]swarm.Node, error) {
+	s.calls++
+	return s.nodes, nil
+}
+
 // newNetworkInspectServer registers the handler on a mux so PathValue works.
 func newNetworkInspectServer(inspector NetworkInspector) *http.ServeMux {
+	return newSwarmNetworkInspectServer(inspector, nil)
+}
+
+// newSwarmNetworkInspectServer registers the handler as the server does in swarm mode.
+func newSwarmNetworkInspectServer(inspector NetworkInspector, members NetworkMemberLister) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(inspector))
+	mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(inspector, members))
 	return mux
+}
+
+// swarmNetworkFixture is the overlay network app_net as a manager sees it:
+// its own daemon knows one task of shop_web, a standalone container and the
+// load balancer, while the swarm API knows every task of the network's services.
+func swarmNetworkFixture() (networktypes.Inspect, *stubNetworkMembers) {
+	network := networktypes.Inspect{
+		Name: "app_net", ID: "net1", Driver: "overlay", Scope: "swarm",
+		Containers: map[string]networktypes.EndpointResource{
+			"cid-web-1":  {Name: "shop_web.1.task1", IPv4Address: "10.0.9.12/24"},
+			"cid-tool":   {Name: "debug-tool", IPv4Address: "10.0.9.40/24"},
+			"lb-app_net": {Name: "app_net-endpoint", IPv4Address: "10.0.9.48/24"},
+		},
+	}
+
+	onNet := func(id, name string, networkID string) swarm.Service {
+		svc := swarm.Service{ID: id}
+		svc.Spec.Name = name
+		svc.Spec.Mode.Replicated = &swarm.ReplicatedService{Replicas: u64(2)}
+		svc.Spec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{{Target: networkID}}
+		return svc
+	}
+	web := onNet("svc-web", "shop_web", "net1")
+	web.Endpoint.VirtualIPs = []swarm.EndpointVirtualIP{{NetworkID: "net1", Addr: "10.0.9.11/24"}}
+	self := onNet("svc-dg", "dg_server", "net1")
+	self.Spec.Labels = map[string]string{collector.SelfExcludeLabel: "true"}
+	other := onNet("svc-db", "shop_db", "net2")
+
+	task := func(id, serviceID string, slot int, nodeID string, desired, state swarm.TaskState, containerID, addr string) swarm.Task {
+		t := swarm.Task{ID: id, ServiceID: serviceID, Slot: slot, NodeID: nodeID, DesiredState: desired}
+		t.Status.State = state
+		t.Status.ContainerStatus = &swarm.ContainerStatus{ContainerID: containerID}
+		t.NetworksAttachments = []swarm.NetworkAttachment{{Network: swarm.Network{ID: "net1"}, Addresses: []string{addr}}}
+		return t
+	}
+	running := swarm.TaskStateRunning
+	members := &stubNetworkMembers{
+		services: []swarm.Service{web, self, other},
+		tasks: []swarm.Task{
+			task("task2", "svc-web", 2, "node-w1", running, running, "cid-web-2", "10.0.9.13/24"),
+			task("task1", "svc-web", 1, "node-m1", running, running, "cid-web-1", "10.0.9.12/24"),
+			// History: a replaced task that is no longer on the network.
+			task("task0", "svc-web", 1, "node-w1", swarm.TaskStateShutdown, swarm.TaskStateFailed, "cid-web-0", "10.0.9.5/24"),
+			task("task-dg", "svc-dg", 1, "node-m1", running, running, "cid-dg", "10.0.9.20/24"),
+		},
+		nodes: []swarm.Node{
+			{ID: "node-m1", Description: swarm.NodeDescription{Hostname: "m1"}},
+			{ID: "node-w1", Description: swarm.NodeDescription{Hostname: "w1"}},
+		},
+	}
+	return network, members
+}
+
+// networkMembersBody is the part of the inspect response that lists members.
+type networkMembersBody struct {
+	Services []struct {
+		Name  string `json:"name"`
+		Mode  string `json:"mode"`
+		VIP   string `json:"vip"`
+		Tasks []struct {
+			ID           string   `json:"id"`
+			Slot         int      `json:"slot"`
+			NodeHostname string   `json:"nodeHostname"`
+			Addresses    []string `json:"addresses"`
+		} `json:"tasks"`
+	} `json:"services"`
+	Containers []struct {
+		ID string `json:"id"`
+	} `json:"containers"`
+	ServicesUnavailable bool `json:"servicesUnavailable"`
+}
+
+func inspectNetworkMembers(t *testing.T, mux *http.ServeMux) networkMembersBody {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/networks/app_net", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body networkMembersBody
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return body
+}
+
+func TestHandleNetworkInspect_SwarmNetworkListsServicesClusterWide(t *testing.T) {
+	network, members := swarmNetworkFixture()
+	body := inspectNetworkMembers(t, newSwarmNetworkInspectServer(&stubNetworkInspector{result: network}, members))
+
+	// shop_web only: shop_db is on another network and DockGraph hides itself.
+	if len(body.Services) != 1 {
+		t.Fatalf("services = %+v, want shop_web only", body.Services)
+	}
+	web := body.Services[0]
+	if web.Name != "shop_web" || web.Mode != "replicated" || web.VIP != "10.0.9.11/24" {
+		t.Errorf("service = %s %s %s, want shop_web replicated 10.0.9.11/24", web.Name, web.Mode, web.VIP)
+	}
+	// Both current tasks, on any node, in slot order; not the replaced one.
+	if len(web.Tasks) != 2 {
+		t.Fatalf("tasks = %+v, want task1 and task2", web.Tasks)
+	}
+	for i, want := range []struct {
+		id, host, addr string
+		slot           int
+	}{{"task1", "m1", "10.0.9.12/24", 1}, {"task2", "w1", "10.0.9.13/24", 2}} {
+		got := web.Tasks[i]
+		if got.ID != want.id || got.Slot != want.slot || got.NodeHostname != want.host || len(got.Addresses) != 1 || got.Addresses[0] != want.addr {
+			t.Errorf("task %d = %+v, want %+v", i, got, want)
+		}
+	}
+	// Task containers are listed under their service; the load balancer is no container.
+	if len(body.Containers) != 1 || body.Containers[0].ID != "cid-tool" {
+		t.Errorf("containers = %+v, want only the standalone cid-tool", body.Containers)
+	}
+	if body.ServicesUnavailable {
+		t.Error("servicesUnavailable set on success")
+	}
+}
+
+func TestHandleNetworkInspect_SwarmMembersUnavailable(t *testing.T) {
+	network, members := swarmNetworkFixture()
+	members.taskErr = errors.New("manager unreachable")
+	body := inspectNetworkMembers(t, newSwarmNetworkInspectServer(&stubNetworkInspector{result: network}, members))
+
+	if !body.ServicesUnavailable || body.Services != nil {
+		t.Errorf("servicesUnavailable = %v, services = %+v; want flagged and no services", body.ServicesUnavailable, body.Services)
+	}
+	// The local view is all there is: keep the task container.
+	if len(body.Containers) != 2 {
+		t.Errorf("containers = %+v, want cid-web-1 and cid-tool", body.Containers)
+	}
+}
+
+func TestHandleNetworkInspect_LocalNetworkSkipsSwarmLookup(t *testing.T) {
+	_, members := swarmNetworkFixture()
+	body := inspectNetworkMembers(t, newSwarmNetworkInspectServer(&stubNetworkInspector{result: validNetworkInspect()}, members))
+
+	if members.calls != 0 {
+		t.Errorf("swarm API called %d times for a local network", members.calls)
+	}
+	if body.Services != nil || body.ServicesUnavailable {
+		t.Errorf("services = %+v, unavailable = %v; want neither for a local network", body.Services, body.ServicesUnavailable)
+	}
 }
 
 func validNetworkInspect() networktypes.Inspect {
@@ -200,31 +387,37 @@ func TestHandleNetworkInspect_InvalidName(t *testing.T) {
 }
 
 func TestHandleNetworkInspect_DockerError(t *testing.T) {
-	stub := &stubNetworkInspector{
-		err: fmt.Errorf("network not found"),
+	// Only a missing network is a 404: a daemon timeout says nothing about
+	// whether it exists.
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+		wantMsg  string
+	}{
+		{"not found", cerrdefs.ErrNotFound.WithMessage("network nonexistent-net not found"), http.StatusNotFound, "network not found"},
+		{"daemon timeout", context.DeadlineExceeded, http.StatusBadGateway, "network inspect failed"},
 	}
-	mux := newNetworkInspectServer(stub)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := newNetworkInspectServer(&stubNetworkInspector{err: tc.err})
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/networks/nonexistent-net", nil))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/networks/nonexistent-net", nil)
-	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
-	}
-
-	var errBody map[string]any
-	if err := json.NewDecoder(w.Body).Decode(&errBody); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if errBody["error"] != "network not found" {
-		t.Errorf("error = %q, want %q", errBody["error"], "network not found")
+			var errBody map[string]any
+			if err := json.NewDecoder(w.Body).Decode(&errBody); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if w.Code != tc.wantCode || errBody["error"] != tc.wantMsg {
+				t.Errorf("got %d %q, want %d %q", w.Code, errBody["error"], tc.wantCode, tc.wantMsg)
+			}
+		})
 	}
 }
 
 func TestHandleNetworkInspect_MissingPathVariable(t *testing.T) {
 	stub := &stubNetworkInspector{}
-	handler := HandleNetworkInspect(stub)
+	handler := HandleNetworkInspect(stub, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/networks/", nil)
 	w := httptest.NewRecorder()
@@ -287,6 +480,29 @@ func TestHandleNetworkInspect_NilContainers(t *testing.T) {
 	// When Containers is nil, the containers key should not be present.
 	if _, exists := body["containers"]; exists {
 		t.Error("containers should not be present when network.Containers is nil")
+	}
+}
+
+func TestHandleNetworkInspect_SkipsLoadBalancerEndpoints(t *testing.T) {
+	network := validNetworkInspect()
+	network.Containers["lb-my-network"] = networktypes.EndpointResource{Name: "my-network-endpoint", IPv4Address: "10.0.9.48/24"}
+	network.Containers["ingress-sbox"] = networktypes.EndpointResource{Name: "ingress-endpoint", IPv4Address: "10.0.0.2/24"}
+
+	mux := newNetworkInspectServer(&stubNetworkInspector{result: network})
+	req := httptest.NewRequest(http.MethodGet, "/api/networks/my-network", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	var body struct {
+		Containers []struct {
+			ID string `json:"id"`
+		} `json:"containers"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Containers) != 1 || body.Containers[0].ID != "container1" {
+		t.Errorf("containers = %+v, want only container1", body.Containers)
 	}
 }
 
