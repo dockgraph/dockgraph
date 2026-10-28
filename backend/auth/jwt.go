@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -23,6 +24,26 @@ func GenerateSigningKey() ([]byte, error) {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("generate signing key: %w", err)
+	}
+	return key, nil
+}
+
+// sessionKeyInfo binds keys from DeriveSigningKey to session signing, so the
+// same secret used elsewhere (the agent bearer token) yields an unrelated key.
+const sessionKeyInfo = "dockgraph-session-v1"
+
+// DeriveSigningKey derives a 32-byte HMAC signing key from secret with
+// HKDF-SHA256. Every process given the same secret gets the same key, so
+// server replicas behind a load balancer accept each other's session cookies.
+// secret must already carry enough entropy: HKDF does not slow down a brute
+// force, so never pass a password.
+func DeriveSigningKey(secret []byte) ([]byte, error) {
+	if len(secret) == 0 {
+		return nil, fmt.Errorf("derive signing key: empty secret")
+	}
+	key, err := hkdf.Key(sha256.New, secret, nil, sessionKeyInfo, 32)
+	if err != nil {
+		return nil, fmt.Errorf("derive signing key: %w", err)
 	}
 	return key, nil
 }

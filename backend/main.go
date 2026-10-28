@@ -190,9 +190,15 @@ func main() {
 
 	var authService *auth.Service
 	if cfg.PasswordHash != "" {
-		signingKey, keyErr := auth.GenerateSigningKey()
-		if keyErr != nil {
-			log.Fatalf("failed to generate signing key: %v", keyErr)
+		// A shared key lets every swarm server replica accept the session
+		// cookies of the others; without one, a per-process key is enough.
+		signingKey := cfg.SessionKey
+		if signingKey == nil {
+			var keyErr error
+			signingKey, keyErr = auth.GenerateSigningKey()
+			if keyErr != nil {
+				log.Fatalf("failed to generate signing key: %v", keyErr)
+			}
 		}
 		authService = &auth.Service{
 			PasswordHash: cfg.PasswordHash,

@@ -38,6 +38,11 @@ type Config struct {
 	// (a Docker secret). Empty disables agents on the server and prevents
 	// an agent from starting.
 	AgentToken string
+	// SessionKey is the HMAC key that signs session cookies. It comes from
+	// DG_SESSION_KEY / DG_SESSION_KEY_FILE (at least 32 bytes), else it is
+	// derived from AgentToken so every server replica shares it. Nil means
+	// main generates a random per-process key (standalone).
+	SessionKey []byte
 }
 
 // validModes lists the accepted DG_MODE values.
@@ -78,6 +83,11 @@ func LoadConfig() Config {
 		cfg.AgentAddr = v
 	}
 	cfg.AgentToken = loadAgentToken()
+	sessionKey, err := loadSessionKey(cfg.AgentToken)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	cfg.SessionKey = sessionKey
 
 	cfg.PollInterval = parseDuration("DG_POLL_INTERVAL", cfg.PollInterval, time.Second)
 	cfg.StatsInterval = parseDuration("DG_STATS_INTERVAL", cfg.StatsInterval, time.Second)
@@ -205,6 +215,30 @@ func loadAgentToken() string {
 		return ""
 	}
 	return strings.TrimSpace(token)
+}
+
+// minSessionKeyLen is the minimum length of DG_SESSION_KEY, in bytes.
+const minSessionKeyLen = 32
+
+// loadSessionKey returns the session signing key shared by all server
+// replicas: DG_SESSION_KEY or DG_SESSION_KEY_FILE (see readSecretEnv) when
+// set, else a key derived from agentToken. It returns nil when both are
+// empty, and fails on a key shorter than minSessionKeyLen.
+func loadSessionKey(agentToken string) ([]byte, error) {
+	raw, err := readSecretEnv("DG_SESSION_KEY")
+	if err != nil {
+		return nil, err
+	}
+	if raw = strings.TrimSpace(raw); raw != "" {
+		if len(raw) < minSessionKeyLen {
+			return nil, fmt.Errorf("DG_SESSION_KEY is too short: %d bytes, need at least %d (try `openssl rand -hex 32`)", len(raw), minSessionKeyLen)
+		}
+		return []byte(raw), nil
+	}
+	if agentToken == "" {
+		return nil, nil
+	}
+	return auth.DeriveSigningKey([]byte(agentToken))
 }
 
 // parseDuration reads a duration from an environment variable with minimum enforcement.

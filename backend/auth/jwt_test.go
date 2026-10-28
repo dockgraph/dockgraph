@@ -25,6 +25,48 @@ func TestGenerateSigningKeyUnique(t *testing.T) {
 	}
 }
 
+func TestDeriveSigningKeyDeterministic(t *testing.T) {
+	k1, err := DeriveSigningKey([]byte("agent-token"))
+	if err != nil {
+		t.Fatalf("DeriveSigningKey: %v", err)
+	}
+	k2, _ := DeriveSigningKey([]byte("agent-token"))
+	if len(k1) != 32 {
+		t.Errorf("key length = %d, want 32", len(k1))
+	}
+	if string(k1) != string(k2) {
+		t.Error("same secret should derive the same key")
+	}
+	if string(k1) == "agent-token" {
+		t.Error("derived key should differ from the secret")
+	}
+	other, _ := DeriveSigningKey([]byte("other-token"))
+	if string(k1) == string(other) {
+		t.Error("different secrets should derive different keys")
+	}
+}
+
+func TestDeriveSigningKeyEmpty(t *testing.T) {
+	if _, err := DeriveSigningKey(nil); err == nil {
+		t.Error("expected an error for an empty secret")
+	}
+}
+
+// A token signed by one replica verifies on another that derived its key
+// from the same secret.
+func TestDeriveSigningKeySharedAcrossReplicas(t *testing.T) {
+	keyA, _ := DeriveSigningKey([]byte("shared"))
+	keyB, _ := DeriveSigningKey([]byte("shared"))
+	now := time.Now()
+	token, err := SignToken(Claims{IssuedAt: now, ExpiresAt: now.Add(time.Hour), JTI: "j"}, keyA)
+	if err != nil {
+		t.Fatalf("SignToken: %v", err)
+	}
+	if _, err := VerifyToken(token, keyB); err != nil {
+		t.Errorf("VerifyToken on replica B: %v", err)
+	}
+}
+
 func TestSignAndVerifyRoundTrip(t *testing.T) {
 	key, _ := GenerateSigningKey()
 	now := time.Now()
