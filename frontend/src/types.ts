@@ -194,6 +194,8 @@ export interface NodeServiceCardData {
   serviceId: string;
   serviceName: string;
   stack?: string;
+  /** Service mode ("replicated", "global", ...), which decides how tasks are labelled. */
+  mode?: string;
   /** The service's running-desired tasks on this node, by slot. */
   tasks: TaskInfo[];
   /** True when the hosting node is down, drained or paused. */

@@ -5,7 +5,7 @@ import { NodeHandles } from './NodeHandles';
 import { InspectButton } from './InspectButton';
 import { useTheme } from '../theme';
 import { VOLUME_COLOR } from '../utils/colors';
-import { ghostBorder, railColor } from '../utils/nodeStyles';
+import { ghostBorder, railColor, VOLUME_NAME_FONT } from '../utils/nodeStyles';
 import type { VolumeNodeData } from '../types';
 import { INACTIVE_OPACITY, zoomSelector } from '../utils/constants';
 
@@ -68,9 +68,7 @@ export const VolumeNode = memo(function VolumeNode({ data }: NodeProps) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div
             style={{
-              fontFamily: 'var(--dg-font-mono)',
-              fontSize: 11.5,
-              fontWeight: 600,
+              ...VOLUME_NAME_FONT,
               letterSpacing: '-0.01em',
               color: theme.nodeText,
               overflow: 'hidden',

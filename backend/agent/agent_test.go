@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	systemtypes "github.com/docker/docker/api/types/system"
@@ -61,7 +62,7 @@ func (s *stubDocker) ContainerStats(context.Context, string, bool) (containertyp
 
 func (s *stubDocker) ContainerInspect(_ context.Context, id string) (containertypes.InspectResponse, error) {
 	if id != "shop_web.1.t1" {
-		return containertypes.InspectResponse{}, errors.New("not found")
+		return containertypes.InspectResponse{}, cerrdefs.ErrNotFound.WithMessage("No such container: " + id)
 	}
 	return containertypes.InspectResponse{
 		ContainerJSONBase: &containertypes.ContainerJSONBase{
@@ -76,7 +77,7 @@ func (s *stubDocker) ContainerInspect(_ context.Context, id string) (containerty
 
 func (s *stubDocker) VolumeInspect(_ context.Context, name string) (volumetypes.Volume, error) {
 	if name != "shop_data" {
-		return volumetypes.Volume{}, errors.New("not found")
+		return volumetypes.Volume{}, cerrdefs.ErrNotFound.WithMessage("get " + name + ": no such volume")
 	}
 	return volumetypes.Volume{Name: "shop_data", Driver: "local", Scope: "local"}, nil
 }

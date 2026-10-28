@@ -88,9 +88,22 @@ export function placeTasks(dgNodes: DGNode[]): Map<string, PlacedTask[]> {
   return placed;
 }
 
-/** Label of a task card: `{service}.{slot}`, or the bare service name for global tasks. */
-export function taskLabel(serviceName: string, task: TaskInfo): string {
-  return task.slot ? `${serviceName}.${task.slot}` : serviceName;
+/**
+ * Slot shown for a task of a service in `mode`, or undefined for a global
+ * task. Swarm numbers replicated tasks from 1 but replicated-job tasks from
+ * 0, and the API omits a zero slot, so whether a task has a slot comes from
+ * the mode, not from the slot being set. Without a mode, a set slot counts.
+ */
+export function taskSlot(task: TaskInfo, mode: string | undefined): number | undefined {
+  if (mode === undefined) return task.slot || undefined;
+  if (mode === 'global' || mode === 'global-job') return undefined;
+  return task.slot ?? 0;
+}
+
+/** Label of a task: `{service}.{slot}`, or the bare service name for global tasks. */
+export function taskLabel(serviceName: string, task: TaskInfo, mode: string | undefined): string {
+  const slot = taskSlot(task, mode);
+  return slot === undefined ? serviceName : `${serviceName}.${slot}`;
 }
 
 /** The swarmnode graph id of the local daemon's node, if it is in the graph. */
@@ -177,7 +190,6 @@ export function toNodeGroupedFlowNodes(dgNodes: DGNode[], localNodeId?: string |
       type: 'nodeGroup',
       position: { x: 0, y: 0 },
       ...(parentId ? { parentId, extent: 'parent' as const } : null),
-      draggable: false,
       data: data as unknown as Record<string, unknown>,
     });
     const host = role ? dgNode.name : UNASSIGNED_CARD_HOST;
@@ -190,6 +202,7 @@ export function toNodeGroupedFlowNodes(dgNodes: DGNode[], localNodeId?: string |
         serviceId: service.id,
         serviceName: service.name,
         stack,
+        mode: service.service?.mode,
         tasks: svcTasks,
       };
       if (inactive) cardData.nodeInactive = true;
@@ -199,7 +212,6 @@ export function toNodeGroupedFlowNodes(dgNodes: DGNode[], localNodeId?: string |
         position: { x: 0, y: 0 },
         parentId: id,
         extent: 'parent',
-        draggable: false,
         data: cardData as unknown as Record<string, unknown>,
       });
     }
@@ -210,7 +222,6 @@ export function toNodeGroupedFlowNodes(dgNodes: DGNode[], localNodeId?: string |
         position: { x: 0, y: 0 },
         parentId: id,
         extent: 'parent',
-        draggable: false,
         data: { dgNode: c },
       });
     }
@@ -229,9 +240,6 @@ export function toNodeGroupedFlowNodes(dgNodes: DGNode[], localNodeId?: string |
       id: gid,
       type: 'roleGroup',
       position: { x: 0, y: 0 },
-      // Role groups are the only draggable nodes of the view; their boxes and
-      // cards follow through parentId.
-      draggable: true,
       data: {},
     };
     roles.push(group);
@@ -251,7 +259,6 @@ export function toNodeGroupedFlowNodes(dgNodes: DGNode[], localNodeId?: string |
       id: CONTROL_SUMMARY_ID,
       type: 'controlSummary',
       position: { x: 0, y: 0 },
-      draggable: false,
       selectable: false,
       focusable: false,
       data: data as unknown as Record<string, unknown>,
@@ -270,17 +277,34 @@ export function toNodeGroupedFlowNodes(dgNodes: DGNode[], localNodeId?: string |
   const free: RFNode[] = localGroup
     ? []
     : containers.map((c) => ({
-        id: c.id, type: 'containerNode', position: { x: 0, y: 0 }, draggable: false, data: { dgNode: c },
+        id: c.id, type: 'containerNode', position: { x: 0, y: 0 }, data: { dgNode: c },
       }));
 
   return [...roles, ...boxes, ...cards, ...free];
 }
 
 /**
+ * Ids of the canvas nodes that show graph node `id`: the node itself when it
+ * is drawn, otherwise the per-node service cards standing for it (a service
+ * has no node of its own in the per-node view, one card per swarm node it
+ * runs on). With `within` (a swarm node box), the cards inside that box win
+ * when there are any: the service as seen on that node. Empty when the
+ * canvas doesn't show it at all.
+ */
+export function canvasNodesShowing(rfNodes: readonly RFNode[], id: string, within?: string): string[] {
+  if (rfNodes.some((n) => n.id === id)) return [id];
+  const cards = rfNodes.filter(
+    (n) => n.type === 'nodeServiceCard' && (n.data as unknown as NodeServiceCardData).serviceId === id,
+  );
+  const inside = within ? cards.filter((n) => n.parentId === within) : [];
+  return (inside.length > 0 ? inside : cards).map((n) => n.id);
+}
+
+/**
  * Topology fingerprint of the per-node view: which boxes and cards exist,
  * which parent holds each, and how many task rows each card has (its height).
  * Task state changes and restarts that keep the per-node count leave it
- * unchanged, so they don't relayout (and don't reset dragged groups).
+ * unchanged, so they don't relayout.
  */
 export function nodeGroupedTopologyKey(dgNodes: DGNode[], localNodeId?: string | null): string {
   return toNodeGroupedFlowNodes(dgNodes, localNodeId)

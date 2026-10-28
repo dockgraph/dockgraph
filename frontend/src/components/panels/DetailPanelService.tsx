@@ -11,6 +11,7 @@ import { DetailPanelEnv } from './DetailPanelEnv';
 import { DetailPanelLabels } from './DetailPanelLabels';
 import { DetailPanelLogs } from './DetailPanelLogs';
 import { taskContainerName } from '../../utils/stack';
+import { taskSlot } from '../../utils/nodeTransform';
 import type { ContainerStatsData, ServiceDetail } from '../../types/stats';
 
 /** Colour for each task state in the task table. */
@@ -131,7 +132,7 @@ export function DetailPanelService({ detail, statsMap, active, onNavigate }: Pro
                 const color = TASK_STATE_COLORS[t.state ?? ''] ?? STATUS_COLORS.unhealthy;
                 return (
                   <tr key={t.id} style={{ borderTop: `1px solid ${theme.panelBorder}` }}>
-                    <td style={{ ...cell, fontFamily: 'var(--dg-font-mono)' }}>{t.slot || '—'}</td>
+                    <td style={{ ...cell, fontFamily: 'var(--dg-font-mono)' }}>{taskSlot(t, detail.mode) ?? '—'}</td>
                     <td style={{ ...cell, fontFamily: 'var(--dg-font-mono)', wordBreak: 'break-all' }} title={t.nodeId}>
                       {t.nodeHostname || t.nodeId?.slice(0, 12) || '—'}
                     </td>

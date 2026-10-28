@@ -22,3 +22,17 @@ export const CARD_SHADOW = '0 2px 6px -3px rgba(0, 0, 0, 0.45)';
 
 /** Corner radius shared by graph cards. */
 export const CARD_RADIUS = 6;
+
+/** CSS custom property holding the monospace font stack (see fonts.css). */
+export const MONO_FONT_VAR = '--dg-font-mono';
+
+const monoLabel = (fontSize: number) => ({ fontFamily: `var(${MONO_FONT_VAR})`, fontSize, fontWeight: 600 }) as const;
+
+/**
+ * Fonts of the graph node names and the service replica badge. The network
+ * layout measures names in these fonts to size the nodes (layout/elk.ts),
+ * so changing one here resizes the nodes to match.
+ */
+export const NODE_NAME_FONT = monoLabel(12.5);
+export const VOLUME_NAME_FONT = monoLabel(11.5);
+export const REPLICA_BADGE_FONT = monoLabel(10);

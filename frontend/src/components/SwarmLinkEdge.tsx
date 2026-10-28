@@ -16,7 +16,7 @@ import { useTheme } from '../theme';
 // Floating-edge geometry, adapted from the React Flow "Simple Floating Edges"
 // example (https://reactflow.dev/examples/edges/simple-floating-edges): the
 // link leaves each node where the line between both centres crosses its
-// border, so it follows the nodes wherever the role groups are dragged.
+// border, so it meets every box and card cleanly whatever their placement.
 
 interface Rect { x: number; y: number; w: number; h: number }
 

@@ -39,6 +39,8 @@
 #      network; change it if it overlaps an existing network)
 set -euo pipefail
 
+# Resolved before the cd below, which would break a relative $0.
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
 
 # Git Bash on Windows rewrites arguments that look like paths (/stack.yml);
@@ -69,7 +71,7 @@ die() {
 
 usage() {
   # The header comment block, without the shebang and the leading "# ".
-  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$SCRIPT"
 }
 
 # on <node> <docker args...>: run a docker command on a cluster node.

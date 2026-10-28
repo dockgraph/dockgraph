@@ -12,12 +12,17 @@ const SEGMENTS = [
   { key: "buildCache" as const, label: "Build cache", color: STATUS_COLORS.purple },
 ];
 
-export const DiskUsageCard = memo(function DiskUsageCard() {
+interface Props {
+  /** Swarm node the figures belong to (see DashboardCard). */
+  node?: string;
+}
+
+export const DiskUsageCard = memo(function DiskUsageCard({ node }: Props) {
   const { theme } = useTheme();
   const { data } = useDiskUsage();
 
   if (!data) {
-    return <DashboardCard title="Disk Usage" loading />;
+    return <DashboardCard title="Disk Usage" node={node} loading />;
   }
 
   const values = SEGMENTS.map(s => ({ ...s, value: data[s.key].total }));
@@ -31,7 +36,7 @@ export const DiskUsageCard = memo(function DiskUsageCard() {
   );
 
   return (
-    <DashboardCard title="Disk Usage" badge={totalBadge}>
+    <DashboardCard title="Disk Usage" badge={totalBadge} node={node}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {/* Stacked bar */}
         <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", background: theme.panelBorder }}>

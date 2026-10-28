@@ -5,6 +5,7 @@ import { useVolumeDetail } from './useVolumeDetail';
 import { useNetworkDetail } from './useNetworkDetail';
 import { useServiceDetail } from './useServiceDetail';
 import { projectOf, resolveNodeRef } from '../utils/stack';
+import { canvasNodesShowing } from '../utils/nodeTransform';
 import type { DGNode, DGEdge, VolumeMount } from '../types';
 
 /** Discriminated union describing the resolved detail panel variant. */
@@ -24,45 +25,64 @@ export type DetailVariant =
 /**
  * Manages all detail panel state: which resource is selected, type detection,
  * ghost detection, cross-reference navigation, and data fetching.
+ *
+ * `onOpen` is told the canvas node every panel is opened for (from a node's
+ * ☰, a table row, the dashboard or a link inside a panel), so the canvas can
+ * highlight it the same way whichever way it was opened.
  */
-export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[]) {
-  const { fitView } = useReactFlow();
+export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[], onOpen?: (canvasId: string) => void) {
+  const { fitView, getNodes } = useReactFlow();
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
+  // Canvas node the viewport centres on. Usually the opened resource's own
+  // node; a service opened from one of its per-node cards centres on that
+  // card, as the service has one card per swarm node and no node of its own.
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
 
-  const handleInfoClick = useCallback(
-    (nodeId: string) => setDetailNodeId(nodeId),
-    [],
-  );
+  const handleInfoClick = useCallback((nodeId: string, focusId: string = nodeId) => {
+    setDetailNodeId(nodeId);
+    setFocusNodeId(focusId);
+    onOpen?.(focusId);
+  }, [onOpen]);
 
-  const closeDetail = useCallback(() => setDetailNodeId(null), []);
+  const closeDetail = useCallback(() => {
+    setDetailNodeId(null);
+    setFocusNodeId(null);
+  }, []);
 
-  // Fit view to the selected node after canvas resizes for the detail panel.
+  // Fit the view to the focused node after the canvas resizes for the
+  // detail panel. A resource drawn as several nodes (a service's cards) is
+  // fitted as a whole, and one not on the canvas leaves the view alone:
+  // fitting unknown ids would zoom onto the canvas origin.
   useEffect(() => {
-    if (!detailNodeId) return;
+    if (!focusNodeId) return;
     const timer = setTimeout(() => {
+      const ids = canvasNodesShowing(getNodes(), focusNodeId);
+      if (ids.length === 0) return;
       fitView({
-        nodes: [{ id: detailNodeId }],
+        nodes: ids.map((id) => ({ id })),
         duration: 300,
         maxZoom: 1.5,
         padding: 0.3,
       });
     }, 50);
     return () => clearTimeout(timer);
-  }, [detailNodeId, fitView]);
+  }, [focusNodeId, fitView, getNodes]);
 
   // Resolve cross-reference names to graph node IDs. Supports suffix matching
   // for Docker's short names (a compose service name without its project
   // prefix, `{stack}_{svc}` swarm services, task container names), preferring
-  // matches in the stack of the resource currently shown.
+  // matches in the stack of the resource currently shown. A service linked
+  // from a swarm node's panel centres on its card on that node, not on every
+  // node it runs on.
   const handleNavigate = useCallback(
     (targetId: string) => {
       if (targetId.indexOf(':') < 0 && !dgNodes.some((n) => n.id === targetId)) return;
-      setDetailNodeId((current) => {
-        const from = current ? dgNodes.find((n) => n.id === current) : undefined;
-        return resolveNodeRef(dgNodes, targetId, from ? projectOf(from) : undefined);
-      });
+      const from = detailNodeId ? dgNodes.find((n) => n.id === detailNodeId) : undefined;
+      const target = resolveNodeRef(dgNodes, targetId, from ? projectOf(from) : undefined);
+      const near = detailNodeId ? canvasNodesShowing(getNodes(), target, detailNodeId) : [];
+      handleInfoClick(target, near.length === 1 ? near[0] : target);
     },
-    [dgNodes],
+    [dgNodes, detailNodeId, getNodes, handleInfoClick],
   );
 
   // Resolve the detail node type and ghost status.

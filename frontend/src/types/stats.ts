@@ -99,8 +99,25 @@ export interface NetworkDetail {
   };
   options: Record<string, string>;
   labels: Record<string, string>;
+  /** Containers attached on the local node; with `services`, only those that are no swarm task. */
   containers: { name: string; ipv4Address: string; ipv6Address: string; macAddress: string }[];
+  /** A swarm network's services across the cluster (swarm mode only). */
+  services?: NetworkService[];
+  /** Set when the swarm couldn't be asked for `services`: `containers` is then the local node's view. */
+  servicesUnavailable?: boolean;
 }
+
+/** A swarm service attached to a network. */
+export interface NetworkService {
+  name: string;
+  mode: string;
+  /** Virtual IP on the network; absent in DNS round-robin endpoint mode. */
+  vip?: string;
+  tasks: NetworkTask[];
+}
+
+/** A current task of a network's service, with its addresses on the network. */
+export type NetworkTask = import('../types').TaskInfo & { addresses?: string[] };
 
 /** Response of GET /api/services/{id}: a swarm service with its tasks. */
 export interface ServiceDetail {

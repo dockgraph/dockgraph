@@ -72,8 +72,7 @@ function buildFlow(
  * layout: async ELK for the network view, the deterministic grid of
  * layout/nodeLayout.ts for the per-node view. When only data changes
  * (status, ports, stats, etc.), patches the existing positioned nodes/edges
- * without relayout — positions are kept, so role groups the user dragged
- * stay where they were dropped until the next topology change or view switch.
+ * without relayout, keeping their positions.
  *
  * `groupBy` picks the network view (default) or the per-swarm-node view;
  * `localNodeId` is the swarm node id of the local daemon, which hosts the

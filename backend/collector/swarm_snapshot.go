@@ -363,6 +363,12 @@ func serviceNetworks(svc swarm.Service, networkIDToName map[string]string) []str
 	return result
 }
 
+// ServiceOnNetwork reports whether a service attaches to the network with the
+// given ID and name, by the rules the graph places services with.
+func ServiceOnNetwork(svc swarm.Service, networkID, networkName string) bool {
+	return len(serviceNetworks(svc, map[string]string{networkID: networkName})) > 0
+}
+
 // serviceVolumeMounts returns the named-volume mounts of a service's container spec.
 func serviceVolumeMounts(svc swarm.Service) []mount.Mount {
 	cs := svc.Spec.TaskTemplate.ContainerSpec

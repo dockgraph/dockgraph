@@ -12,6 +12,7 @@ import {
   SERVICE_CARD_HEADER_HEIGHT,
   SERVICE_CARD_ROW_HEIGHT,
 } from '../utils/constants';
+import { taskLabel, taskSlot } from '../utils/nodeTransform';
 import type { NodeServiceCardData, TaskInfo } from '../types';
 import type { ContainerStatsData } from '../types/stats';
 
@@ -36,19 +37,20 @@ function taskStateColor(state: string | undefined): string {
 }
 
 /** Row label of a task: `.{slot}` for replicated tasks, "global" otherwise. */
-function slotLabel(task: TaskInfo): string {
-  return task.slot ? `.${task.slot}` : 'global';
+function slotLabel(task: TaskInfo, mode: string | undefined): string {
+  const slot = taskSlot(task, mode);
+  return slot === undefined ? 'global' : `.${slot}`;
 }
 
 interface TaskRowProps {
   task: TaskInfo;
   serviceName: string;
+  mode: string | undefined;
   stats: ContainerStatsData | undefined;
-  onOpen?: () => void;
 }
 
 /** One task inside a service card: slot, state dot, and live CPU/memory or state. */
-const TaskRow = memo(function TaskRow({ task, serviceName, stats, onOpen }: TaskRowProps) {
+const TaskRow = memo(function TaskRow({ task, serviceName, mode, stats }: TaskRowProps) {
   const { theme } = useTheme();
   const state = task.state ?? 'unknown';
   const running = state === 'running';
@@ -58,11 +60,7 @@ const TaskRow = memo(function TaskRow({ task, serviceName, stats, onOpen }: Task
   return (
     <div
       data-testid="task-row"
-      role={onOpen ? 'button' : undefined}
-      tabIndex={onOpen ? 0 : undefined}
-      onClick={onOpen ? (e) => { e.stopPropagation(); onOpen(); } : undefined}
-      onKeyDown={onOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpen(); } } : undefined}
-      title={`${serviceName}${task.slot ? `.${task.slot}` : ''} — ${state}${task.error ? `: ${task.error}` : ''}`}
+      title={`${taskLabel(serviceName, task, mode)} — ${state}${task.error ? `: ${task.error}` : ''}`}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -99,7 +97,7 @@ const TaskRow = memo(function TaskRow({ task, serviceName, stats, onOpen }: Task
           ...ellipsis,
         }}
       >
-        {slotLabel(task)}
+        {slotLabel(task, mode)}
       </span>
       {stats ? (
         <>
@@ -134,13 +132,14 @@ const TaskRow = memo(function TaskRow({ task, serviceName, stats, onOpen }: Task
  * One service on one swarm node in the per-node view: the service name with
  * a running/placed badge, and one compact row per task the service has on the
  * node. Styled like the network view's cards (same shell, radius and shadow)
- * with the stack colour as the left stripe. Clicking the card or a task row
- * opens the service panel. `peerHover` outlines every card of the service
+ * with the stack colour as the left stripe. As in the network view, clicking
+ * the card highlights it (React Flow's node click) and its ☰ opens the
+ * service panel. `peerHover` outlines every card of the service
  * while one of them is hovered; cards on a down/drained/paused node are dimmed.
  */
 export const NodeServiceCard = memo(function NodeServiceCard({ data }: NodeProps) {
   const {
-    dgNode, serviceId, serviceName, stack, tasks, nodeInactive, taskStats, peerHover, nodeWidth = CARD_WIDTH, onInfoClick,
+    dgNode, serviceId, serviceName, stack, mode, tasks, nodeInactive, taskStats, peerHover, nodeWidth = CARD_WIDTH, onInfoClick,
   } = data as unknown as NodeServiceCardData & { nodeWidth?: number };
   const { theme } = useTheme();
   const color = stackColor(stack);
@@ -155,10 +154,6 @@ export const NodeServiceCard = memo(function NodeServiceCard({ data }: NodeProps
     <div
       data-testid="node-service-card"
       data-peer-hover={peerHover ? 'true' : undefined}
-      role={open ? 'button' : undefined}
-      tabIndex={open ? 0 : undefined}
-      onClick={open}
-      onKeyDown={open ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } } : undefined}
       title={`${serviceName}${stack ? ` (stack ${stack})` : ''} — ${running}/${tasks.length} running on this node`}
       style={{
         background: theme.nodeBg,
@@ -171,7 +166,6 @@ export const NodeServiceCard = memo(function NodeServiceCard({ data }: NodeProps
         boxSizing: 'border-box',
         overflow: 'hidden',
         opacity: nodeInactive ? INACTIVE_OPACITY : 1,
-        cursor: open ? 'pointer' : 'default',
         boxShadow: peerHover ? `${shadow}, 0 0 0 1.5px ${theme.accent}` : shadow,
         transition: 'box-shadow 0.15s',
       }}
@@ -229,8 +223,8 @@ export const NodeServiceCard = memo(function NodeServiceCard({ data }: NodeProps
           key={task.id}
           task={task}
           serviceName={serviceName}
+          mode={mode}
           stats={taskStats?.[task.id]}
-          onOpen={open}
         />
       ))}
     </div>

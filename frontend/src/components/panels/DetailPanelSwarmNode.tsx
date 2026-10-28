@@ -159,7 +159,7 @@ export function DetailPanelSwarmNode({ node, dgNodes, statsMap, onNavigate }: Pr
                   >
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
                     <span style={{ fontFamily: 'var(--dg-font-mono)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {taskLabel(service.name, task)}
+                      {taskLabel(service.name, task, service.service?.mode)}
                     </span>
                     <span style={{ color: theme.nodeSubtext }}>{task.state ?? 'unknown'}</span>
                     <span style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 10.5, color: theme.nodeSubtext, whiteSpace: 'nowrap' }}>

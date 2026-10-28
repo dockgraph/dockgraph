@@ -12,8 +12,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 /**
  * "Managers" / "Workers" container of the per-node view. Shares
  * NetworkGroup's frame and legend tab, tinted with the role colour, and adds
- * a node/task summary. It is the draggable handle of its section: grabbing
- * the frame or the tab moves every box and card inside it.
+ * a node/task summary. Fixed in place like the network view's groups:
+ * dragging on it pans the canvas.
  */
 export const RoleGroup = memo(function RoleGroup({ data }: NodeProps) {
   const { role, nodeCount, taskCount } = data as unknown as RoleGroupData;
@@ -25,7 +25,7 @@ export const RoleGroup = memo(function RoleGroup({ data }: NodeProps) {
     <div
       data-testid="role-group"
       data-role={role}
-      title={`${title}: ${plural(nodeCount, 'node')}, ${plural(taskCount, 'task')} — drag to move`}
+      title={`${title}: ${plural(nodeCount, 'node')}, ${plural(taskCount, 'task')}`}
       style={{
         width: '100%',
         height: '100%',
@@ -34,7 +34,6 @@ export const RoleGroup = memo(function RoleGroup({ data }: NodeProps) {
         borderRadius: 10,
         background: `${color}${theme.groupBgAlpha}`,
         position: 'relative',
-        cursor: 'grab',
       }}
     >
       <NodeHandles />
