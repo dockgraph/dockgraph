@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -151,5 +152,23 @@ func TestGenerateJTIUnique(t *testing.T) {
 	j2, _ := GenerateJTI()
 	if j1 == j2 {
 		t.Error("two JTIs should differ")
+	}
+}
+
+func TestCredentialGeneration(t *testing.T) {
+	key, _ := GenerateSigningKey()
+	other, _ := GenerateSigningKey()
+	g := CredentialGeneration(key, "pw")
+	if g != CredentialGeneration(key, "pw") {
+		t.Error("not deterministic")
+	}
+	if g == CredentialGeneration(key, "pw2") {
+		t.Error("same generation for a different password")
+	}
+	if g == CredentialGeneration(other, "pw") {
+		t.Error("generation does not depend on the signing key")
+	}
+	if strings.Contains(g, "pw") {
+		t.Error("generation leaks the password")
 	}
 }

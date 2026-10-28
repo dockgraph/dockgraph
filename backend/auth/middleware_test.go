@@ -165,3 +165,27 @@ func TestMiddlewareSetsClaimsInContext(t *testing.T) {
 		t.Error("middleware should set claims in request context")
 	}
 }
+
+// A cookie issued before the password was rotated carries the old
+// generation and must be refused even though the shared key is unchanged.
+func TestMiddlewareRejectsRotatedPassword(t *testing.T) {
+	key, _ := GenerateSigningKey()
+	old := &Service{SigningKey: key, Generation: CredentialGeneration(key, "old-password"), Sessions: NewSessionManager()}
+	rotated := &Service{SigningKey: key, Generation: CredentialGeneration(key, "new-password"), Sessions: NewSessionManager()}
+
+	now := time.Now()
+	token, err := SignToken(Claims{IssuedAt: now, ExpiresAt: now.Add(time.Hour), JTI: "j", Generation: old.Generation}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, tt := range map[string]struct {
+		svc  *Service
+		want bool
+	}{"same password, other replica": {old, true}, "rotated password": {rotated, false}} {
+		req := httptest.NewRequest(http.MethodGet, "/api/x", nil)
+		req.AddCookie(&http.Cookie{Name: "dg_session", Value: token})
+		if _, ok := tt.svc.validateRequest(req); ok != tt.want {
+			t.Errorf("%s: valid = %v, want %v", name, ok, tt.want)
+		}
+	}
+}

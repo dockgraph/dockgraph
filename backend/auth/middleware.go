@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 )
@@ -51,6 +52,9 @@ func (s *Service) validateRequest(r *http.Request) (Claims, bool) {
 	}
 	claims, err := VerifyToken(cookie.Value, s.SigningKey)
 	if err != nil {
+		return Claims{}, false
+	}
+	if subtle.ConstantTimeCompare([]byte(claims.Generation), []byte(s.Generation)) != 1 {
 		return Claims{}, false
 	}
 	if !s.Sessions.IsValid(claims.IssuedAt) {

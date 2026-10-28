@@ -14,13 +14,14 @@ import (
 
 // Config holds runtime configuration loaded from environment variables.
 type Config struct {
-	BindAddr      string        // Listen address (DG_BIND_ADDR, default "0.0.0.0")
-	Port          string        // HTTP listen port (DG_PORT, default "7800")
-	PollInterval  time.Duration // Docker API poll interval (DG_POLL_INTERVAL, default 30s)
-	ComposePaths  []string      // Explicit compose paths override (DG_COMPOSE_PATH); nil means auto-detect from container mounts
-	PasswordHash  string        // Argon2id hash of DG_PASSWORD; empty means auth disabled
-	StatsInterval time.Duration // Container stats poll interval (DG_STATS_INTERVAL, default 3s)
-	StatsWorkers  int           // Max concurrent stats API calls (DG_STATS_WORKERS, default 50)
+	BindAddr       string        // Listen address (DG_BIND_ADDR, default "0.0.0.0")
+	Port           string        // HTTP listen port (DG_PORT, default "7800")
+	PollInterval   time.Duration // Docker API poll interval (DG_POLL_INTERVAL, default 30s)
+	ComposePaths   []string      // Explicit compose paths override (DG_COMPOSE_PATH); nil means auto-detect from container mounts
+	passwordSecret string        // DG_PASSWORD as configured (plaintext or hash), input of the session generation
+	PasswordHash   string        // Argon2id hash of DG_PASSWORD; empty means auth disabled
+	StatsInterval  time.Duration // Container stats poll interval (DG_STATS_INTERVAL, default 3s)
+	StatsWorkers   int           // Max concurrent stats API calls (DG_STATS_WORKERS, default 50)
 	// Mode selects the runtime mode (DG_MODE: auto|standalone|swarm|agent,
 	// default auto). Auto resolves at startup from the daemon's swarm state.
 	Mode string
@@ -118,6 +119,7 @@ func LoadConfig() Config {
 		log.Fatalf("%v", err)
 	}
 	if raw != "" {
+		cfg.passwordSecret = raw
 		if auth.IsHashedPassword(raw) {
 			if err := auth.ValidateHash(raw); err != nil {
 				log.Fatalf("DG_PASSWORD contains invalid hash: %v", err)

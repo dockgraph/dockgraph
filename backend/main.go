@@ -203,6 +203,7 @@ func main() {
 		authService = &auth.Service{
 			PasswordHash: cfg.PasswordHash,
 			SigningKey:   signingKey,
+			Generation:   auth.CredentialGeneration(signingKey, cfg.passwordSecret),
 			Sessions:     auth.NewSessionManager(),
 			Limiter:      auth.NewRateLimiter(5, time.Minute),
 			LoginPage:    frontend.LoginHTML,

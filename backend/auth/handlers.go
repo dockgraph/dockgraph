@@ -19,9 +19,12 @@ const (
 type Service struct {
 	PasswordHash string
 	SigningKey   []byte
-	Sessions     *SessionManager
-	Limiter      *RateLimiter
-	LoginPage    []byte
+	// Generation is CredentialGeneration of the configured password. Sessions
+	// issued for another one (a rotated password) are refused.
+	Generation string
+	Sessions   *SessionManager
+	Limiter    *RateLimiter
+	LoginPage  []byte
 }
 
 // Login returns a handler for POST /api/login.
@@ -103,9 +106,10 @@ func (s *Service) setSessionCookie(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	token, err := SignToken(Claims{
-		IssuedAt:  now,
-		ExpiresAt: now.Add(sessionMaxAge),
-		JTI:       jti,
+		IssuedAt:   now,
+		ExpiresAt:  now.Add(sessionMaxAge),
+		JTI:        jti,
+		Generation: s.Generation,
 	}, s.SigningKey)
 	if err != nil {
 		return err
