@@ -7,6 +7,8 @@ import { placeTasks, nodeUsage, formatCores, taskLabel, type PlacedTask } from '
 import { Section, Row, navLinkStyle, navButtonReset, monoStyle } from './shared';
 import { Copyable } from './Copyable';
 import { DetailPanelStats } from './DetailPanelStats';
+import { ResourceLine } from './ResourceLine';
+import { Pill } from './StatusBadge';
 import { SwarmRoleBadge, SwarmAvailabilityChip } from '../SwarmNodeBadges';
 import type { DGNode } from '../../types';
 import type { ContainerStatsData } from '../../types/stats';
@@ -16,32 +18,13 @@ export function DetailPanelSwarmNodeHeader({ node }: { node: DGNode }) {
   const { theme } = useTheme();
   const info = node.swarmNode;
   const state = info?.state ?? node.status ?? 'unknown';
-  const color = swarmNodeStateColor(state);
   return (
     <div>
       <div style={{ fontSize: 16, fontWeight: 600, color: theme.nodeText, marginBottom: 6, wordBreak: 'break-all' }}>
         <Copyable value={node.name}>{node.name}</Copyable>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '3px 9px',
-            borderRadius: 999,
-            background: `${color}22`,
-            fontFamily: 'var(--dg-font-mono)',
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
-            color,
-          }}
-        >
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
-          {state}
-        </span>
+        <Pill label={state} color={swarmNodeStateColor(state)} />
         <SwarmRoleBadge info={info} />
         <SwarmAvailabilityChip info={info} />
         <span style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 11, color: theme.nodeSubtext }}>swarm node</span>
@@ -173,22 +156,5 @@ export function DetailPanelSwarmNode({ node, dgNodes, statsMap, onNavigate }: Pr
         )}
       </Section>
     </>
-  );
-}
-
-function ResourceLine({ label, capacity, used, percent, color }: { label: string; capacity: string; used?: string; percent?: number; color: string }) {
-  const { theme } = useTheme();
-  return (
-    <div style={{ marginBottom: 7 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
-        <span style={{ color: theme.nodeSubtext }}>{label}</span>
-        <span style={{ fontFamily: 'var(--dg-font-mono)', color: theme.panelText }}>
-          {percent !== undefined ? `${percent.toFixed(0)}% · ` : ''}{used ? `${used} / ` : ''}{capacity}
-        </span>
-      </div>
-      <div style={{ height: 4, background: theme.portBg, borderRadius: 2, overflow: 'hidden' }}>
-        <div style={{ width: `${percent ?? 0}%`, height: '100%', background: color, borderRadius: 2 }} />
-      </div>
-    </div>
   );
 }

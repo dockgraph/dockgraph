@@ -5,6 +5,7 @@ package clustertest
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	mathrand "math/rand/v2"
 	"net/http"
@@ -648,9 +649,6 @@ func TestManagerQuorumLoss(t *testing.T) {
 	}
 	srvContainer := firstLine(on(t, srv, "ps", "-q", "--filter", "label=com.docker.swarm.service.name="+serverService))
 
-	for _, m := range paused {
-		host(t, "pause", m)
-	}
 	healed := false
 	heal := func() {
 		for _, m := range paused {
@@ -663,12 +661,35 @@ func TestManagerQuorumLoss(t *testing.T) {
 		}
 	})
 
+	// One manager down: the majority holds and the managers endpoint names it.
+	host(t, "pause", paused[0])
+	eventually(t, 2*time.Minute, paused[0]+" reported unreachable", func() error {
+		reach, err := managerReachability(t, port)
+		if err != nil {
+			return err
+		}
+		if reach[paused[0]] != "unreachable" {
+			return fmt.Errorf("%s is %q", paused[0], reach[paused[0]])
+		}
+		return nil
+	})
+
+	for _, m := range paused[1:] {
+		host(t, "pause", m)
+	}
 	eventually(t, 2*time.Minute, "quorum lost", func() error {
 		out, err := tryOn(srv, "node", "ls")
 		if err == nil {
 			return fmt.Errorf("swarm API still answers")
 		}
 		t.Logf("swarm API: %s", firstLine(out))
+		return nil
+	})
+	// The graph keeps its last snapshot; the managers endpoint must not.
+	eventually(t, time.Minute, "managers endpoint reports no leader", func() error {
+		if r := getVia(t, port, "/api/swarm/managers"); r.code != http.StatusServiceUnavailable {
+			return fmt.Errorf("%d %.200s", r.code, r.body)
+		}
 		return nil
 	})
 
@@ -707,6 +728,42 @@ func TestManagerQuorumLoss(t *testing.T) {
 		return nil
 	})
 	expectService(t, "t_after_quorum", "running", 1, 1, 90*time.Second)
+	eventually(t, 2*time.Minute, "every manager reachable again", func() error {
+		reach, err := managerReachability(t, port)
+		if err != nil {
+			return err
+		}
+		for _, m := range managers {
+			if reach[m] != "reachable" {
+				return fmt.Errorf("%s is %q", m, reach[m])
+			}
+		}
+		return nil
+	})
+}
+
+// managerReachability reads /api/swarm/managers through the UI port: each
+// manager's raft reachability by hostname.
+func managerReachability(t *testing.T, port int) (map[string]string, error) {
+	t.Helper()
+	r := getVia(t, port, "/api/swarm/managers")
+	if r.code != http.StatusOK {
+		return nil, fmt.Errorf("%d %.200s", r.code, r.body)
+	}
+	var body struct {
+		Managers []struct {
+			Name         string `json:"name"`
+			Reachability string `json:"reachability"`
+		} `json:"managers"`
+	}
+	if err := json.Unmarshal([]byte(r.body), &body); err != nil {
+		return nil, err
+	}
+	reach := make(map[string]string, len(body.Managers))
+	for _, m := range body.Managers {
+		reach[m.Name] = m.Reachability
+	}
+	return reach, nil
 }
 
 // ── Soak ──────────────────────────────────────────────────────

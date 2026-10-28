@@ -79,6 +79,7 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 			mux.HandleFunc("GET /api/services/{id}/logs/history", HandleServiceLogsHistory(docker))
 			mux.HandleFunc("GET /api/services/{id}/logs", HandleServiceLogs(docker))
 			mux.HandleFunc("GET /api/services/{id}", HandleServiceInspect(docker, docker))
+			mux.HandleFunc("GET /api/swarm/managers", HandleSwarmManagers(docker))
 		}
 		// Containers on other swarm nodes are served by their node's agent.
 		remote := o.agentProxy

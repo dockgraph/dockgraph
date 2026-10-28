@@ -5,8 +5,8 @@ import { useVolumeDetail } from './useVolumeDetail';
 import { useNetworkDetail } from './useNetworkDetail';
 import { useServiceDetail } from './useServiceDetail';
 import { projectOf, resolveNodeRef } from '../utils/stack';
-import { canvasNodesShowing } from '../utils/nodeTransform';
-import type { DGNode, DGEdge, VolumeMount } from '../types';
+import { canvasNodesShowing, isRoleGroupId, roleOfGroupId } from '../utils/nodeTransform';
+import type { DGNode, DGEdge, VolumeMount, SwarmRole } from '../types';
 
 /** Discriminated union describing the resolved detail panel variant. */
 export type DetailVariant =
@@ -17,6 +17,7 @@ export type DetailVariant =
   | { kind: 'network'; networkName: string }
   | { kind: 'group' }
   | { kind: 'swarmnode'; node: DGNode }
+  | { kind: 'rolegroup'; role: SwarmRole }
   | { kind: 'ghost-container'; node: DGNode }
   | { kind: 'ghost-service'; node: DGNode }
   | { kind: 'ghost-volume'; node: DGNode }
@@ -101,8 +102,13 @@ export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[], onOpen?: (c
   const variant: DetailVariant = useMemo(() => {
     if (!detailNodeId) return { kind: 'none' };
     if (isGroupDetail) return { kind: 'group' };
-    // Swarm nodes need no fetch: the graph node carries everything shown.
+    // Swarm nodes and their role groups need no fetch: the graph carries
+    // everything shown (the managers' quorum is asked for by the panel).
     if (isSwarmNodeDetail) return detailDgNode ? { kind: 'swarmnode', node: detailDgNode } : { kind: 'none' };
+    if (isRoleGroupId(detailNodeId)) {
+      const role = roleOfGroupId(detailNodeId);
+      return role ? { kind: 'rolegroup', role } : { kind: 'none' };
+    }
     if (isGhostResource && detailDgNode) {
       if (isVolumeDetail) return { kind: 'ghost-volume', node: detailDgNode };
       if (isNetworkDetail) return { kind: 'ghost-network', node: detailDgNode };

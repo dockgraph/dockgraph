@@ -57,6 +57,8 @@ src/
 │   │   ├── DetailPanelCompose.tsx   # Compose service configuration
 │   │   ├── DetailPanelService.tsx   # Swarm service: mode, replicas, tasks, service logs
 │   │   ├── DetailPanelSwarmNode.tsx # Swarm node: role, state, capacity, placed tasks
+│   │   ├── DetailPanelRoleGroup.tsx # Managers / Workers: quorum (live), states, capacity, engine versions, nodes
+│   │   ├── ResourceLine.tsx         # Capacity line with usage bar, shared by the swarm panels
 │   │   ├── DetailPanelVolume.tsx    # Volume detail (driver, usage, mounts)
 │   │   ├── GhostVolumePanel.tsx     # Ghost (not-running) volume detail
 │   │   ├── GhostNetworkPanel.tsx    # Ghost network detail
@@ -134,6 +136,7 @@ src/
 │   ├── logWindowsState.ts          # Pure log-window state transitions
 │   ├── useDragResize.ts            # Pointer-based window drag and resize
 │   ├── usePollingFetch.ts          # Generic polling fetch with interval
+│   ├── useSwarmManagers.ts         # Managers' raft state, polled while the Managers panel is open
 │   ├── useStatsHistory.ts          # Stats time-series for dashboard charts (workload or node scope)
 │   ├── useRecentEvents.ts          # Recent Docker events
 │   ├── useSystemInfo.ts            # Docker host system information
@@ -153,6 +156,7 @@ src/
 ├── utils/
 │   ├── graphTransform.ts           # Domain model → React Flow conversion
 │   ├── nodeTransform.ts            # Task placement and per-node view React Flow nodes
+│   ├── roleSummary.ts              # Totals of a Managers / Workers group and quorum arithmetic
 │   ├── swarmLinks.ts               # Control-plane and overlay-network links of the node view
 │   ├── stack.ts                    # Stack membership, stack list and stack filtering helpers
 │   ├── colors.ts                   # Deterministic network colors, status palette
@@ -160,9 +164,10 @@ src/
 │   ├── deltaUtils.ts               # WebSocket delta update merging
 │   ├── formatBytes.ts              # Byte formatting utility
 │   ├── format.ts                   # General formatting helpers
+│   ├── apiError.ts                 # Error message of a failed API response
 │   ├── alerts.ts                   # Dashboard alert generation logic
 │   ├── logParser.ts                # Docker log stream parser
-│   ├── nodeStyles.ts               # Ghost border and left-rail accent helpers for nodes
+│   ├── nodeStyles.ts               # Node borders, rail accents and the label fonts the layout measures
 │   ├── pathUtils.ts                # SVG path utilities
 │   └── selectionGraph.ts           # Click-to-highlight graph traversal
 ├── types/
@@ -227,7 +232,7 @@ Backend (WebSocket) → useDockGraph → App (stack scope) → FlowCanvas
 
 3. **Graph view**: `graphTransform` converts the backend's flat node/edge model into React Flow's hierarchical structure — containers are grouped inside network groups, volumes are placed in the group of their first consumer. Swarm services render as `ServiceNode`s inside their overlay networks. The ELK layout pipeline then computes positions.
 
-4. **Node view** (swarm): with `?group=node` (`useGroupBy`, `GroupByToggle`), `nodeTransform` places each running task on its node and builds one `SwarmNodeGroup` per node, with a `NodeServiceCard` per service, inside `RoleGroup`s for managers and workers. `nodeLayout` positions them on a fixed grid (managers first, workers wrapped in rows), and `swarmLinks` adds the Managers → Workers control-plane link and, for a selected service, links to services sharing an overlay network on other nodes.
+4. **Node view** (swarm): with `?group=node` (`useGroupBy`, `GroupByToggle`), `nodeTransform` places each running task on its node and builds one `SwarmNodeGroup` per node, with a `NodeServiceCard` per service, inside `RoleGroup`s for managers and workers; a role group's ☰ opens `DetailPanelRoleGroup`, totals from `roleSummary` plus, for managers, the quorum polled live by `useSwarmManagers`. `nodeLayout` positions them on a fixed grid (managers first, workers wrapped in rows), and `swarmLinks` adds the Managers → Workers control-plane link and, for a selected service, links to services sharing an overlay network on other nodes.
 
 5. **Table view**: `TableView` splits nodes by type into resource tabs; the Services tab appears when the graph has swarm services. Each table uses `useTableGrouping` (compose project / stack, network, status, or driver) and `useTableSort` for interactive column sorting. `GroupedTable` provides the shared rendering pattern.
 

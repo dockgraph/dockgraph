@@ -58,6 +58,9 @@ import { GhostHeader } from "./panels/GhostHeader";
 import { ContainerList } from "./panels/ContainerList";
 import { DetailPanelService, DetailPanelServiceHeader } from "./panels/DetailPanelService";
 import { DetailPanelSwarmNode, DetailPanelSwarmNodeHeader } from "./panels/DetailPanelSwarmNode";
+import { DetailPanelRoleGroup, DetailPanelRoleGroupHeader } from "./panels/DetailPanelRoleGroup";
+import { summarizeRole } from "../utils/roleSummary";
+import { boxTaskCounts } from "../utils/nodeTransform";
 import { useGraphLayout } from "../hooks/useGraphLayout";
 import { useSelectionHighlight } from "../hooks/useSelectionHighlight";
 import { useDetailPanel } from "../hooks/useDetailPanel";
@@ -235,6 +238,17 @@ export function FlowCanvas({
     closeDetail,
   } = useDetailPanel(dgNodes, dgEdges, highlightOnCanvas);
 
+  // Figures of an open Managers / Workers panel, shared by its header and
+  // body. Task counts only change with the graph; usage with every stats update.
+  const roleTaskCounts = useMemo(
+    () => (variant.kind === "rolegroup" ? boxTaskCounts(dgNodes, localNodeId) : null),
+    [variant.kind, dgNodes, localNodeId],
+  );
+  const roleSummary = useMemo(
+    () => (variant.kind === "rolegroup" && roleTaskCounts ? summarizeRole(dgNodes, variant.role, statsMap, roleTaskCounts) : null),
+    [variant, dgNodes, statsMap, roleTaskCounts],
+  );
+
   // Floating log windows. `openContainerInfo` re-opens the side panel for a
   // container (windows store the bare name; the panel expects a node id).
   const logWindows = useLogWindows();
@@ -263,10 +277,7 @@ export function FlowCanvas({
           data: { ...n.data, stats: s, onInfoClick: handleInfoClick },
         };
       }
-      if (n.type === "volumeNode") {
-        return { ...n, data: { ...n.data, onInfoClick: handleInfoClick } };
-      }
-      if (n.type === "networkGroup") {
+      if (n.type === "volumeNode" || n.type === "networkGroup" || n.type === "roleGroup") {
         return { ...n, data: { ...n.data, onInfoClick: handleInfoClick } };
       }
       // Swarm node boxes carry the node aggregate (`node:{hostname}`); task
@@ -479,6 +490,8 @@ export function FlowCanvas({
             <ResourceHeader name={detailDgNode.name} subtitle={detailDgNode.driver} theme={theme} />
           ) : variant.kind === 'swarmnode' ? (
             <DetailPanelSwarmNodeHeader node={variant.node} />
+          ) : variant.kind === 'rolegroup' && roleSummary ? (
+            <DetailPanelRoleGroupHeader role={variant.role} summary={roleSummary} />
           ) : variant.kind === 'service' && serviceData ? (
             <DetailPanelServiceHeader detail={serviceData} />
           ) : containerData ? (
@@ -501,6 +514,8 @@ export function FlowCanvas({
           <GhostContainerPanel node={variant.node} onNavigate={handleNavigate} />
         ) : variant.kind === 'swarmnode' ? (
           <DetailPanelSwarmNode node={variant.node} dgNodes={dgNodes} statsMap={statsMap} onNavigate={handleNavigate} />
+        ) : variant.kind === 'rolegroup' && roleSummary ? (
+          <DetailPanelRoleGroup role={variant.role} summary={roleSummary} onNavigate={handleNavigate} />
         ) : variant.kind === 'service' ? (
           serviceData ? (
             <DetailPanelService detail={serviceData} statsMap={statsMap} active={detailOpen} onNavigate={handleNavigate} />

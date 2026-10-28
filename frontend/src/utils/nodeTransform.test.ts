@@ -12,6 +12,7 @@ import {
   canvasNodesShowing,
   taskSlot,
   taskLabel,
+  boxTaskCounts,
 } from './nodeTransform';
 import { filterGraphByStack } from './stack';
 import type { DGNode, NodeServiceCardData, SwarmNodeGroupData, RoleGroupData, ControlSummaryData } from '../types';
@@ -176,6 +177,23 @@ describe('toNodeGroupedFlowNodes', () => {
     expect(rf.filter((n) => n.type === 'nodeGroup').map((n) => n.id)).toEqual(['swarmnode:mgr', 'swarmnode:wrk']);
     expect(rf.filter((n) => n.type === 'nodeServiceCard').map((n) => n.id)).toEqual(['nodesvc:mgr:blog_api']);
     expect(rf.some((n) => n.id === 'container:lone')).toBe(false);
+  });
+});
+
+describe('boxTaskCounts', () => {
+  it('counts what each box shows: its placed tasks, plus the standalone containers in the local box', () => {
+    const counts = boxTaskCounts(all, 'n1');
+    expect(counts.get('swarmnode:mgr')).toBe(3); // t1, g1 and the lone container
+    expect(counts.get('swarmnode:wrk')).toBe(1);
+
+    const roles = toNodeGroupedFlowNodes(all, 'n1')
+      .filter((n) => n.type === 'roleGroup')
+      .map((g) => (g.data as unknown as RoleGroupData).taskCount);
+    expect(roles).toEqual([counts.get('swarmnode:mgr'), counts.get('swarmnode:wrk')]);
+  });
+
+  it('leaves standalone containers out while the local node is unknown', () => {
+    expect(boxTaskCounts(all, null).get('swarmnode:mgr')).toBe(2);
   });
 });
 

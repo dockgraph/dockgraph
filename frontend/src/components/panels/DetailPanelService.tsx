@@ -2,6 +2,7 @@ import { useTheme } from '../../theme';
 import { formatBytes } from '../../utils/formatBytes';
 import { STATUS_COLORS } from '../../utils/colors';
 import { Section, Row, navLinkStyle, navButtonReset, monoStyle } from './shared';
+import { panelTableStyles } from './panelStyles';
 import { Copyable } from './Copyable';
 import { StatusBadge } from './StatusBadge';
 import { DetailPanelStats } from './DetailPanelStats';
@@ -71,17 +72,7 @@ export function DetailPanelService({ detail, statsMap, active, onNavigate }: Pro
     protocol: p.publishMode ? `${p.protocol} (${p.publishMode})` : p.protocol,
   }));
 
-  const cell: React.CSSProperties = { padding: '3px 6px 3px 0', verticalAlign: 'top' };
-  const head: React.CSSProperties = {
-    ...cell,
-    fontFamily: 'var(--dg-font-mono)',
-    fontSize: 9,
-    fontWeight: 600,
-    color: theme.nodeSubtext,
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    textAlign: 'left',
-  };
+  const { cell, head } = panelTableStyles(theme.nodeSubtext);
 
   return (
     <>

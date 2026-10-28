@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTheme } from '../../theme';
 import { Section, Row, navLinkStyle, navButtonReset, monoStyle } from './shared';
+import { panelTableStyles } from './panelStyles';
 import { Copyable } from './Copyable';
 import { taskSlot } from '../../utils/nodeTransform';
 import type { NetworkService } from '../../types/stats';
@@ -44,16 +45,9 @@ function NetworkServiceEntry({ service, onNavigate }: { service: NetworkService;
   // Global services' tasks have no slot: they are told apart by their node.
   const slotted = service.tasks.some((t) => taskSlot(t, service.mode) !== undefined);
 
-  const cell: React.CSSProperties = { padding: '3px 6px 3px 0', verticalAlign: 'top', fontFamily: 'var(--dg-font-mono)' };
-  const head: React.CSSProperties = {
-    ...cell,
-    fontSize: 9,
-    fontWeight: 600,
-    color: theme.nodeSubtext,
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    textAlign: 'left',
-  };
+  const table = panelTableStyles(theme.nodeSubtext);
+  const cell: React.CSSProperties = { ...table.cell, fontFamily: 'var(--dg-font-mono)' };
+  const head = table.head;
   const name: React.CSSProperties = { fontWeight: 600, color: theme.panelText, textAlign: 'left', wordBreak: 'break-all' };
 
   return (

@@ -126,6 +126,18 @@ describe('RoleGroup', () => {
     expect(group.title).toBe('Workers: 2 nodes, 3 tasks');
   });
 
+  it('opens its panel from the ☰ on its tab, like a network group', () => {
+    const onInfoClick = vi.fn();
+    renderRole({ role: 'manager', nodeCount: 3, taskCount: 5, onInfoClick });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect Managers' }));
+    expect(onInfoClick).toHaveBeenCalledWith('rolegroup:manager');
+  });
+
+  it('has no ☰ without a panel to open', () => {
+    renderRole({ role: 'worker', nodeCount: 1, taskCount: 1 });
+    expect(screen.queryByRole('button', { name: 'Inspect Workers' })).toBeNull();
+  });
+
   it('uses a distinct colour per role', () => {
     renderRole({ role: 'worker', nodeCount: 1, taskCount: 1 });
     const worker = (screen.getByTestId('role-group') as HTMLElement).style.borderColor;

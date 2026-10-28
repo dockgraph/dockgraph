@@ -195,16 +195,17 @@ When `DG_PASSWORD` or `DG_PASSWORD_FILE` is set, all endpoints (except `/healthz
 | `GET` | `/api/auth/check` | Verify session validity |
 | `GET` | `/ws` | WebSocket upgrade for live graph and stats updates |
 | `GET` | `/api/containers/:id` | Container inspect (detailed info); proxied to the owning node's agent in swarm mode |
-| `GET` | `/api/containers/:id/logs` | Stream container logs (SSE). `?since=` (the newest line the client has) resumes just after it, replaying what was logged since, so no line is lost between a history page and the live tail; the same holds for the other log streams |
+| `GET` | `/api/containers/:id/logs` | Stream container logs (SSE); `?since=` resumes right after the client's newest line, without a gap |
 | `GET` | `/api/containers/:id/logs/history` | Paginated log history (JSON) |
 | `GET` | `/api/logs` | Stream all containers' logs merged (SSE); `?stack=` scopes to one stack |
-| `GET` | `/api/logs/history` | Paginated merged log history across all containers (JSON); `?stack=` scopes to one stack. Sources are read in parallel, each within 5 seconds, so a service with a task on an unreachable node keeps the lines it sent and doesn't hold back the others |
+| `GET` | `/api/logs/history` | Paginated merged log history across all containers (JSON); `?stack=` scopes to one stack; sources are read in parallel, each with a timeout |
 | `GET` | `/api/services/:id` | Swarm service inspect with tasks and their nodes (swarm mode) |
 | `GET` | `/api/services/:id/logs` | Stream a swarm service's logs from all its tasks (SSE, swarm mode) |
 | `GET` | `/api/services/:id/logs/history` | Paginated swarm service log history (JSON, swarm mode) |
-| `GET` | `/api/networks/:name` | Network inspect (IPAM, containers on this node). In swarm mode a swarm network also lists its services cluster-wide, from the manager: each with its VIP and its tasks' nodes and addresses; task containers then appear only under their service |
+| `GET` | `/api/swarm/managers` | Managers' raft reachability and leader, read live (swarm mode); `503` when the swarm has no leader |
+| `GET` | `/api/networks/:name` | Network inspect (IPAM, containers on this node); in swarm mode also its services cluster-wide, with VIPs and task addresses |
 | `GET` | `/api/volumes/:name` | Volume inspect (driver, usage, labels); searched on every node in swarm mode with agents |
-| `GET` | `/api/system/info` | Docker host system information, including its `hostname` (in swarm mode, the node the host, disk and image figures belong to) |
+| `GET` | `/api/system/info` | Docker host system information, including its `hostname` |
 | `GET` | `/api/system/disk-usage` | Docker disk usage breakdown |
 | `GET` | `/api/images` | Docker image list |
 | `GET` | `/api/stats/history` | Stats time-series for dashboard charts; `?stack=` keeps one stack's series, `?scope=nodes` returns the per-node aggregates instead |

@@ -23,3 +23,8 @@ export function formatUptime(startedAt: string): string {
 export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
+
+/** A count with its noun: "1 node", "3 nodes". */
+export function formatCount(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}

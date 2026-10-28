@@ -192,7 +192,7 @@ func buildSwarmSnapshot(res swarmResources) GraphSnapshot {
 func buildSwarmNodeNodes(nodes []swarm.Node) []Node {
 	chosen := make(map[string]swarm.Node, len(nodes))
 	for _, n := range nodes {
-		name := swarmNodeName(n)
+		name := SwarmNodeName(n)
 		prev, ok := chosen[name]
 		if ok && prev.Status.State == swarm.NodeStateReady && n.Status.State == swarm.NodeStateReady {
 			// Not a stale entry of a rejoined node: two live members.
@@ -211,8 +211,9 @@ func buildSwarmNodeNodes(nodes []swarm.Node) []Node {
 	return out
 }
 
-// swarmNodeName is the hostname a swarm node is displayed and keyed under.
-func swarmNodeName(n swarm.Node) string {
+// SwarmNodeName is the hostname a swarm node is displayed and keyed under
+// (its graph node is "swarmnode:" + this name).
+func SwarmNodeName(n swarm.Node) string {
 	if n.Description.Hostname != "" {
 		return n.Description.Hostname
 	}

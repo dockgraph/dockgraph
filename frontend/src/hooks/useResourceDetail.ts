@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { apiErrorMessage } from '../utils/apiError';
 
 interface DetailResult<T> {
   data: T | null;
@@ -7,23 +8,6 @@ interface DetailResult<T> {
 }
 
 const EMPTY: DetailResult<never> = { data: null, loading: false, error: null };
-
-/**
- * Returns the `{"error": ...}` message of a failed API response, which
- * names the cause (e.g. a swarm agent rejecting the token), or the HTTP
- * status when the body carries none.
- */
-async function errorMessage(res: Response): Promise<string> {
-  try {
-    const body: unknown = await res.json();
-    if (body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' && body.error) {
-      return body.error;
-    }
-  } catch {
-    // Not JSON: fall back to the status.
-  }
-  return `HTTP ${res.status}`;
-}
 
 /**
  * Generic fetch-on-change hook for Docker resource inspection endpoints.
@@ -70,7 +54,7 @@ export function useResourceDetail<T>(url: string | null): DetailResult<T> {
 
     fetch(url, { signal: controller.signal })
       .then(async (res) => {
-        if (!res.ok) throw new Error(await errorMessage(res));
+        if (!res.ok) throw new Error(await apiErrorMessage(res));
         return res.json();
       })
       .then((data: T) => {
