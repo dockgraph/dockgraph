@@ -122,7 +122,7 @@ func main() {
 
 	dc := collector.NewDockerCollector(dockerCli, cfg.PollInterval)
 	if swarmMode {
-		dc.EnableSwarm(cfg.SwarmPollInterval)
+		dc.EnableSwarm(cfg.SwarmPollInterval, hostname)
 	}
 	if err := dc.Start(ctx); err != nil {
 		log.Fatalf("docker collector start failed: %v", err)

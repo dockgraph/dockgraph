@@ -14,7 +14,7 @@ export type DetailVariant =
   | { kind: 'container'; containerName: string }
   | { kind: 'service'; serviceName: string }
   | { kind: 'volume'; volumeName: string }
-  | { kind: 'network'; networkName: string }
+  | { kind: 'network'; networkName: string; owner?: string }
   | { kind: 'group' }
   | { kind: 'swarmnode'; node: DGNode }
   | { kind: 'rolegroup'; role: SwarmRole }
@@ -115,7 +115,7 @@ export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[], onOpen?: (c
       if (isServiceDetail) return { kind: 'ghost-service', node: detailDgNode };
       return { kind: 'ghost-container', node: detailDgNode };
     }
-    if (isNetworkDetail) return { kind: 'network', networkName: detailNodeId.replace('network:', '') };
+    if (isNetworkDetail) return { kind: 'network', networkName: detailNodeId.replace('network:', ''), owner: detailDgNode?.owner };
     if (isVolumeDetail) return { kind: 'volume', volumeName: detailNodeId.replace('volume:', '') };
     if (isServiceDetail) return { kind: 'service', serviceName: detailNodeId.replace('service:', '') };
     return { kind: 'container', containerName: detailNodeId.replace('container:', '') };
@@ -159,11 +159,12 @@ export function useDetailPanel(dgNodes: DGNode[], dgEdges: DGEdge[], onOpen?: (c
   const containerName = variant.kind === 'container' ? variant.containerName : null;
   const volumeName = variant.kind === 'volume' ? variant.volumeName : null;
   const networkName = variant.kind === 'network' ? variant.networkName : null;
+  const networkOwner = variant.kind === 'network' ? variant.owner : undefined;
   const serviceName = variant.kind === 'service' ? variant.serviceName : null;
 
   const { data: containerData, loading: containerLoading, error: containerError } = useContainerDetail(containerName);
   const { data: volumeData, loading: volumeLoading, error: volumeError } = useVolumeDetail(volumeName);
-  const { data: networkData, loading: networkLoading, error: networkError } = useNetworkDetail(networkName);
+  const { data: networkData, loading: networkLoading, error: networkError } = useNetworkDetail(networkName, networkOwner);
   const { data: serviceData, loading: serviceLoading, error: serviceError } = useServiceDetail(serviceName);
 
   // Coalesce loading/error for the active variant.

@@ -113,7 +113,7 @@ func IsTaskContainer(labels map[string]string) bool {
 // (stable across task reschedules), the overlay and local networks they join,
 // the volumes they mount, and any standalone (non-task) containers running on
 // the local daemon.
-func buildSwarmSnapshot(res swarmResources) GraphSnapshot {
+func buildSwarmSnapshot(res swarmResources, localHostname string) GraphSnapshot {
 	local := res.dockerResources
 	local.containers = make([]containertypes.Summary, 0, len(res.containers))
 	for _, c := range res.containers {
@@ -131,6 +131,19 @@ func buildSwarmSnapshot(res swarmResources) GraphSnapshot {
 		members = append(members, projectMember{ProjectOf(svc.Spec.Labels), IsServiceSelfExcluded(svc)})
 	}
 	snap := assembleSnapshot(local, selfOnlyProjects(members))
+
+	// Networks come from this daemon alone; a node-local one exists only here.
+	nodeLocal := make(map[string]bool)
+	for _, n := range res.networks {
+		if n.Scope != swarmScope {
+			nodeLocal[n.Name] = true
+		}
+	}
+	for i := range snap.Nodes {
+		if n := &snap.Nodes[i]; n.Type == nodeTypeNetwork && nodeLocal[n.Name] {
+			n.Owner = localHostname
+		}
+	}
 
 	knownVolumes := make(map[string]bool)
 	for _, n := range snap.Nodes {

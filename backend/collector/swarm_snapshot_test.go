@@ -144,7 +144,7 @@ func TestFetchSwarmResourcesErrors(t *testing.T) {
 // --- buildSwarmSnapshot ---
 
 func TestBuildSwarmSnapshotServiceNode(t *testing.T) {
-	snap := buildSwarmSnapshot(shopResources())
+	snap := buildSwarmSnapshot(shopResources(), "")
 
 	web := findNodeByID(snap.Nodes, "service:shop_web")
 	if web == nil {
@@ -188,7 +188,7 @@ func TestBuildSwarmSnapshotServiceNode(t *testing.T) {
 }
 
 func TestBuildSwarmSnapshotNetworks(t *testing.T) {
-	snap := buildSwarmSnapshot(shopResources())
+	snap := buildSwarmSnapshot(shopResources(), "")
 
 	for _, id := range []string{"network:ingress", "network:docker_gwbridge"} {
 		if findNodeByID(snap.Nodes, id) != nil {
@@ -220,7 +220,7 @@ func TestBuildSwarmSnapshotPrefersOwnStackNetwork(t *testing.T) {
 	})
 	res.services[1].Spec.TaskTemplate.Networks = append(res.services[1].Spec.TaskTemplate.Networks, swarm.NetworkAttachmentConfig{Target: "net-shared"})
 
-	snap := buildSwarmSnapshot(res)
+	snap := buildSwarmSnapshot(res, "")
 	db := findNodeByID(snap.Nodes, "service:shop_db")
 	if db.NetworkID != "network:shop_back" {
 		t.Errorf("primary = %s, want own-stack network", db.NetworkID)
@@ -231,7 +231,7 @@ func TestBuildSwarmSnapshotPrefersOwnStackNetwork(t *testing.T) {
 }
 
 func TestBuildSwarmSnapshotTaskContainersSuppressed(t *testing.T) {
-	snap := buildSwarmSnapshot(shopResources())
+	snap := buildSwarmSnapshot(shopResources(), "")
 	if findNodeByID(snap.Nodes, "container:shop_web.1.abc") != nil {
 		t.Error("task container should be represented by its service")
 	}
@@ -244,7 +244,7 @@ func TestBuildSwarmSnapshotVolumes(t *testing.T) {
 	res := shopResources()
 	res.volumes = []*volumetypes.Volume{{Name: "local_only", Driver: "local"}}
 
-	snap := buildSwarmSnapshot(res)
+	snap := buildSwarmSnapshot(res, "")
 	vol := findNodeByID(snap.Nodes, "volume:shop_data")
 	if vol == nil {
 		t.Fatal("volume node for service mount missing")
@@ -295,7 +295,7 @@ func TestBuildSwarmSnapshotSelfExclusion(t *testing.T) {
 				services: []swarm.Service{self},
 			}
 
-			snap := buildSwarmSnapshot(res)
+			snap := buildSwarmSnapshot(res, "")
 			if len(snap.Nodes) != 0 {
 				t.Errorf("self-only stack should be hidden entirely, got %+v", snap.Nodes)
 			}
@@ -314,7 +314,7 @@ func TestBuildSwarmSnapshotSelfSharedStackKeepsResources(t *testing.T) {
 		services: []swarm.Service{self, other},
 	}
 
-	snap := buildSwarmSnapshot(res)
+	snap := buildSwarmSnapshot(res, "")
 	if findNodeByID(snap.Nodes, "service:ops_dockgraph") != nil {
 		t.Error("self service should be hidden")
 	}
@@ -668,7 +668,7 @@ func TestDockerCollectorSwarmModeSnapshot(t *testing.T) {
 		nodes:      res.nodes,
 	}
 	dc := NewDockerCollector(cli, time.Hour)
-	dc.EnableSwarm(0) // no task poller; exercised separately
+	dc.EnableSwarm(0, "") // no task poller; exercised separately
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -691,7 +691,7 @@ func TestDockerCollectorCheckTasksResnapshotsOnlyOnChange(t *testing.T) {
 	res := shopResources()
 	cli := &stubDockerClient{services: res.services, tasks: res.tasks, nodes: res.nodes}
 	dc := NewDockerCollector(cli, time.Hour)
-	dc.EnableSwarm(time.Hour)
+	dc.EnableSwarm(time.Hour, "")
 	ctx := context.Background()
 
 	if err := dc.poll(ctx); err != nil {
@@ -769,7 +769,7 @@ func TestBuildSwarmSnapshotSwarmNodes(t *testing.T) {
 	noState.Spec.Role = swarm.NodeRoleWorker
 
 	res.nodes = []swarm.Node{leader, down, drained, noState}
-	snap := buildSwarmSnapshot(res)
+	snap := buildSwarmSnapshot(res, "")
 
 	m := findNodeByID(snap.Nodes, "swarmnode:manager-1")
 	if m == nil {
@@ -835,7 +835,7 @@ func TestSwarmNodeInfoJSON(t *testing.T) {
 func TestDockerCollectorTaskPollLoop(t *testing.T) {
 	cli := &stubDockerClient{}
 	dc := NewDockerCollector(cli, time.Hour)
-	dc.EnableSwarm(20 * time.Millisecond)
+	dc.EnableSwarm(20*time.Millisecond, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -991,5 +991,27 @@ func TestSelfServicesTransientError(t *testing.T) {
 	self.IsSelfEvent(context.Background(), task)
 	if calls != 2 {
 		t.Errorf("transient failure not retried after the TTL: %d calls", calls)
+	}
+}
+
+// A node-local network is tagged with the node whose daemon holds it, so the
+// panel can inspect it there; a swarm-scoped one has no owner.
+func TestBuildSwarmSnapshotNamesLocalNetworkOwner(t *testing.T) {
+	res := shopResources()
+	res.networks = append(res.networks,
+		networktypes.Summary{ID: "l1", Name: "lan", Driver: "macvlan", Scope: "local"},
+		networktypes.Summary{ID: "o1", Name: "mesh", Driver: "overlay", Scope: "swarm"})
+	snap := buildSwarmSnapshot(res, "mgr-a")
+	owners := map[string]string{}
+	for _, n := range snap.Nodes {
+		if n.Type == "network" {
+			owners[n.Name] = n.Owner
+		}
+	}
+	if owners["lan"] != "mgr-a" {
+		t.Errorf("lan owner = %q, want mgr-a", owners["lan"])
+	}
+	if owners["mesh"] != "" {
+		t.Errorf("swarm network owner = %q, want empty", owners["mesh"])
 	}
 }

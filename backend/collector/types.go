@@ -59,6 +59,10 @@ type Node struct {
 	Stack     string            `json:"stack,omitempty"`
 	Service   *ServiceInfo      `json:"service,omitempty"`
 	SwarmNode *SwarmNodeInfo    `json:"swarmNode,omitempty"`
+	// Owner is the hostname of the swarm node whose daemon holds a
+	// node-local network (bridge, macvlan...): only that node can inspect it.
+	// Empty for swarm-scoped networks and outside swarm mode.
+	Owner string `json:"owner,omitempty"`
 }
 
 // SwarmNodeInfo carries cluster-node details for "swarmnode" nodes. Role is

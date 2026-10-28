@@ -88,6 +88,8 @@ export interface DGNode {
   stack?: string;
   service?: ServiceInfo;
   swarmNode?: SwarmNodeInfo;
+  /** Hostname of the swarm node holding a node-local network. */
+  owner?: string;
 }
 
 export interface DGEdge {
