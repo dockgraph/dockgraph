@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 
 # ── Stage 3: Runtime ─────────────────────────────────────────
-FROM gcr.io/distroless/static@sha256:58133991db06659feaabe0f4e97a35cebf15ef4ea08f8a4c6d2ee5f75e4aa6a0
+FROM gcr.io/distroless/static@sha256:034df5c1737e8241f6ed6423a12e720ee0f6d6f088609ee172f98f6f2166ef5d
 COPY --from=backend /app/backend/dockgraph /dockgraph
 EXPOSE 7800
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=5s \
