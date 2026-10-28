@@ -63,8 +63,9 @@ const (
 // WireMessage and StateMessage Type field values, shared between the
 // collector, state, and api packages so the wire protocol stays in sync.
 const (
-	MsgTypeSnapshot = "snapshot"
-	MsgTypeDelta    = "delta"
+	MsgTypeSnapshot  = "snapshot"
+	MsgTypeDelta     = "delta"
+	MsgTypeHeartbeat = "heartbeat"
 )
 
 // Block I/O operation types reported by container stats.

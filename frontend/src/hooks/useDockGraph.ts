@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DGNode, DGEdge, GraphSnapshot, WireMessage } from '../types';
 import type { StatsMessage } from '../types/stats';
-import { RECONNECT_MAX_DELAY } from '../utils/constants';
+import { RECONNECT_MAX_DELAY, WS_IDLE_TIMEOUT } from '../utils/constants';
 import { snapshotFingerprint, applyDelta as applyDeltaFn } from '../utils/deltaUtils';
 import { protocolAction } from '../utils/protocol';
 
@@ -18,7 +18,10 @@ interface DockGraphState {
  * On mount, opens a WebSocket that receives the initial graph snapshot
  * followed by incremental delta updates as containers start/stop. The
  * connection automatically reconnects with exponential backoff (capped
- * at 30 seconds) if the server drops or the network blips.
+ * at 30 seconds) if the server drops or the network blips. A connection
+ * that stays silent for WS_IDLE_TIMEOUT (no heartbeat) is dropped and
+ * replaced the same way: through the swarm routing mesh, the new one
+ * reaches a live server replica.
  */
 export function useDockGraph(onStats?: (data: StatsMessage) => void): DockGraphState {
   const [state, setState] = useState<DockGraphState>({
@@ -31,6 +34,7 @@ export function useDockGraph(onStats?: (data: StatsMessage) => void): DockGraphS
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
   const fingerprintRef = useRef('');
   const connectRef = useRef<(() => void) | null>(null);
@@ -58,12 +62,52 @@ export function useDockGraph(onStats?: (data: StatsMessage) => void): DockGraphS
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
+    const clearIdleTimer = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    };
+
+    const disconnected = () => {
+      // A socket already replaced (e.g. closed by a remount) must leave the
+      // current one, its idle timer and the retry schedule alone.
+      if (wsRef.current !== ws) return;
+      clearIdleTimer();
+      wsRef.current = null;
+      setState((prev) => ({ ...prev, connected: false }));
+
+      if (unmountedRef.current) return;
+
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      const delay = Math.min(1000 * Math.pow(2, retryRef.current), maxRetryDelay);
+      retryRef.current++;
+      retryTimerRef.current = setTimeout(() => connectRef.current?.(), delay);
+    };
+
+    // Restarted by every message, including heartbeats. When it fires the
+    // server is gone without closing the socket, so the closing handshake
+    // would never complete: detach the socket and reconnect right away.
+    const armIdleTimer = () => {
+      if (wsRef.current !== ws) return;
+      clearIdleTimer();
+      idleTimerRef.current = setTimeout(() => {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.close();
+        disconnected();
+      }, WS_IDLE_TIMEOUT);
+    };
+    armIdleTimer();
+
     ws.onopen = () => {
       retryRef.current = 0;
+      armIdleTimer();
       setState((prev) => ({ ...prev, connected: true }));
     };
 
     ws.onmessage = (event) => {
+      armIdleTimer();
       let msg: WireMessage;
       try {
         msg = JSON.parse(event.data);
@@ -100,17 +144,7 @@ export function useDockGraph(onStats?: (data: StatsMessage) => void): DockGraphS
       }
     };
 
-    ws.onclose = () => {
-      setState((prev) => ({ ...prev, connected: false }));
-      wsRef.current = null;
-
-      if (unmountedRef.current) return;
-
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-      const delay = Math.min(1000 * Math.pow(2, retryRef.current), maxRetryDelay);
-      retryRef.current++;
-      retryTimerRef.current = setTimeout(() => connectRef.current?.(), delay);
-    };
+    ws.onclose = disconnected;
 
     ws.onerror = () => {
       ws.close();
@@ -127,6 +161,7 @@ export function useDockGraph(onStats?: (data: StatsMessage) => void): DockGraphS
     return () => {
       unmountedRef.current = true;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       wsRef.current?.close();
     };
   }, [connect]);

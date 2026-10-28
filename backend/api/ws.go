@@ -22,6 +22,11 @@ const (
 	// gorilla buffers a whole message in memory before ReadMessage returns,
 	// so the cap bounds the memory one message can take.
 	maxClientMessageSize = 512
+	// defaultHeartbeatPeriod is how often a heartbeat message goes to each
+	// client. Browsers answer pings without telling the page, so this is
+	// what lets the frontend notice a server that vanished without closing
+	// the connection (its node powered off) and reconnect to another replica.
+	defaultHeartbeatPeriod = 5 * time.Second
 )
 
 // checkOrigin validates WebSocket upgrade requests by comparing the Origin
@@ -45,6 +50,7 @@ var upgrader = websocket.Upgrader{
 type wsClient struct {
 	conn      *websocket.Conn
 	key       string // per-client limit bucket (see Hub.ClientKey)
+	heartbeat time.Duration // period of heartbeat messages
 	sendCh    chan collector.WireMessage
 	done      chan struct{}
 	issuedAt  time.Time // JWT issued-at (zero when auth disabled)
@@ -70,6 +76,8 @@ type Hub struct {
 	// built on first use so the bounds can be set after NewHub.
 	slotsOnce sync.Once
 	slots     *slotLimiter
+	// HeartbeatPeriod is how often each client gets a heartbeat message.
+	HeartbeatPeriod time.Duration
 }
 
 // NewHub creates an empty WebSocket hub.
@@ -78,6 +86,7 @@ func NewHub() *Hub {
 		clients:          make(map[*wsClient]bool),
 		MaxClients:       128,
 		MaxClientsPerKey: maxWSClientsPerClient,
+		HeartbeatPeriod:  defaultHeartbeatPeriod,
 	}
 }
 
@@ -113,9 +122,14 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		exp = claims.ExpiresAt
 	}
 
+	heartbeat := h.HeartbeatPeriod
+	if heartbeat <= 0 {
+		heartbeat = defaultHeartbeatPeriod
+	}
 	c := &wsClient{
 		conn:      conn,
 		key:       h.clientKey(r),
+		heartbeat: heartbeat,
 		sendCh:    make(chan collector.WireMessage, 32),
 		done:      make(chan struct{}),
 		issuedAt:  iat,
@@ -147,17 +161,20 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	go c.readPump(h)
 }
 
-// writePump sends queued state messages to the WebSocket connection
-// and issues periodic pings to detect stale connections. Exits when
-// the done channel is closed by readPump, or when a write fails or times
-// out; it then closes the connection and frees its slot.
+// writePump sends queued state messages to the WebSocket connection,
+// issues periodic pings to detect stale connections and heartbeat messages
+// so the client can detect a dead server. Exits when the done channel is
+// closed by readPump, or when a write fails or times out; it then closes
+// the connection and frees its slot.
 func (c *wsClient) writePump(h *Hub) {
 	ticker := time.NewTicker(pingPeriod)
+	heartbeat := time.NewTicker(c.heartbeat)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("writePump recovered: %v", r)
 		}
 		ticker.Stop()
+		heartbeat.Stop()
 		c.conn.Close()
 		// Freed only now: a writer stuck on a client that stopped reading
 		// still holds the connection and its message.
@@ -174,6 +191,11 @@ func (c *wsClient) writePump(h *Hub) {
 			return
 		case <-ticker.C:
 			if err := c.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
+				return
+			}
+		case <-heartbeat.C:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(streamWriteTimeout))
+			if err := c.conn.WriteJSON(collector.NewHeartbeatMessage()); err != nil {
 				return
 			}
 		}
