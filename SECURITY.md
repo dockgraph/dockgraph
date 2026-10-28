@@ -27,7 +27,9 @@ DockGraph supports optional password protection via the `DG_PASSWORD` environmen
 - Passwords are hashed with Argon2id, and one verification runs at a time. A plaintext `DG_PASSWORD` is hashed at startup; the variable itself stays in the process environment and in `docker inspect`, so prefer `DG_PASSWORD_FILE` or a pre-hashed value.
 - Login attempts are rate-limited to 5 per minute per client (IPv6 clients per /64). Behind a reverse proxy, list it in `DG_TRUSTED_PROXIES` so clients are told apart by `X-Forwarded-For`; otherwise they all share the proxy's budget.
 - State-changing requests from other origins are rejected.
-- Server restarts invalidate all active sessions (ephemeral signing key).
+- Without `DG_SESSION_KEY` or `DG_AGENT_KEY`, the signing key is random per process, so a server restart invalidates all active sessions.
+- In a swarm, every server replica signs with the same key: `DG_SESSION_KEY` (at least 32 bytes) if set, otherwise one derived from the agent private key with HKDF-SHA256. Only the servers hold that key (agents hold the public key), so a compromised agent cannot forge sessions. Sessions then survive restarts, and rotating that secret logs everyone out. The key is never derived from the password nor from the shared agent token, which every agent holds.
+- Logout invalidates earlier sessions only on the replica that handled it. A stolen cookie can keep working on the other replicas until it expires (7 days).
 
 When `DG_PASSWORD` is not set, DockGraph runs without authentication and logs a warning at startup. It then serves only requests addressed to an IP address, `localhost` or a host name listed in `DG_ALLOWED_HOSTS`.
 
