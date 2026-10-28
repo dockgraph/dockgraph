@@ -670,6 +670,7 @@ func TestLoadSessionKey(t *testing.T) {
 		{"unset_no_token", "", "", "", nil, ""},
 		{"inline", " " + longKey + " ", "", "agent-token", []byte(longKey), ""},
 		{"file_trimmed", "", keyFile, "", []byte(longKey), ""},
+		{"blank_inline", "   ", "", "agent-token", nil, "blank"},
 		{"too_short", "short", "", "agent-token", nil, "too short"},
 		{"missing_file", "", filepath.Join(dir, "missing"), "agent-token", nil, "cannot read"},
 		{"derived_from_token", "", "", "agent-token", derived, ""},

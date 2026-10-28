@@ -229,7 +229,12 @@ func loadSessionKey(agentToken string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if raw = strings.TrimSpace(raw); raw != "" {
+	if raw != "" {
+		// readSecretEnv returns "" only when unset, so a key that is blank
+		// after trimming is a misconfiguration, not a request for the fallback.
+		if raw = strings.TrimSpace(raw); raw == "" {
+			return nil, fmt.Errorf("DG_SESSION_KEY is blank")
+		}
 		if len(raw) < minSessionKeyLen {
 			return nil, fmt.Errorf("DG_SESSION_KEY is too short: %d bytes, need at least %d (try `openssl rand -hex 32`)", len(raw), minSessionKeyLen)
 		}
