@@ -89,9 +89,12 @@ type ServiceInfo struct {
 }
 
 // ReplicaCount is the number of running tasks versus the desired count.
+// Completed counts the finished tasks of a job service (replicated-job or
+// global-job) and stays zero for other modes.
 type ReplicaCount struct {
-	Running int `json:"running"`
-	Desired int `json:"desired"`
+	Running   int `json:"running"`
+	Desired   int `json:"desired"`
+	Completed int `json:"completed,omitempty"`
 }
 
 // TaskInfo is a single swarm task of a service, placed on a cluster node.

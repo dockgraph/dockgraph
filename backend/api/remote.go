@@ -48,6 +48,9 @@ type RemoteContainerLocator interface {
 	// container id, or false when the container is local or unknown. It may
 	// query the swarm.
 	LocateContainer(ctx context.Context, id string) (baseURL string, ok bool)
+	// TokenRejected reports whether agents refused the shared token. Their
+	// nodes are then unknown, so their containers cannot be located.
+	TokenRejected() bool
 }
 
 // AgentProxy forwards container inspect and log requests for containers on
@@ -56,6 +59,12 @@ type AgentProxy struct {
 	Locator RemoteContainerLocator
 	// Token is the bearer secret presented to agents.
 	Token string
+	// Agents lists the agents on other nodes, for lookups that must ask
+	// every node (node-local volumes). Optional: without it volumes are
+	// only inspected on the server's node.
+	Agents RemoteAgentLister
+	// LocalHostname names the server's node in multi-node responses.
+	LocalHostname string
 	// Transport defaults to a transport with dial and response-header
 	// timeouts, shared by every proxied route.
 	Transport http.RoundTripper
@@ -131,6 +140,12 @@ func (p *AgentProxy) wrap(local http.HandlerFunc, inspector ContainerInspector, 
 			base, ok = p.Locator.LocateContainer(r.Context(), id)
 		}
 		if !ok {
+			// The container may be on a node whose agent refused the token:
+			// name the misconfiguration instead of answering "not found".
+			if p.tokenRejected() {
+				jsonError(w, errAgentAuth.Error(), http.StatusBadGateway)
+				return
+			}
 			local(w, r)
 			return
 		}
@@ -184,11 +199,21 @@ func (p *AgentProxy) wrap(local http.HandlerFunc, inspector ContainerInspector, 
 					return // client went away
 				}
 				log.Printf("agent proxy %s%s: %v", id, suffix, err)
-				jsonError(w, "agent unreachable", http.StatusBadGateway)
+				msg := "agent unreachable"
+				if errors.Is(err, errAgentAuth) {
+					msg = errAgentAuth.Error()
+				}
+				jsonError(w, msg, http.StatusBadGateway)
 			},
 		}
 		rp.ServeHTTP(w, r)
 	}
+}
+
+// tokenRejected reports whether agents refused the token, which hides their
+// nodes' containers and volumes from the server.
+func (p *AgentProxy) tokenRejected() bool {
+	return p.Locator != nil && p.Locator.TokenRejected()
 }
 
 // bufferBounded reads a one-shot agent response fully, before any header

@@ -43,6 +43,7 @@ const SERVICE_STATUSES = [
   { key: "updating", label: "Updating", color: STATUS_COLORS.blue },
   { key: "degraded", label: "Degraded", color: STATUS_COLORS.amber },
   { key: "stopped", label: "Stopped", color: STATUS_COLORS.gray },
+  { key: "completed", label: "Completed", color: STATUS_COLORS.teal },
   { key: "not_running", label: "Pending", color: STATUS_COLORS.purple },
 ] as const;
 

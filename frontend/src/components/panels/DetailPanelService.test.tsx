@@ -77,6 +77,13 @@ describe('DetailPanelService', () => {
     expect(screen.getByText('rollback_completed — rollback done')).toBeDefined();
   });
 
+  it('shows how many tasks a job completed', () => {
+    const job: ServiceDetail = { ...detail, mode: 'replicated-job', status: 'completed', replicas: { running: 0, desired: 1, completed: 3 } };
+    render(<ThemeProvider><DetailPanelService detail={job} statsMap={new Map()} active={false} onNavigate={vi.fn()} /></ThemeProvider>);
+    expect(screen.getByText('Completed:')).toBeDefined();
+    expect(screen.getByText('3')).toBeDefined();
+  });
+
   it('lists tasks with slot, node hostname, state and error', () => {
     renderPanel();
     expect(screen.getByText('Tasks (2)')).toBeDefined();

@@ -5,6 +5,7 @@ export const STATUS_COLORS = {
   amber: "#f59e0b",
   blue: "#3b82f6",
   purple: "#8b5cf6",
+  teal: "#14b8a6",
   gray: "#64748b",
 } as const;
 

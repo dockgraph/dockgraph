@@ -63,6 +63,7 @@ backend/
 │   ├── logs_aggregate.go    # Aggregated log history and SSE streaming (stack-scoped, swarm services)
 │   ├── services.go          # Swarm service inspect and service log endpoints
 │   ├── remote.go            # Proxies container inspect/logs to the agent on the owning node
+│   ├── remote_volumes.go    # Looks node-local swarm volumes up on every node
 │   ├── events.go            # Recent Docker events endpoint
 │   ├── stats_history.go     # Stats time-series endpoint (stack scope, per-node scope)
 │   ├── system.go            # System info, disk usage, and image list endpoints
@@ -119,14 +120,14 @@ Both collectors implement the `Collector` interface and emit `StateUpdate` value
 
 `DG_MODE` is resolved at startup against the daemon's swarm state (`mode.go`). In `swarm` mode the DockerCollector builds its snapshot from the swarm API (`swarm_snapshot.go`):
 
-- **Services** become `service` nodes placed in their overlay networks, with replica counts, mode (replicated/global/job), update status and their tasks. Each task carries the hostname of the node it runs on. The stack comes from the `com.docker.stack.namespace` label.
+- **Services** become `service` nodes placed in their overlay networks, with replica counts, mode (replicated/global/job), update status and their tasks. Their status is `running`, `degraded`, `updating`, `stopped` (scaled to zero) or, for a job whose tasks all finished, `completed`; jobs also report their completed task count, since swarm leaves a finished job at 0/1 or 0/0 replicas. Each task carries the hostname of the node it runs on. The stack comes from the `com.docker.stack.namespace` label.
 - **Nodes** become `swarmnode` nodes with role, leader flag, availability, state, address, engine version and capacity (CPU and memory). A hostname appearing twice (a node that left and rejoined) keeps only the ready or most recent entry.
 - Service and node events trigger a re-snapshot, and tasks are polled every `DG_SWARM_POLL_INTERVAL` since task changes emit no events.
 - Stack files mounted with `DG_COMPOSE_PATH` show services that are not deployed yet, as with compose.
 
-**Agents.** With `DG_MODE=agent`, the binary serves only the agent API under `/agent/v1` (info, stats, container inspect and logs) plus `/healthz`, and every request must carry the shared token. The server's `AgentPool` resolves `DG_AGENT_ADDR` (`tasks.agent`) periodically, keeping known agents on transient DNS errors, and polls every agent each stats round. Remote samples are merged with local ones (local wins on a name collision), stamped with their node, and aggregated per service and per node under `node:{hostname}`. Every node whose agent answered gets an aggregate, even when it runs no other container.
+**Agents.** With `DG_MODE=agent`, the binary serves only the agent API under `/agent/v1` (info, stats, container inspect and logs, volume inspect) plus `/healthz`, and every request must carry the shared token. The server's `AgentPool` resolves `DG_AGENT_ADDR` (`tasks.agent`) every 30 seconds, keeping known agents on transient DNS errors, and polls every agent each stats round. In between it re-resolves the name every 5 seconds and refreshes at once when an agent appears or disappears (a node joined or left), so a new node's containers don't wait for the next full refresh. An agent that rejects the token is reported once, not on every refresh. Remote samples are merged with local ones (local wins on a name collision), stamped with their node, and aggregated per service and per node under `node:{hostname}`. Every node whose agent answered gets an aggregate, even when it runs no other container.
 
-**Proxy.** Container inspect and log requests for a container on another node are forwarded to that node's agent (`api/remote.go`). Non-streaming responses are capped at 16 MiB; log streams stay open until the client disconnects.
+**Proxy.** Container inspect and log requests for a container on another node are forwarded to that node's agent (`api/remote.go`). Non-streaming responses are capped at 16 MiB; log streams stay open until the client disconnects. Swarm volumes are node-local, so a volume inspect asks the local daemon and every agent at once, bounded by 5 seconds (`api/remote_volumes.go`): the response describes the server's own copy when it has one, otherwise the first node's by hostname, and adds `node` (the node described) and `nodes` (every node holding a volume of that name).
 
 ### State Merging
 
@@ -197,12 +198,12 @@ When `DG_PASSWORD` or `DG_PASSWORD_FILE` is set, all endpoints (except `/healthz
 | `GET` | `/api/containers/:id/logs` | Stream container logs (SSE) |
 | `GET` | `/api/containers/:id/logs/history` | Paginated log history (JSON) |
 | `GET` | `/api/logs` | Stream all containers' logs merged (SSE); `?stack=` scopes to one stack |
-| `GET` | `/api/logs/history` | Paginated merged log history across all containers (JSON); `?stack=` scopes to one stack |
+| `GET` | `/api/logs/history` | Paginated merged log history across all containers (JSON); `?stack=` scopes to one stack. Sources are read in parallel, each within 5 seconds, so a service with a task on an unreachable node keeps the lines it sent and doesn't hold back the others |
 | `GET` | `/api/services/:id` | Swarm service inspect with tasks and their nodes (swarm mode) |
 | `GET` | `/api/services/:id/logs` | Stream a swarm service's logs from all its tasks (SSE, swarm mode) |
 | `GET` | `/api/services/:id/logs/history` | Paginated swarm service log history (JSON, swarm mode) |
 | `GET` | `/api/networks/:name` | Network inspect (IPAM, containers) |
-| `GET` | `/api/volumes/:name` | Volume inspect (driver, usage, labels) |
+| `GET` | `/api/volumes/:name` | Volume inspect (driver, usage, labels); searched on every node in swarm mode with agents |
 | `GET` | `/api/system/info` | Docker host system information |
 | `GET` | `/api/system/disk-usage` | Docker disk usage breakdown |
 | `GET` | `/api/images` | Docker image list |
@@ -218,7 +219,7 @@ go test ./...
 
 Tests cover node/edge builders, compose YAML parsing, swarm snapshots, state merge logic, the agent API, agent discovery and stats merging, the remote proxy, config loading, and WebSocket broadcast integration.
 
-An opt-in end-to-end test deploys the server and agents on a local swarm: `make swarm-smoke` from the repository root (see `test/swarm_smoke.sh`).
+An opt-in end-to-end test deploys the server and agents on a local swarm: `make swarm-smoke` from the repository root (see `test/swarm_smoke.sh`). Multi-node failure scenarios live in `clustertest/` behind the `clustertest` build tag, so `go test ./...` skips them; they run against the Docker-in-Docker cluster from `make swarm-cluster-up` with `make swarm-cluster-test`.
 
 ## Dependencies
 

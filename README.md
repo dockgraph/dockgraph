@@ -133,7 +133,7 @@ On a swarm manager, DockGraph shows **services** (with replica counts, tasks and
 [`stack.yml`](stack.yml) deploys two services:
 
 - **`server`** — the UI and API, pinned to a manager (`node.role == manager`), published on port 7800 through the routing mesh.
-- **`agent`** — a global service (one task per node) that exposes that node's container stats, inspect and logs to the server. It publishes no port and is only reachable on the stack's internal overlay network.
+- **`agent`** — a global service (one task per node) that exposes that node's container stats, inspect and logs, and its volumes, to the server. It publishes no port and is only reachable on the stack's internal overlay network.
 
 ```bash
 # On a manager: create the shared agent token once
@@ -169,8 +169,8 @@ Demo stacks for swarm are in [`demo/stack-small.yml`](demo/stack-small.yml) and 
 ### Remote task limits
 
 - **Without agents** (no `DG_AGENT_TOKEN`), topology, replica counts and service logs still cover the whole cluster (they come from the manager's swarm API), but container stats, container inspect and container logs are only available for tasks on the server's own node.
-- **With agents**, the server resolves `tasks.agent` periodically, polls each agent for stats and proxies container inspect/logs to the node running the container. A node whose agent is down or unreachable simply has no stats until it comes back.
-- Agents need the same token as the server; a mismatched token is rejected and that node's data is missing.
+- **With agents**, the server resolves `tasks.agent` periodically, polls each agent for stats and proxies container inspect/logs to the node running the container. Volumes are node-local in a swarm, so a volume's detail panel is looked up on every node and names the node it describes (and any other node with a volume of the same name). A node whose agent is down or unreachable simply has no stats until it comes back.
+- Agents need the same token as the server. A mismatched token is rejected and that node's data is missing: the server logs the rejection once (and again once it is fixed), and container or volume details that cannot be reached because of it show an "agent rejected token" error rather than "not found".
 - Running the standalone image on a swarm worker is refused in `auto` mode; set `DG_MODE=agent` there (or `DG_MODE=standalone` for a local-only view).
 
 ### Known limitations
@@ -270,9 +270,13 @@ The Vite dev server proxies `/ws` and `/healthz` to the backend at `localhost:78
 make test              # Run all tests
 make test-coverage     # Run with coverage (backend profile + frontend thresholds)
 make swarm-smoke       # Swarm end-to-end smoke test (opt-in, not run in CI)
+make swarm-cluster-up  # 5-node swarm made of Docker-in-Docker containers (opt-in)
+make swarm-cluster-test # Multi-node failure scenarios against that cluster
 ```
 
 The swarm smoke test builds the image, deploys `stack.yml` and a throwaway demo stack on the local daemon, and checks the API, the WebSocket snapshot, the node view data (swarm nodes, task placement, per-node stats) and `DG_PASSWORD_FILE` login from a Docker secret. On an existing swarm it only removes what it created. Outside a swarm, `make swarm-smoke` runs `docker swarm init` first and `docker swarm leave --force` at the end; `./test/swarm_smoke.sh` without `--yes` refuses to do that.
+
+A single-node swarm never exercises the server-to-agent path, since the server never proxies to its own node's agent. `make swarm-cluster-up` starts three managers and two workers as privileged `docker:dind` containers on one host, joins them into a swarm, loads the locally built image into every node and deploys `stack.yml` plus a test workload (`test/cluster/workload.yml`). `make swarm-cluster-test` then runs the scenarios in `backend/clustertest`: remote inspect, logs and volumes, log streams past the write timeout, job and update states, stack files, node drain, join, removal, pause and network partition, duplicate hostnames, a mismatched agent token, the server moving between managers and manager quorum loss. Set `DG_CLUSTER_SOAK=15m` to add a churn soak. The scenarios adapt to the cluster size (`MANAGERS`, default 3; `WORKERS`, default 2 and at least 2). The cluster needs a rootful Docker daemon (with rootless Docker installed alongside, prefix the commands with `DOCKER_CONTEXT=default`) and about 2 GB of memory. Its nodes run with `--privileged`, which is root-equivalent on the host, so only run it on a machine you control. It touches only resources labelled `dockgraph.cluster`, is removed with `make swarm-cluster-down`, and has been tested on Linux and WSL2.
 
 ## Tech Stack
 

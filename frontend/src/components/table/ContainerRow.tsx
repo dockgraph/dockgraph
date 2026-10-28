@@ -5,7 +5,7 @@ import { STATUS_COLORS, networkColor } from "../../utils/colors";
 import { METRIC_COLORS } from "../dashboard/palette";
 import { formatBytes } from "../../utils/formatBytes";
 import { INACTIVE_OPACITY } from "../../utils/constants";
-import { isServiceLive, projectOf } from "../../utils/stack";
+import { isServiceLive, projectOf, replicaText } from "../../utils/stack";
 import { tableRow } from "./tableStyles";
 import type { DGNode } from "../../types";
 import type { ContainerStatsData } from "../../types/stats";
@@ -79,7 +79,7 @@ export const ContainerRow = memo(function ContainerRow({
           {node.status ?? "unknown"}
           {node.service && (
             <span style={{ fontFamily: "var(--dg-font-mono)", fontSize: 11, color: theme.nodeSubtext }}>
-              {node.service.replicas.running}/{node.service.replicas.desired}
+              {replicaText(node.service.replicas, node.status)}
             </span>
           )}
         </span>

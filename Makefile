@@ -1,6 +1,6 @@
 .PHONY: all build build-backend build-frontend test test-coverage lint lint-backend lint-frontend vet fmt dev docker docker-up docker-down ci tidy clean help \
 	demo demo-down demo-small demo-small-down demo-medium demo-medium-down demo-large demo-large-down \
-	swarm-deploy swarm-down swarm-smoke demo-stack-small demo-stack-small-down demo-stack-medium demo-stack-medium-down \
+	swarm-deploy swarm-down swarm-smoke swarm-cluster-up swarm-cluster-down swarm-cluster-test demo-stack-small demo-stack-small-down demo-stack-medium demo-stack-medium-down \
 	demo-swarm demo-swarm-down
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null)
@@ -90,6 +90,15 @@ swarm-down: ## Remove the DockGraph swarm stack
 
 swarm-smoke: ## Swarm end-to-end smoke test (may init/leave a local swarm)
 	./test/swarm_smoke.sh --yes
+
+swarm-cluster-up: ## Start a 5-node Docker-in-Docker swarm test cluster (needs a rootful daemon)
+	./test/swarm_cluster.sh up
+
+swarm-cluster-down: ## Remove the swarm test cluster
+	./test/swarm_cluster.sh down
+
+swarm-cluster-test: ## Run the multi-node failure scenarios against the test cluster
+	cd backend && go test -tags clustertest -count=1 -v -timeout 60m ./clustertest/
 
 demo-swarm: ## Deploy all swarm demo stacks (needs a swarm manager)
 	./demo/start.sh swarm
