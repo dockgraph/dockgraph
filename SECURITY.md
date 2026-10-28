@@ -24,7 +24,9 @@ DockGraph supports optional password protection via the `DG_PASSWORD` environmen
 - Sessions use JWT tokens stored in HTTP-only, SameSite cookies (7-day expiry).
 - Passwords are hashed with Argon2id. Plaintext passwords in the environment variable are hashed at startup and never stored in memory.
 - Login attempts are rate-limited (5 per minute per IP).
-- Server restarts invalidate all active sessions (ephemeral signing key).
+- Without `DG_SESSION_KEY` or `DG_AGENT_TOKEN`, the signing key is random per process, so a server restart invalidates all active sessions.
+- In a swarm, every server replica signs with the same key: `DG_SESSION_KEY` (at least 32 bytes) if set, otherwise one derived from the agent token with HKDF-SHA256. Sessions then survive restarts, and rotating that secret logs everyone out. The key is never derived from the password.
+- Logout invalidates earlier sessions only on the replica that handled it. A stolen cookie can keep working on the other replicas until it expires (7 days).
 
 When `DG_PASSWORD` is not set, DockGraph runs without authentication. A warning is logged at startup.
 

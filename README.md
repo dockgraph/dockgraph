@@ -125,6 +125,8 @@ environment:
 | `DG_AGENT_ADDR`    | `tasks.agent`   | DNS name resolving to every agent task, optionally `host:port`                       |
 | `DG_AGENT_TOKEN`   | _(none)_        | Shared bearer secret between server and agents; required in `agent` mode. Without it the swarm server runs without agents |
 | `DG_AGENT_TOKEN_FILE` | _(none)_     | File to read the agent token from (e.g. a Docker secret); `DG_AGENT_TOKEN` wins if both are set |
+| `DG_SESSION_KEY`   | _(derived)_     | Key that signs login session cookies, at least 32 bytes. Defaults to a key derived from `DG_AGENT_TOKEN` (the same on every server replica), or a random key per process without a token. The server refuses to start on a shorter key |
+| `DG_SESSION_KEY_FILE` | _(none)_     | File to read the session key from (e.g. a Docker secret); `DG_SESSION_KEY` wins if both are set |
 
 ## Docker Swarm
 
@@ -132,7 +134,7 @@ On a swarm manager, DockGraph shows **services** (with replica counts, tasks and
 
 [`stack.yml`](stack.yml) deploys two services:
 
-- **`server`** — the UI and API, pinned to a manager (`node.role == manager`), published on port 7800 through the routing mesh.
+- **`server`** — the UI and API, a global service limited to managers (`node.role == manager`): one task per manager, published on port 7800 through the routing mesh.
 - **`agent`** — a global service (one task per node) that exposes that node's container stats, inspect and logs, and its volumes, to the server. It publishes no port and is only reachable on the stack's internal overlay network.
 
 ```bash
@@ -147,16 +149,42 @@ docker stack deploy -c stack.yml dockgraph
 
 Both services carry the `dockgraph.self=true` label (as a service label under `deploy.labels` and as a container label) so DockGraph hides itself. `DG_AGENT_ADDR` defaults to `tasks.agent`, which resolves to every agent task inside the stack; change it only if you rename the `agent` service.
 
-To show services from stack files that are not deployed yet, mount them into the `server` service (the path must exist on the manager it runs on) and name each file after its stack, as you would with `docker stack deploy -c file <name>`:
+To show services from stack files that are not deployed yet, give them to the `server` service and name each file after its stack, as you would with `docker stack deploy -c file <name>`. A swarm config is replicated to every manager, so every server replica gets it:
 
-```yaml
-    volumes:
-      - /opt/stacks/shop.yml:/stacks/shop.yml:ro
-    environment:
-      DG_COMPOSE_PATH: "shop=/stacks/shop.yml"
+```bash
+docker config create shop_stack shop.yml
 ```
 
+```yaml
+services:
+  server:
+    configs:
+      - source: shop_stack
+        target: /stacks/shop.yml
+    environment:
+      DG_COMPOSE_PATH: "shop=/stacks/shop.yml"
+configs:
+  shop_stack:
+    external: true
+```
+
+A config can't be changed in place: to update the file, create a new config (e.g. `shop_stack_v2`) and point the service at it. A bind mount (`- /opt/stacks/shop.yml:/stacks/shop.yml:ro`) works too, but the path must then exist on **every** manager, or swarm rejects the server task there (`invalid mount config: bind source path does not exist`).
+
 Demo stacks for swarm are in [`demo/stack-small.yml`](demo/stack-small.yml) and [`demo/stack-medium.yml`](demo/stack-medium.yml) (see [`demo/README.md`](demo/README.md)).
+
+### High availability
+
+The server runs on every manager, so the UI at `http://<any-node>:7800` stays up as long as one manager runs. The routing mesh spreads requests over the live replicas and drops a dead node's replica within seconds; nothing has to be rescheduled. Every manager answers the swarm API the same way (followers forward to the leader), so every replica shows the same graph. Each agent is polled by every replica, which is fine for the usual 3 to 5 managers.
+
+- **Sessions.** With `DG_PASSWORD` set, all replicas sign session cookies with the same key, so a login holds whichever replica answers. By default the key is derived from the agent token: rotating `dg_agent_token` logs everyone out. To keep them separate, set `DG_SESSION_KEY_FILE` from its own secret (`openssl rand -hex 32 | docker secret create dg_session_key -`; see the comments in `stack.yml`). Never reuse the UI password as the session key.
+- **Quorum.** Viewing does not need it: a replica already running on the last manager keeps serving the last known graph and the agents' stats and logs, and the managers panel reports that there is no leader. Changes to the swarm, including rescheduling, need a majority of managers again.
+- **Updates** roll one manager at a time (`parallelism: 1`, rolled back on failure), so the other replicas keep serving.
+
+Limitations:
+
+- **Per-replica state.** Stats history, the event list and the log aggregator live in each replica. A WebSocket stays on one replica; after a failover the browser reconnects to another (retrying with backoff capped at 30 s), gets a fresh snapshot, and the charts continue from that replica's history. The server sends a heartbeat every 5 s, so even a replica that vanished without closing the connection (its node powered off) is replaced after 15 s of silence.
+- **Logout is per replica.** Logging out clears the browser's cookie and makes the replica that handled it reject every session issued before (as with a single server). The other replicas don't know: a copied cookie keeps working there until it expires, and another browser that was logged in is rejected only when it reaches that replica, so it may be sent to the login page part of the time until it logs in again.
+- **Without agents** each replica sees the containers of its own node only, so container stats, inspect and logs depend on which replica answers. Keep the agents (and their token) in a multi-manager swarm.
 
 ### Swarm views
 
@@ -182,7 +210,7 @@ Demo stacks for swarm are in [`demo/stack-small.yml`](demo/stack-small.yml) and 
 
 DockGraph requires access to the Docker daemon socket to read container, network, and volume state. Be aware of the following:
 
-- **Password protection.** Set `DG_PASSWORD` to require authentication for the web UI and WebSocket connections. When set, all access goes through a login page — the dashboard and its data are not served until the correct password is provided. Sessions last 7 days and are invalidated on server restart.
+- **Password protection.** Set `DG_PASSWORD` to require authentication for the web UI and WebSocket connections. When set, all access goes through a login page — the dashboard and its data are not served until the correct password is provided. Sessions last 7 days. A server without a shared session key (standalone, no `DG_AGENT_TOKEN` or `DG_SESSION_KEY`) uses a random key per process, so a restart logs everyone out; in a swarm the key is shared by every replica and survives restarts (see [High availability](#high-availability)).
   ```yaml
   environment:
     DG_PASSWORD: "your-secure-password"
