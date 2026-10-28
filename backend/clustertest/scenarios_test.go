@@ -113,17 +113,14 @@ func TestRemoteContainerProxy(t *testing.T) {
 		t.Errorf("remote log stream: %d lines in 6s, want >= 4: %v", len(lines), lines)
 	}
 
-	// A container on a manager that does not run the server.
-	srv := serverNode(t)
+	// A container on each manager. Every manager runs a server replica and
+	// the routing mesh picks one per connection, so the request is answered
+	// locally or through the container's agent, and must work either way.
 	for _, m := range managers {
-		if m == srv {
-			continue
-		}
 		sid := containerOn(t, m, "work_shipper")
 		if r := get(t, "/api/containers/"+sid); r.code != http.StatusOK {
 			t.Errorf("inspect shipper on %s: %d %.200s", m, r.code, r.body)
 		}
-		break
 	}
 
 	// Unknown containers must fail fast, not wait on every agent.
@@ -137,8 +134,8 @@ func TestRemoteContainerProxy(t *testing.T) {
 // even when it only exists on another node, so its inspect must reach it.
 func TestRemoteVolumeInspect(t *testing.T) {
 	dbNode := firstLine(on(t, leader, "service", "ps", "work_db", "--filter", "desired-state=running", "--format", "{{.Node}}"))
-	if dbNode == serverNode(t) {
-		t.Skip("work_db runs next to the server; the volume is local")
+	if slices.Contains(serverNodes(t), dbNode) {
+		t.Skip("work_db runs next to a server replica; the volume is local to it")
 	}
 	if n := findNode(snapshot(t), "volume:work_data"); n == nil {
 		t.Fatalf("volume:work_data not in the graph")
@@ -321,42 +318,44 @@ func TestNodeDrain(t *testing.T) {
 	}
 }
 
+// A constraint that excludes one manager removes its server replica; the
+// others keep serving, including through the excluded node's published port.
 func TestServerMoves(t *testing.T) {
 	requireManagers(t, 2) // the server only runs on managers
-	from := serverNode(t)
-	before := serverTaskID(t)
+	waitServerOnEveryManager(t, managers)
+	from := managers[len(managers)-1]
 	on(t, leader, "service", "update", "--detach=false", "--quiet",
 		"--constraint-add", "node.hostname!="+from, serverService)
 	t.Cleanup(func() {
 		on(t, leader, "service", "update", "--detach=false", "--quiet",
 			"--constraint-rm", "node.hostname!="+from, serverService)
+		waitServerOnEveryManager(t, managers)
 	})
 
-	to := serverNode(t)
-	if to == from || serverTaskID(t) == before {
-		t.Fatalf("server did not move from %s", from)
-	}
-	t.Logf("server moved %s -> %s", from, to)
-	eventually(t, 60*time.Second, "server healthy after the move", func() error {
-		if r := get(t, "/healthz"); r.code != http.StatusOK {
-			return fmt.Errorf("healthz %d", r.code)
+	eventually(t, 60*time.Second, "server replica removed from "+from, func() error {
+		if nodes := serverNodes(t); slices.Contains(nodes, from) {
+			return fmt.Errorf("still running on %v", nodes)
 		}
 		return nil
 	})
+	t.Logf("server replicas now on %v", serverNodes(t))
+	for _, m := range managers {
+		eventually(t, 60*time.Second, "server healthy via "+m, func() error {
+			if r := getVia(t, uiPort(m), "/healthz"); r.code != http.StatusOK {
+				return fmt.Errorf("healthz %d", r.code)
+			}
+			return nil
+		})
+	}
 
-	// The old server node is now remote: its containers go through its agent.
+	// The excluded node has no server: its containers go through its agent.
 	sid := containerOn(t, from, "work_shipper")
-	eventually(t, 60*time.Second, "shipper on the old server node via its agent", func() error {
+	eventually(t, 60*time.Second, "shipper on "+from+" via its agent", func() error {
 		if r := get(t, "/api/containers/"+sid); r.code != http.StatusOK {
 			return fmt.Errorf("%d %.200s", r.code, r.body)
 		}
 		return nil
 	})
-	// And the new one is local.
-	lid := containerOn(t, to, "work_shipper")
-	if r := get(t, "/api/containers/"+lid); r.code != http.StatusOK {
-		t.Errorf("shipper on the new server node: %d %.200s", r.code, r.body)
-	}
 
 	eventually(t, 90*time.Second, "node stats from every node after the move", func() error {
 		h := nodeStats(t)
@@ -369,8 +368,111 @@ func TestServerMoves(t *testing.T) {
 	})
 }
 
+// With a server replica on every manager, losing one manager must not take
+// the UI down: the routing mesh drops the dead replica and the others answer
+// within seconds, without waiting for swarm to mark the node down or to
+// reschedule anything.
+func TestUISurvivesManagerLoss(t *testing.T) {
+	requireManagers(t, 3) // the swarm keeps its quorum with one manager lost
+	waitServerOnEveryManager(t, managers)
+	victim := leader // the leader: its loss also forces a raft election
+	other := managers[len(managers)-1]
+	worker := workers[0]
+	id := containerOn(t, "dgc-w1", "work_chatty")
+	paths := []string{"/healthz", "/api/containers/" + id}
+
+	host(t, "pause", victim)
+	paused := true
+	t.Cleanup(func() {
+		if paused {
+			_, _ = exec.Command("docker", "unpause", victim).CombinedOutput()
+		}
+		eventually(t, 2*time.Minute, "every manager reachable again", func() error {
+			reach, err := managerReachability(t, uiPort(other))
+			if err != nil {
+				return err
+			}
+			for _, m := range managers {
+				if reach[m] != "reachable" {
+					return fmt.Errorf("%s is %q", m, reach[m])
+				}
+			}
+			return nil
+		})
+		waitServerOnEveryManager(t, managers)
+		waitConverged(t, "dg")
+	})
+
+	// Each probe opens a new connection, so the mesh balances every request
+	// anew; a run of successes means the dead replica is out of rotation.
+	const window, run = 20 * time.Second, 6
+	start := time.Now()
+	probes := map[string]func(path string) error{
+		"worker " + worker: func(path string) error { return getFromNode(t, worker, path, 3*time.Second) },
+		"manager " + other: func(path string) error { return probe(uiPort(other), path, nil) },
+	}
+	for via, check := range probes {
+		for _, path := range paths {
+			ok := 0
+			var lastErr error
+			for ok < run {
+				if time.Since(start) > window {
+					t.Fatalf("%s via %s: no %d successes in a row within %s of the pause: %v",
+						path, via, run, window, lastErr)
+				}
+				if lastErr = check(path); lastErr != nil {
+					ok = 0
+					time.Sleep(500 * time.Millisecond)
+					continue
+				}
+				ok++
+			}
+		}
+	}
+	t.Logf("UI served through the mesh %s after pausing %s", time.Since(start).Round(time.Second), victim)
+
+	host(t, "unpause", victim)
+	paused = false
+}
+
+// Each request through the mesh may reach a different replica: a session
+// cookie issued by one must be accepted by all, so they share a signing key
+// (derived from the agent token).
+func TestSessionAcrossReplicas(t *testing.T) {
+	requireManagers(t, 2) // several replicas to spread over
+	waitServerOnEveryManager(t, managers)
+	const password = "cluster-test-password"
+	on(t, leader, "service", "update", "--detach=false", "--quiet",
+		"--env-add", "DG_PASSWORD="+password, serverService)
+	t.Cleanup(func() {
+		on(t, leader, "service", "update", "--detach=false", "--quiet",
+			"--env-rm", "DG_PASSWORD", serverService)
+		waitServerOnEveryManager(t, managers)
+		waitConverged(t, "dg")
+	})
+	waitServerOnEveryManager(t, managers)
+	waitConverged(t, "dg")
+
+	port := firstUIPort
+	eventually(t, 60*time.Second, "every replica requires a login", func() error {
+		for range 10 {
+			if err := probe(port, "/api/system/info", nil); err == nil || !strings.Contains(err.Error(), "401") {
+				return fmt.Errorf("without a session: %v", err)
+			}
+		}
+		return nil
+	})
+
+	cookies := login(t, port, password)
+	for i := range 20 {
+		if err := probe(port, "/api/system/info", cookies); err != nil {
+			t.Errorf("request %d with the session cookie: %v", i, err)
+		}
+	}
+}
+
 func TestAgentTokenMismatch(t *testing.T) {
-	before := serverTaskID(t)
+	before := serverTaskIDs(t)
 	createSecret(t, "dg_agent_token_bad", randomHex(t))
 	// The rejection is logged once, as the agents roll over: watch from here.
 	since := time.Now()
@@ -413,7 +515,7 @@ func TestAgentTokenMismatch(t *testing.T) {
 	if r := get(t, "/api/containers/"+id+"/logs/history?limit=5"); r.code == http.StatusUnauthorized {
 		t.Errorf("agent auth failure surfaced as 401")
 	}
-	if serverTaskID(t) != before {
+	if serverTaskIDs(t) != before {
 		t.Errorf("server restarted")
 	}
 }
@@ -535,7 +637,7 @@ func TestDuplicateHostname(t *testing.T) {
 // of DockGraph keeps working, then heals it and checks recovery.
 func checkUnreachableNode(t *testing.T, breakNode, heal func()) {
 	const node = "dgc-w2"
-	before := serverTaskID(t)
+	before := serverTaskIDs(t)
 	sid := containerOn(t, node, "work_shipper")
 	if r := get(t, "/api/containers/"+sid); r.code != http.StatusOK {
 		t.Fatalf("precondition: inspect %d", r.code)
@@ -619,7 +721,7 @@ func checkUnreachableNode(t *testing.T, breakNode, heal func()) {
 		}
 		return nil
 	})
-	if serverTaskID(t) != before {
+	if serverTaskIDs(t) != before {
 		t.Errorf("server restarted")
 	}
 }
@@ -639,7 +741,10 @@ func TestAgentNodePartitioned(t *testing.T) {
 
 func TestManagerQuorumLoss(t *testing.T) {
 	requireManagers(t, 3) // an HA control plane that loses its majority
-	srv := serverNode(t)
+	// Keep the last manager, so the leader is among the lost ones. Its server
+	// replica was already running: nothing can be scheduled without quorum.
+	waitServerOnEveryManager(t, managers)
+	srv := managers[len(managers)-1]
 	port := uiPort(srv)
 	var paused []string
 	for _, m := range managers {
@@ -776,9 +881,11 @@ func TestChurnSoak(t *testing.T) {
 	if err != nil || d <= 0 {
 		t.Skip("set DG_CLUSTER_SOAK (e.g. 15m) to run")
 	}
-	before := serverTaskID(t)
-	srv := serverNode(t)
-	t.Logf("server memory at start: %s", serverMemory(t, srv))
+	before := serverTaskIDs(t)
+	srvs := serverNodes(t)
+	for _, srv := range srvs {
+		t.Logf("server memory on %s at start: %s", srv, serverMemory(t, srv))
+	}
 	t.Cleanup(func() {
 		for i := range 5 {
 			_, _ = tryOn(leader, "service", "rm", fmt.Sprintf("t_churn_%d", i))
@@ -807,7 +914,9 @@ func TestChurnSoak(t *testing.T) {
 		}
 		time.Sleep(time.Duration(2+mathrand.IntN(6)) * time.Second)
 		if i%20 == 19 {
-			t.Logf("%s left, server memory %s", time.Until(deadline).Round(time.Second), serverMemory(t, srv))
+			for _, srv := range srvs {
+				t.Logf("%s left, server memory on %s %s", time.Until(deadline).Round(time.Second), srv, serverMemory(t, srv))
+			}
 		}
 	}
 
@@ -832,8 +941,10 @@ func TestChurnSoak(t *testing.T) {
 		return nil
 	})
 
-	t.Logf("server memory at end: %s", serverMemory(t, srv))
-	if serverTaskID(t) != before {
+	for _, srv := range srvs {
+		t.Logf("server memory on %s at end: %s", srv, serverMemory(t, srv))
+	}
+	if serverTaskIDs(t) != before {
 		t.Errorf("server restarted during the soak")
 	}
 }
