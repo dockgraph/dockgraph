@@ -17,6 +17,9 @@ type Claims struct {
 	IssuedAt  time.Time
 	ExpiresAt time.Time
 	JTI       string
+	// Generation binds the token to the credential it was issued for (see
+	// CredentialGeneration); a token of another generation is rejected.
+	Generation string
 }
 
 // GenerateSigningKey creates a random 32-byte HMAC signing key.
@@ -48,6 +51,21 @@ func DeriveSigningKey(secret []byte) ([]byte, error) {
 	return key, nil
 }
 
+// generationInfo domain-separates CredentialGeneration from the other uses of
+// the signing key.
+const generationInfo = "dockgraph-credential-generation-v1\x00"
+
+// CredentialGeneration returns a stable identifier of the login credential
+// (the DG_PASSWORD value, plaintext or hash), for Claims.Generation. It is an
+// HMAC under the signing key, so it is the same on every replica sharing that
+// key, changes when the credential changes, and reveals nothing about a weak
+// password to someone holding a cookie. The password is never the key itself.
+func CredentialGeneration(signingKey []byte, credential string) string {
+	mac := hmac.New(sha256.New, signingKey)
+	mac.Write([]byte(generationInfo + credential))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:16])
+}
+
 // GenerateJTI creates a random token identifier.
 func GenerateJTI() (string, error) {
 	b := make([]byte, 16)
@@ -65,6 +83,7 @@ func SignToken(c Claims, key []byte) (string, error) {
 		"iat": c.IssuedAt.Unix(),
 		"exp": c.ExpiresAt.Unix(),
 		"jti": c.JTI,
+		"gen": c.Generation,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal claims: %w", err)
@@ -116,15 +135,17 @@ func VerifyToken(token string, key []byte) (Claims, error) {
 		IAT float64 `json:"iat"`
 		EXP float64 `json:"exp"`
 		JTI string  `json:"jti"`
+		GEN string  `json:"gen"`
 	}
 	if err := json.Unmarshal(payloadJSON, &raw); err != nil {
 		return Claims{}, fmt.Errorf("parse claims: %w", err)
 	}
 
 	claims := Claims{
-		IssuedAt:  time.Unix(int64(raw.IAT), 0),
-		ExpiresAt: time.Unix(int64(raw.EXP), 0),
-		JTI:       raw.JTI,
+		IssuedAt:   time.Unix(int64(raw.IAT), 0),
+		ExpiresAt:  time.Unix(int64(raw.EXP), 0),
+		JTI:        raw.JTI,
+		Generation: raw.GEN,
 	}
 	if time.Now().After(claims.ExpiresAt) {
 		return Claims{}, fmt.Errorf("token expired")

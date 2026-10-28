@@ -26,9 +26,12 @@ var loginQueueTimeout = 5 * time.Second
 type Service struct {
 	PasswordHash string
 	SigningKey   []byte
-	Sessions     *SessionManager
-	Limiter      *RateLimiter
-	LoginPage    []byte
+	// Generation is CredentialGeneration of the configured password. Sessions
+	// issued for another one (a rotated password) are refused.
+	Generation string
+	Sessions   *SessionManager
+	Limiter    *RateLimiter
+	LoginPage  []byte
 	// LoginScript is the login page's script, served at LoginScriptPath so
 	// the page needs no inline script under the Content-Security-Policy.
 	LoginScript []byte
@@ -139,9 +142,10 @@ func (s *Service) setSessionCookie(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	token, err := SignToken(Claims{
-		IssuedAt:  now,
-		ExpiresAt: now.Add(sessionMaxAge),
-		JTI:       jti,
+		IssuedAt:   now,
+		ExpiresAt:  now.Add(sessionMaxAge),
+		JTI:        jti,
+		Generation: s.Generation,
 	}, s.SigningKey)
 	if err != nil {
 		return err
