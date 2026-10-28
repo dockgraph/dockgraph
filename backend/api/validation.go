@@ -14,6 +14,9 @@ import (
 // volume names, network names). Used across all inspect and log handlers.
 var validResourceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
 
+// validHostname matches a swarm node hostname in a ?node= filter.
+var validHostname = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+
 // validStackName matches compose project / swarm stack names used by the
 // ?stack= filters. Unlike validResourceName it accepts a single character,
 // since compose allows one-character project names.

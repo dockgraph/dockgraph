@@ -119,7 +119,7 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 		mux.HandleFunc("GET /api/logs", limitConcurrent(clientKey, HandleAggregateLogs(docker, docker, docker, services), logStreams, aggregateStreams))
 		mux.HandleFunc("GET /api/containers/{id}", limitConcurrent(clientKey, remote.wrap(HandleContainerInspect(docker), docker, "", false), inspects))
 		mux.HandleFunc("GET /api/volumes/{name}", limitConcurrent(clientKey, remote.inspectVolume(docker), inspects))
-		mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(docker, networkMembers))
+		mux.HandleFunc("GET /api/networks/{name}", limitConcurrent(clientKey, remote.inspectNetwork(HandleNetworkInspect(docker, networkMembers)), inspects))
 	}
 	if system != nil {
 		mux.HandleFunc("GET /api/system/info", HandleSystemInfo(system, mode))

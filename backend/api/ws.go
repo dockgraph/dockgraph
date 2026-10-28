@@ -49,7 +49,7 @@ var upgrader = websocket.Upgrader{
 
 type wsClient struct {
 	conn      *websocket.Conn
-	key       string // per-client limit bucket (see Hub.ClientKey)
+	key       string        // per-client limit bucket (see Hub.ClientKey)
 	heartbeat time.Duration // period of heartbeat messages
 	sendCh    chan collector.WireMessage
 	done      chan struct{}
