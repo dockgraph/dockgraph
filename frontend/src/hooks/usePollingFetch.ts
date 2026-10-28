@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSyncExternalStore } from "react";
+import { apiErrorMessage } from "../utils/apiError";
 
 interface FetchState<T> {
   data: T | null;
@@ -53,8 +54,8 @@ export function usePollingFetch<T>(url: string | null, intervalMs: number): Fetc
 
     const doFetch = () => {
       fetch(url, { signal: controller.signal })
-        .then(res => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        .then(async (res) => {
+          if (!res.ok) throw new Error(await apiErrorMessage(res));
           return res.json();
         })
         .then((data: T) => {

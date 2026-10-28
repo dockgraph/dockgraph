@@ -26,7 +26,7 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 - **Dashboard view** — 13-card monitoring dashboard with resource charts, top consumers, event timeline, alerts, disk usage, images, and compose project / stack overview
 - **Global logs** — a unified, time-ordered log stream that aggregates every container into one view to trace an event across services; filter by text (literal or regex) or container, drill in with per-row filter actions, scroll back through merged history alongside the live tail, and find within (Ctrl+F)
 - **Pop-out log windows** — open any container's logs in a floating, movable and resizable window; drag windows together into tabs, minimize them to a dock, and search within each
-- **Detail panels** — click any resource to inspect stats, ports, mounts, environment, labels, logs, health checks, and network configuration; cross-references (dependencies, networks, mounted volumes) link straight to the related resource, and any value is click-to-copy
+- **Detail panels** — open any resource (its ☰ in the graph, its row in the table) to inspect stats, ports, mounts, environment, labels, logs, health checks, and network configuration; cross-references (dependencies, networks, mounted volumes) link straight to the related resource, and any value is click-to-copy
 - **Real-time updates** — watches the Docker event stream; the graph reflects changes within seconds
 - **Compose-aware** — parses compose files to show services that haven't started yet, with the same detail panel as running containers (process config, environment, labels, ports, dependencies, and volume mounts) and clickable cross-references into the resources they'll create
 - **Docker Swarm** — on a swarm manager, services are shown with their replica counts, tasks and the nodes they run on, grouped by stack; a lightweight per-node agent brings container stats, inspect and logs from every node of the cluster ([details](#docker-swarm))
@@ -38,7 +38,7 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 - **Multi-network support** — secondary network connections rendered as cross-group edges
 - **Search and filter** — filter resources by name, type, or status with real-time results across both views
 - **Dark/light theme** — toggle between themes, persisted in localStorage
-- **Click-to-highlight** — click any node or edge to highlight its connections, fading unrelated elements
+- **Click-to-highlight** — click any node or edge to highlight its connections, fading unrelated elements; a node's ☰ also highlights it while opening its detail panel and centring the view on it
 - **Password protection** — optional authentication with Argon2id hashing and JWT sessions; the password can come from a Docker secret (`DG_PASSWORD_FILE`)
 - **Single binary** — frontend is embedded into the Go binary; one container, no external dependencies
 - **Self-excluding** — DockGraph hides its own container, networks, and volumes from the graph
@@ -133,7 +133,7 @@ On a swarm manager, DockGraph shows **services** (with replica counts, tasks and
 [`stack.yml`](stack.yml) deploys two services:
 
 - **`server`** — the UI and API, pinned to a manager (`node.role == manager`), published on port 7800 through the routing mesh.
-- **`agent`** — a global service (one task per node) that exposes that node's container stats, inspect and logs to the server. It publishes no port and is only reachable on the stack's internal overlay network.
+- **`agent`** — a global service (one task per node) that exposes that node's container stats, inspect and logs, and its volumes, to the server. It publishes no port and is only reachable on the stack's internal overlay network.
 
 ```bash
 # On a manager: create the shared agent token once
@@ -161,16 +161,16 @@ Demo stacks for swarm are in [`demo/stack-small.yml`](demo/stack-small.yml) and 
 ### Swarm views
 
 - **Stack selector** — the header selector scopes every view to one stack (or to standalone containers). The choice lives in the URL (`?stack=`), so a scoped view can be bookmarked or shared.
-- **Graph by network** (default) — services appear inside their overlay networks like containers do, with replica badges. Click a service to open its detail panel: mode, replicas, the task table with the node of each task, and live service logs merged across nodes.
-- **Graph by node** — the **Network | Node** toggle above the graph (`?group=node`) lays out one box per swarm node, with a card for each service listing the tasks it runs there. Managers (leader first) and workers sit in separate, draggable groups. Each box shows the node's role, state, availability and CPU/memory against its capacity; inactive nodes are dimmed. Managers fan out one control link per worker, coloured and animated by that worker's state, and a badge centred between the two groups reads `control / raft tcp 2377 / ready/total ok` (or the number of workers down). Hovering a service highlights it on every node, and selecting it draws links to services it shares an overlay network with on other nodes. Click a node header for its detail panel.
+- **Graph by network** (default) — services appear inside their overlay networks like containers do, with replica badges. A service's ☰ opens its detail panel: mode, replicas, the task table with the node of each task, and live service logs merged across nodes.
+- **Graph by node** — the **Network | Node** toggle above the graph (`?group=node`) lays out one box per swarm node, with a card for each service listing the tasks it runs there. Managers (leader first) and workers sit in separate groups, fixed in place like the network view's. Each box shows the node's role, state, availability and CPU/memory against its capacity; inactive nodes are dimmed. Managers fan out one control link per worker, coloured and animated by that worker's state, and a badge centred between the two groups reads `control / tcp 2377 / ready/total workers ready` (or the number of workers down). Hovering a service highlights it on every node. As in the network view, clicking a card or box highlights it (a card also draws links to services it shares an overlay network with on other nodes), and its ☰ opens the detail panel and centres the view on it. The ☰ on the Managers or Workers tab opens a summary of the group, including, for managers, the quorum read live from the swarm.
 - **Table** — a **Services** tab lists swarm services with their replica counts, and the grouping options include the stack.
-- **Dashboard** — a **Swarm Nodes** card lists every node with its role, task count and CPU/memory bars, and the resource history charts switch between **Workload** and **Node** series.
+- **Dashboard** — a **Swarm Nodes** card lists every node with its role, task count and CPU/memory bars, and the resource history charts switch between **Workload** and **Node** series. The host, disk usage and images cards describe only the node DockGraph runs on, and name it.
 
 ### Remote task limits
 
-- **Without agents** (no `DG_AGENT_TOKEN`), topology, replica counts and service logs still cover the whole cluster (they come from the manager's swarm API), but container stats, container inspect and container logs are only available for tasks on the server's own node.
-- **With agents**, the server resolves `tasks.agent` periodically, polls each agent for stats and proxies container inspect/logs to the node running the container. A node whose agent is down or unreachable simply has no stats until it comes back.
-- Agents need the same token as the server; a mismatched token is rejected and that node's data is missing.
+- **Without agents** (no `DG_AGENT_TOKEN`), topology, replica counts, service logs and the services of a network (with their tasks' addresses) still cover the whole cluster (they come from the manager's swarm API), but container stats, container inspect and container logs are only available for tasks on the server's own node.
+- **With agents**, the server resolves `tasks.agent` periodically, polls each agent for stats and proxies container inspect/logs to the node running the container. Volumes are node-local in a swarm, so a volume's detail panel is looked up on every node and names the node it describes (and any other node with a volume of the same name). A node whose agent is down or unreachable simply has no stats until it comes back.
+- Agents need the same token as the server. A mismatched token is rejected and that node's data is missing: the server logs the rejection once (and again once it is fixed), and container or volume details that cannot be reached because of it show an "agent rejected token" error rather than "not found".
 - Running the standalone image on a swarm worker is refused in `auto` mode; set `DG_MODE=agent` there (or `DG_MODE=standalone` for a local-only view).
 
 ### Known limitations
@@ -270,9 +270,13 @@ The Vite dev server proxies `/ws` and `/healthz` to the backend at `localhost:78
 make test              # Run all tests
 make test-coverage     # Run with coverage (backend profile + frontend thresholds)
 make swarm-smoke       # Swarm end-to-end smoke test (opt-in, not run in CI)
+make swarm-cluster-up  # 5-node swarm made of Docker-in-Docker containers (opt-in)
+make swarm-cluster-test # Multi-node failure scenarios against that cluster
 ```
 
 The swarm smoke test builds the image, deploys `stack.yml` and a throwaway demo stack on the local daemon, and checks the API, the WebSocket snapshot, the node view data (swarm nodes, task placement, per-node stats) and `DG_PASSWORD_FILE` login from a Docker secret. On an existing swarm it only removes what it created. Outside a swarm, `make swarm-smoke` runs `docker swarm init` first and `docker swarm leave --force` at the end; `./test/swarm_smoke.sh` without `--yes` refuses to do that.
+
+A single-node swarm never exercises the server-to-agent path. `make swarm-cluster-up` builds a multi-node swarm (3 managers and 2 workers by default) out of `docker:dind` containers on one host and deploys the stack with a test workload; `make swarm-cluster-test` runs the failure scenarios in `backend/clustertest` against it, and `make swarm-cluster-down` removes it. It needs a rootful Docker daemon and about 2 GB of memory, and its nodes run with `--privileged`, which is root-equivalent on the host: only run it on a machine you control. The header of `test/swarm_cluster.sh` has the details.
 
 ## Tech Stack
 

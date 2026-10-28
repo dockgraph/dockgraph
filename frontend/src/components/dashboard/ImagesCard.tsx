@@ -5,12 +5,17 @@ import { useImages } from "../../hooks/useImages";
 import { formatBytes } from "../../utils/format";
 import { STATUS_COLORS } from "./palette";
 
-export const ImagesCard = memo(function ImagesCard() {
+interface Props {
+  /** Swarm node the figures belong to (see DashboardCard). */
+  node?: string;
+}
+
+export const ImagesCard = memo(function ImagesCard({ node }: Props) {
   const { theme } = useTheme();
   const { data } = useImages();
 
   if (!data) {
-    return <DashboardCard title="Images" loading />;
+    return <DashboardCard title="Images" node={node} loading />;
   }
 
   const totalBadge = (
@@ -20,7 +25,7 @@ export const ImagesCard = memo(function ImagesCard() {
   );
 
   return (
-    <DashboardCard title="Images" badge={totalBadge}>
+    <DashboardCard title="Images" badge={totalBadge} node={node}>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 11, color: theme.nodeSubtext }}>Total size</span>

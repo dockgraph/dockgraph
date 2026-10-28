@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import type { LogLine } from '../../types/stats';
 import { formatLogTimestamp } from '../../utils/logParser';
 import { networkColor } from '../../utils/colors';
@@ -11,6 +11,12 @@ interface Props {
   loadingMore: boolean;
   hasMore: boolean;
   loadMore: () => void;
+  /** The buffer stops short of the newest line (see useLogs); reaching the bottom catches up. */
+  hasNewer?: boolean;
+  loadingNewer?: boolean;
+  loadNewer?: () => void;
+  /** Reports whether the reader is at the bottom, following the tail. */
+  onFollowChange?: (following: boolean) => void;
   active?: boolean;
   /** Show the highlight-search bar (windows). Omit for the side panel. */
   showSearch?: boolean;
@@ -62,6 +68,35 @@ function buildSegments(lines: LogLine[], query: string): { rendered: Segment[][]
   return { rendered, total: counter };
 }
 
+/** Distance from the end that still counts as "at the bottom", following. */
+const BOTTOM_SLACK_PX = 20;
+
+/** Pixels per line for wheel deltas reported in lines (Firefox). */
+const WHEEL_LINE_PX = 16;
+
+/**
+ * Returns the first log row at least partly inside the scroll box's
+ * viewport. Rows are stacked in order, so a binary search over the box's
+ * children finds it without measuring every row; non-row children (the
+ * "Loading older logs" banner) are skipped.
+ */
+function firstVisibleRow(box: HTMLElement): HTMLElement | null {
+  const children = box.children;
+  let lo = 0;
+  let hi = children.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const child = children[mid] as HTMLElement;
+    if (child.offsetTop + child.offsetHeight <= box.scrollTop) lo = mid + 1;
+    else hi = mid;
+  }
+  for (let i = lo; i < children.length; i++) {
+    const child = children[i] as HTMLElement;
+    if (child.dataset.lineId) return child;
+  }
+  return null;
+}
+
 export function LogStream({
   lines,
   connected,
@@ -69,6 +104,10 @@ export function LogStream({
   loadingMore,
   hasMore,
   loadMore,
+  hasNewer = false,
+  loadingNewer = false,
+  loadNewer,
+  onFollowChange,
   active = true,
   showSearch = false,
   search = '',
@@ -82,8 +121,12 @@ export function LogStream({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [activeMatch, setActiveMatch] = useState(0);
-  const prevLineCountRef = useRef(0);
-  const prevScrollHeightRef = useRef(0);
+  // While the user reads older output: the row at the top of the viewport
+  // and its distance from the viewport top, kept in place as lines change.
+  const anchorRef = useRef<{ id: string; offset: number } | null>(null);
+  // scrollTop as last seen or set here, so a scroll event can tell the user
+  // scrolling up from our own adjustments.
+  const lastTopRef = useRef(0);
 
   const { rendered, total } = useMemo(() => buildSegments(lines, search), [lines, search]);
 
@@ -97,38 +140,68 @@ export function LogStream({
     el?.scrollIntoView?.({ block: 'center' });
   }, [effectiveActive, total]);
 
-  // Preserve scroll position when older lines are prepended.
-  useEffect(() => {
+  const captureAnchor = useCallback(() => {
+    const el = scrollRef.current;
+    const row = el ? firstVisibleRow(el) : null;
+    anchorRef.current = el && row ? { id: row.dataset.lineId!, offset: row.offsetTop - el.scrollTop } : null;
+  }, []);
+
+  // At the bottom, follow new lines. Scrolled up, keep the anchored row where
+  // it was, whether lines were appended (live tail), prepended (older page)
+  // or dropped from the front (buffer full). Runs before paint so the
+  // content never visibly jumps.
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const prevCount = prevLineCountRef.current;
-    const added = lines.length - prevCount;
-    if (added > 0 && prevCount > 0 && !autoScroll) {
-      const newHeight = el.scrollHeight;
-      if (newHeight > prevScrollHeightRef.current) {
-        el.scrollTop += newHeight - prevScrollHeightRef.current;
+    if (autoScroll) {
+      el.scrollTop = el.scrollHeight;
+    } else {
+      const anchor = anchorRef.current;
+      const row = anchor ? el.querySelector<HTMLElement>(`[data-line-id="${anchor.id}"]`) : null;
+      if (anchor && row) {
+        el.scrollTop = row.offsetTop - anchor.offset;
       }
+      captureAnchor();
     }
-    prevLineCountRef.current = lines.length;
-    prevScrollHeightRef.current = el.scrollHeight;
-  }, [lines, autoScroll]);
+    lastTopRef.current = el.scrollTop;
+  }, [lines, autoScroll, captureAnchor]);
 
-  useEffect(() => {
-    if (autoScroll && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [lines, autoScroll]);
+  // Starts or stops following the tail; reaching the end of a detached
+  // buffer also catches up with the newer lines.
+  const follow = useCallback((on: boolean) => {
+    setAutoScroll(on);
+    onFollowChange?.(on);
+    if (on && hasNewer && !loadingNewer) loadNewer?.();
+  }, [onFollowChange, hasNewer, loadingNewer, loadNewer]);
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     const { scrollTop, scrollHeight, clientHeight } = el;
-    setAutoScroll(scrollHeight - scrollTop - clientHeight < 20);
+    const movedUp = scrollTop < lastTopRef.current;
+    lastTopRef.current = scrollTop;
+    const atBottom = scrollHeight - scrollTop - clientHeight < BOTTOM_SLACK_PX;
+    // Follow at the bottom; stop only when the user scrolls up, so a smooth
+    // scroll still on its way down never stops following.
+    if (atBottom) follow(true);
+    else if (movedUp) follow(false);
+    if (!atBottom) captureAnchor();
     if (scrollTop < 40 && scrollHeight > clientHeight && hasMore && !loadingMore) {
-      prevScrollHeightRef.current = el.scrollHeight;
       loadMore();
     }
-  }, [hasMore, loadingMore, loadMore]);
+  }, [hasMore, loadingMore, loadMore, follow, captureAnchor]);
+
+  // A wheel scroll heading past the end resumes following at once: under fast
+  // logs a smooth scroll lands short of a bottom that keeps moving, so its
+  // landing position alone would never get there.
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el || e.deltaY <= 0) return;
+    let px = e.deltaY;
+    if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) px *= WHEEL_LINE_PX;
+    else if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) px *= el.clientHeight;
+    if (el.scrollTop + el.clientHeight + px >= el.scrollHeight - BOTTOM_SLACK_PX) follow(true);
+  }, [follow]);
 
   const step = useCallback(
     (delta: number) => {
@@ -181,7 +254,9 @@ export function LogStream({
       )}
       <div
         ref={scrollRef}
+        data-testid="log-scroll"
         onScroll={handleScroll}
+        onWheel={handleWheel}
         style={{
           flex: 1,
           minHeight: 0,
@@ -193,7 +268,11 @@ export function LogStream({
           fontFamily: 'var(--dg-font-mono)',
           fontSize: 10,
           lineHeight: 1.5,
+          // Row offsets are measured against this box.
           position: 'relative',
+          // The anchoring above keeps the viewed rows still; the browser's own
+          // scroll anchoring (not in every browser) would fight it.
+          overflowAnchor: 'none',
         }}
       >
         {loadingMore && (
@@ -215,7 +294,7 @@ export function LogStream({
           </div>
         )}
         {lines.map((line, li) => (
-          <div key={line.id} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          <div key={line.id} data-line-id={line.id} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
             {showContainer && (
               <button
                 type="button"
@@ -270,6 +349,11 @@ export function LogStream({
             </span>
           </div>
         ))}
+        {hasNewer && lines.length > 0 && (
+          <div style={{ textAlign: 'center', padding: '8px 0 4px', color: theme.logMuted, fontSize: 10 }}>
+            {loadingNewer ? 'Loading newer logs...' : 'Newer logs available — scroll to the bottom to catch up'}
+          </div>
+        )}
       </div>
     </div>
   );

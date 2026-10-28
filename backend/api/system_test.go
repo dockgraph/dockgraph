@@ -44,6 +44,7 @@ func (s *stubImageLister) ImageList(_ context.Context, _ imagetypes.ListOptions)
 func TestHandleSystemInfo(t *testing.T) {
 	stub := &stubSystemInfoProvider{
 		info: systemtypes.Info{
+			Name:            "manager-1",
 			ServerVersion:   "28.5.2",
 			OperatingSystem: "Ubuntu 24.04",
 			Architecture:    "x86_64",
@@ -70,6 +71,11 @@ func TestHandleSystemInfo(t *testing.T) {
 	}
 	if body["dockerVersion"] != "28.5.2" {
 		t.Errorf("dockerVersion = %v, want 28.5.2", body["dockerVersion"])
+	}
+	// The daemon's host name: in swarm mode, the node the host-level cards
+	// describe.
+	if body["hostname"] != "manager-1" {
+		t.Errorf("hostname = %v, want manager-1", body["hostname"])
 	}
 	if body["cpus"] != float64(8) {
 		t.Errorf("cpus = %v, want 8", body["cpus"])

@@ -6,7 +6,7 @@ import { InspectButton } from './InspectButton';
 import { StatsMini } from './StatsMini';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
-import { ghostBorder, railColor, CARD_SHADOW, CARD_RADIUS } from '../utils/nodeStyles';
+import { ghostBorder, railColor, CARD_SHADOW, CARD_RADIUS, NODE_NAME_FONT } from '../utils/nodeStyles';
 import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY, zoomSelector } from '../utils/constants';
 import type { ContainerNodeData } from '../types';
 
@@ -66,9 +66,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
         <span
           style={{
             ...ellipsis,
-            fontSize: 12.5,
-            fontWeight: 600,
-            fontFamily: 'var(--dg-font-mono)',
+            ...NODE_NAME_FONT,
             letterSpacing: '-0.01em',
             color: theme.nodeText,
             maxWidth: 'calc(100% - 30px)',

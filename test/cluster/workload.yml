@@ -1,0 +1,55 @@
+# Workload for the multi-node test cluster (test/swarm_cluster.sh).
+#
+# Deployed as stack "work". backend/clustertest relies on these names:
+#   chatty   pinned to dgc-w1, logs one line per second (remote log proxy)
+#   shipper  global, one task per active node
+#   web      replicated across the cluster
+#   db       named volume mount
+# Images are loaded into every node by the cluster script, never pulled.
+
+networks:
+  front:
+    driver: overlay
+  back:
+    driver: overlay
+
+volumes:
+  data:
+
+services:
+
+  web:
+    image: nginx:1.29-alpine
+    networks: [front]
+    deploy:
+      replicas: 4
+
+  api:
+    image: busybox:1.37
+    command: sh -c "sleep infinity"
+    networks: [front, back]
+    deploy:
+      replicas: 2
+
+  db:
+    image: busybox:1.37
+    command: sh -c "sleep infinity"
+    networks: [back]
+    volumes:
+      - data:/data
+
+  chatty:
+    image: busybox:1.37
+    command: sh -c 'i=0; while true; do i=$$((i+1)); echo "chatty line $$i"; sleep 1; done'
+    networks: [back]
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == dgc-w1
+
+  shipper:
+    image: busybox:1.37
+    command: sh -c "sleep infinity"
+    networks: [back]
+    deploy:
+      mode: global

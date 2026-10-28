@@ -2,6 +2,7 @@ import { useTheme } from '../../theme';
 import { Section, Row, monoStyle } from './shared';
 import { KeyValueList } from './KeyValueList';
 import { ContainerLink } from './ContainerLink';
+import { NetworkServiceList } from './NetworkServiceList';
 import type { NetworkDetail } from '../../types/stats';
 
 interface Props {
@@ -35,6 +36,10 @@ export function DetailPanelNetworkInfo({ network, onNavigate }: Props) {
             </div>
           ))}
         </Section>
+      )}
+
+      {(network.services || network.servicesUnavailable) && (
+        <NetworkServiceList services={network.services ?? []} unavailable={!!network.servicesUnavailable} onNavigate={onNavigate} />
       )}
 
       {network.containers && network.containers.length > 0 && (

@@ -103,7 +103,6 @@ export const SwarmNodeGroup = memo(function SwarmNodeGroup({ data }: NodeProps) 
             style={{ width: 7, height: 7, borderRadius: '50%', background: stateColor, flexShrink: 0 }}
           />
           <span
-            onClick={openInfo}
             title={dgNode.name}
             style={{
               ...ellipsis,
@@ -113,7 +112,6 @@ export const SwarmNodeGroup = memo(function SwarmNodeGroup({ data }: NodeProps) 
               fontWeight: 600,
               color: theme.nodeText,
               fontStyle: unassigned ? 'italic' : 'normal',
-              ...(openInfo ? { cursor: 'pointer' } : null),
             }}
           >
             {dgNode.name}

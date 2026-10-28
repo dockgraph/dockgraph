@@ -860,11 +860,33 @@ func TestLogsStreamSinceParam(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if stub.opts.Since != since {
-		t.Errorf("Docker Since = %q, want %q", stub.opts.Since, since)
+	// The client already shows the line at `since`: resume strictly after it
+	// (Docker's Since is inclusive)...
+	if want := "2024-01-15T10:00:00.000000001Z"; stub.opts.Since != want {
+		t.Errorf("Docker Since = %q, want %q", stub.opts.Since, want)
 	}
-	if stub.opts.Tail != "0" {
-		t.Errorf("Docker Tail = %q, want %q (should be 0 when since is set)", stub.opts.Tail, "0")
+	// ...and replay the lines written since then. Tail "0" would mean "only
+	// new lines" and skip everything logged between the history fetch and
+	// this stream opening.
+	if stub.opts.Tail != strconv.Itoa(resumeTailLines) {
+		t.Errorf("Docker Tail = %q, want %d (the backlog since the cursor)", stub.opts.Tail, resumeTailLines)
+	}
+}
+
+func TestLogsStreamSinceParamNotATimestamp(t *testing.T) {
+	// A since Docker understands but we can't parse (unix seconds) is passed
+	// through as is.
+	stub := &stubContainerLogger{data: buildLogFrame(1, "2024-01-15T10:30:00.000000000Z ok\n")}
+	srv := newTestServer(stub)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/containers/testcontainer/logs?since=1705314600")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if stub.opts.Since != "1705314600" {
+		t.Errorf("Docker Since = %q, want it unchanged", stub.opts.Since)
 	}
 }
 

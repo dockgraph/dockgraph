@@ -3,12 +3,12 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	networktypes "github.com/docker/docker/api/types/network"
@@ -417,25 +417,31 @@ func TestHandleContainerInspect_InvalidID(t *testing.T) {
 }
 
 func TestHandleContainerInspect_DockerError(t *testing.T) {
-	stub := &stubContainerInspector{
-		err: fmt.Errorf("container not found: no such container"),
+	// Only a missing container is a 404: a daemon timeout says nothing about
+	// whether it exists.
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+		wantMsg  string
+	}{
+		{"not found", cerrdefs.ErrNotFound.WithMessage("No such container: abc123def"), http.StatusNotFound, "container not found"},
+		{"daemon timeout", context.DeadlineExceeded, http.StatusBadGateway, "container inspect failed"},
 	}
-	mux := newContainerInspectServer(stub)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := newContainerInspectServer(&stubContainerInspector{err: tc.err})
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/containers/abc123def", nil))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/containers/abc123def", nil)
-	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404 on docker error, got %d", w.Code)
-	}
-
-	var errBody map[string]any
-	if err := json.NewDecoder(w.Body).Decode(&errBody); err != nil {
-		t.Fatalf("failed to decode error body: %v", err)
-	}
-	if errBody["error"] != "container not found" {
-		t.Errorf("error = %q, want %q", errBody["error"], "container not found")
+			var errBody map[string]any
+			if err := json.NewDecoder(w.Body).Decode(&errBody); err != nil {
+				t.Fatalf("failed to decode error body: %v", err)
+			}
+			if w.Code != tc.wantCode || errBody["error"] != tc.wantMsg {
+				t.Errorf("got %d %q, want %d %q", w.Code, errBody["error"], tc.wantCode, tc.wantMsg)
+			}
+		})
 	}
 }
 

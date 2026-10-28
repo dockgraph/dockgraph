@@ -64,14 +64,12 @@ export const NetworkGroup = memo(function NetworkGroup({ data }: NodeProps) {
           style={{ width: 6, height: 6, borderRadius: '50%', background: color, flex: '0 0 auto' }}
         />
         <span
-          onClick={onInfoClick ? () => onInfoClick(dgNode.id) : undefined}
           title={dgNode.name}
           style={{
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
             minWidth: 0,
-            ...(onInfoClick ? { cursor: 'pointer' } : null),
           }}
         >
           {dgNode.name}

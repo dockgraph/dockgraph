@@ -95,6 +95,10 @@ export function CommonLogs({ active, onOpenContainer, stack = null, scopeNames }
           loadingMore={logs.loadingMore}
           hasMore={logs.hasMore}
           loadMore={logs.loadMore}
+          hasNewer={logs.hasNewer}
+          loadingNewer={logs.loadingNewer}
+          loadNewer={logs.loadNewer}
+          onFollowChange={logs.onFollowChange}
           active={active}
           showContainer
           onContainerClick={onOpenContainer}
