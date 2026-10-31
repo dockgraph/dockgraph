@@ -184,7 +184,7 @@ func readRemoteVolume(answer *http.Response) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decoding agent response: %w", err)
 	}
-	resp := make(map[string]any, len(fields)+2)
+	resp := make(map[string]any, len(fields))
 	for k, v := range fields {
 		resp[k] = v
 	}
