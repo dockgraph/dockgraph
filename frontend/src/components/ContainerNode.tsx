@@ -7,6 +7,7 @@ import { StatsMini } from './StatsMini';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
 import { ghostBorder, railColor, CARD_SHADOW, CARD_RADIUS, NODE_NAME_FONT } from '../utils/nodeStyles';
+import { containerPorts, hostPorts } from '../utils/ports';
 import { CONTAINER_NODE_HEIGHT, STATUS_DOT_SIZE, INACTIVE_OPACITY, PAUSED_OPACITY, zoomSelector } from '../utils/constants';
 import type { ContainerNodeData } from '../types';
 
@@ -123,7 +124,7 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
         <div style={{ marginTop: 5, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {dgNode.ports.slice(0, 3).map((p, i) => (
             <span
-              key={`${i}-${p.host}-${p.container}`}
+              key={`${i}-${hostPorts(p)}-${containerPorts(p)}`}
               style={{
                 fontFamily: 'var(--dg-font-mono)',
                 fontSize: 9.5,
@@ -135,12 +136,12 @@ export const ContainerNode = memo(function ContainerNode({ data }: NodeProps) {
                 whiteSpace: 'nowrap',
               }}
             >
-              :{p.host}&#8201;&rarr;&#8201;{p.container}
+              :{hostPorts(p)}&#8201;&rarr;&#8201;{containerPorts(p)}
             </span>
           ))}
           {dgNode.ports.length > 3 && (
             <span
-              title={dgNode.ports.slice(3).map((p) => `:${p.host} → ${p.container}`).join(', ')}
+              title={dgNode.ports.slice(3).map((p) => `:${hostPorts(p)} → ${containerPorts(p)}`).join(', ')}
               style={{ fontFamily: 'var(--dg-font-mono)', fontSize: 9.5, color: theme.nodeSubtext, alignSelf: 'center' }}
             >
               +{dgNode.ports.length - 3}

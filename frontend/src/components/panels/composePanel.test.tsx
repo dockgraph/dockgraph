@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 afterEach(() => cleanup());
 import { DetailPanelCompose } from './DetailPanelCompose';
@@ -57,5 +57,24 @@ describe('GhostContainerPanel ports', () => {
       </ThemeProvider>,
     );
     expect(screen.getByText('80/tcp')).toBeDefined();
+  });
+
+  it('copies a range mapping as host:container/protocol', () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const node: DGNode = {
+      id: 'container:demo-small-nginx-1',
+      type: 'container',
+      name: 'demo-small-nginx-1',
+      status: 'not_running',
+      ports: [{ host: 8070, hostEnd: 8072, container: 80, containerEnd: 82, protocol: 'udp' }],
+    };
+    render(
+      <ThemeProvider>
+        <GhostContainerPanel node={node} onNavigate={() => {}} />
+      </ThemeProvider>,
+    );
+    fireEvent.click(screen.getByText('8070-8072'));
+    expect(writeText).toHaveBeenCalledWith('8070-8072:80-82/udp');
   });
 });

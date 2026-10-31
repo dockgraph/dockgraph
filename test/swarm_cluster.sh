@@ -5,7 +5,7 @@
 # network, joins them into one swarm, loads the locally built DockGraph image
 # into every node, and deploys stack.yml (server + global agent) plus the test
 # workload in test/cluster/workload.yml. The scenarios in backend/clustertest
-# then drive it (pause nodes, drain, rotate secrets...).
+# then drive it (pause nodes, drain, swap agent keys...).
 #
 # Unlike test/swarm_smoke.sh this exercises the server <-> agent path: the
 # server never proxies to the agent of its own node, so a single-node swarm
@@ -59,7 +59,8 @@ LABEL="dockgraph.cluster=dgc"
 LEADER="$PREFIX-m1"
 STACK="dg"
 WORKLOAD_STACK="work"
-SECRET="dg_agent_token"
+KEY_SECRET="dg_agent_key"
+PUBKEY_CONFIG="dg_agent_pubkey"
 WORKLOAD_IMAGES=(busybox:1.37 nginx:1.29-alpine)
 
 # ── Helpers ───────────────────────────────────────────────────
@@ -224,10 +225,17 @@ cmd_up() {
   done
   for p in "${pids[@]}"; do wait "$p"; done
 
-  # The token is generated inside the leader, so the host needs no openssl.
-  if ! on "$LEADER" secret inspect "$SECRET" >/dev/null 2>&1; then
-    docker exec "$LEADER" sh -c \
-      "head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | docker secret create $SECRET -" >/dev/null
+  # The agent keys are generated inside the leader with the DockGraph image,
+  # so the host needs no tools. The private key never leaves the leader: it
+  # goes from a temporary file into the secret.
+  if ! on "$LEADER" secret inspect "$KEY_SECRET" >/dev/null 2>&1 ||
+    ! on "$LEADER" config inspect "$PUBKEY_CONFIG" >/dev/null 2>&1; then
+    on "$LEADER" secret rm "$KEY_SECRET" >/dev/null 2>&1 || true
+    on "$LEADER" config rm "$PUBKEY_CONFIG" >/dev/null 2>&1 || true
+    docker exec "$LEADER" sh -c "umask 077 &&
+      docker run --rm $IMAGE --agent-keygen > /tmp/dg_agent_key &&
+      docker run --rm -i $IMAGE --agent-pubkey < /tmp/dg_agent_key | docker config create $PUBKEY_CONFIG - &&
+      docker secret create $KEY_SECRET /tmp/dg_agent_key; status=\$?; rm -f /tmp/dg_agent_key; exit \$status" >/dev/null
   fi
 
   docker cp stack.yml "$LEADER:/stack.yml"

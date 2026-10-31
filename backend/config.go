@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"log"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dockgraph/dockgraph/agentauth"
+	"github.com/dockgraph/dockgraph/api"
 	"github.com/dockgraph/dockgraph/auth"
 	"github.com/dockgraph/dockgraph/collector"
 )
@@ -33,11 +36,26 @@ type Config struct {
 	// AgentAddr is the DNS name resolving to every agent task
 	// (DG_AGENT_ADDR, default "tasks.agent"), optionally with ":port".
 	AgentAddr string
-	// AgentToken is the shared bearer secret between server and agents,
-	// read from DG_AGENT_TOKEN or the file named by DG_AGENT_TOKEN_FILE
-	// (a Docker secret). Empty disables agents on the server and prevents
-	// an agent from starting.
+	// AgentKey is the server's private key, which signs every request to an
+	// agent (DG_AGENT_KEY or the file named by DG_AGENT_KEY_FILE, a Docker
+	// secret); nil when unset. Agents must never be given it.
+	AgentKey ed25519.PrivateKey
+	// AgentPublicKeys are the server's public keys an agent accepts
+	// signatures from (DG_AGENT_PUBLIC_KEY or DG_AGENT_PUBLIC_KEY_FILE,
+	// whitespace- or comma-separated).
+	AgentPublicKeys []ed25519.PublicKey
+	// AgentToken is the older shared bearer secret between server and
+	// agents, read from DG_AGENT_TOKEN or the file named by
+	// DG_AGENT_TOKEN_FILE. Used only where no key is configured, or by a
+	// server still serving agents that have no public key yet.
 	AgentToken string
+	// TrustedProxies are the reverse proxies (DG_TRUSTED_PROXIES: IPs and
+	// CIDRs) whose X-Forwarded-For and X-Forwarded-Proto are believed, to
+	// identify clients and to tell that a request came over HTTPS.
+	TrustedProxies auth.TrustedProxies
+	// AllowedHosts are the host names served besides IP addresses and
+	// localhost (DG_ALLOWED_HOSTS); nil when unset.
+	AllowedHosts *api.HostAllowlist
 }
 
 // validModes lists the accepted DG_MODE values.
@@ -78,6 +96,18 @@ func LoadConfig() Config {
 		cfg.AgentAddr = v
 	}
 	cfg.AgentToken = loadAgentToken()
+	// A broken key must never silently fall back to the token or to no
+	// agent authentication at all.
+	key, err := loadAgentKey()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	cfg.AgentKey = key
+	publicKeys, err := loadAgentPublicKeys()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	cfg.AgentPublicKeys = publicKeys
 
 	cfg.PollInterval = parseDuration("DG_POLL_INTERVAL", cfg.PollInterval, time.Second)
 	cfg.StatsInterval = parseDuration("DG_STATS_INTERVAL", cfg.StatsInterval, time.Second)
@@ -100,6 +130,21 @@ func LoadConfig() Config {
 		} else {
 			cfg.StatsWorkers = n
 		}
+	}
+
+	proxies, err := auth.ParseTrustedProxies(os.Getenv("DG_TRUSTED_PROXIES"))
+	if err != nil {
+		// Ignoring a typo would silently fall back to trusting no proxy.
+		log.Fatalf("DG_TRUSTED_PROXIES: %v", err)
+	}
+	cfg.TrustedProxies = proxies
+
+	if v := strings.TrimSpace(os.Getenv("DG_ALLOWED_HOSTS")); v != "" {
+		hosts, err := api.ParseAllowedHosts(v)
+		if err != nil {
+			log.Fatalf("DG_ALLOWED_HOSTS: %v", err)
+		}
+		cfg.AllowedHosts = hosts
 	}
 
 	raw, err := readSecretEnv("DG_PASSWORD")
@@ -205,6 +250,35 @@ func loadAgentToken() string {
 		return ""
 	}
 	return strings.TrimSpace(token)
+}
+
+// loadAgentKey returns the server's agent signing key from DG_AGENT_KEY or
+// DG_AGENT_KEY_FILE (see readSecretEnv), or nil when neither is set.
+func loadAgentKey() (ed25519.PrivateKey, error) {
+	text, err := readSecretEnv("DG_AGENT_KEY")
+	if err != nil || text == "" {
+		return nil, err
+	}
+	key, err := agentauth.ParsePrivateKey(text)
+	if err != nil {
+		return nil, fmt.Errorf("DG_AGENT_KEY: %w", err)
+	}
+	return key, nil
+}
+
+// loadAgentPublicKeys returns the server public keys from
+// DG_AGENT_PUBLIC_KEY or DG_AGENT_PUBLIC_KEY_FILE, or nil when neither is
+// set.
+func loadAgentPublicKeys() ([]ed25519.PublicKey, error) {
+	text, err := readSecretEnv("DG_AGENT_PUBLIC_KEY")
+	if err != nil || text == "" {
+		return nil, err
+	}
+	keys, err := agentauth.ParsePublicKeys(text)
+	if err != nil {
+		return nil, fmt.Errorf("DG_AGENT_PUBLIC_KEY: %w", err)
+	}
+	return keys, nil
 }
 
 // parseDuration reads a duration from an environment variable with minimum enforcement.

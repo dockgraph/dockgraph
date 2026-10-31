@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/dockgraph/dockgraph/agentauth"
 	"github.com/dockgraph/dockgraph/auth"
 )
 
@@ -75,6 +77,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		"DG_COMPOSE_PATH", "DG_PASSWORD", "DG_STATS_INTERVAL",
 		"DG_STATS_WORKERS", "DG_MODE", "DG_SWARM_POLL_INTERVAL",
 		"DG_AGENT_PORT", "DG_AGENT_ADDR", "DG_AGENT_TOKEN", "DG_AGENT_TOKEN_FILE",
+		"DG_AGENT_KEY", "DG_AGENT_KEY_FILE", "DG_AGENT_PUBLIC_KEY", "DG_AGENT_PUBLIC_KEY_FILE",
 	} {
 		t.Setenv(key, "")
 	}
@@ -118,6 +121,9 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	}
 	if cfg.AgentToken != "" {
 		t.Errorf("AgentToken: got %q, want empty", cfg.AgentToken)
+	}
+	if cfg.AgentKey != nil || cfg.AgentPublicKeys != nil {
+		t.Errorf("agent keys: got %v / %v, want none", cfg.AgentKey, cfg.AgentPublicKeys)
 	}
 }
 
@@ -331,6 +337,23 @@ func TestLoadConfig_StatsWorkers(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// DG_TRUSTED_PROXIES
+// ---------------------------------------------------------------------------
+
+func TestLoadConfig_TrustedProxies(t *testing.T) {
+	clearConfigEnv(t, "DG_PASSWORD", "DG_TRUSTED_PROXIES")
+	if cfg := LoadConfig(); len(cfg.TrustedProxies) != 0 {
+		t.Errorf("TrustedProxies = %v, want none by default", cfg.TrustedProxies)
+	}
+
+	t.Setenv("DG_TRUSTED_PROXIES", "10.0.0.0/8, 172.18.0.5")
+	cfg := LoadConfig()
+	if got := fmt.Sprint(cfg.TrustedProxies); got != "[10.0.0.0/8 172.18.0.5/32]" {
+		t.Errorf("TrustedProxies = %s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // DG_PASSWORD
 // ---------------------------------------------------------------------------
 
@@ -521,6 +544,81 @@ func TestLoadConfig_AgentToken(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DG_AGENT_KEY(_FILE) / DG_AGENT_PUBLIC_KEY(_FILE)
+// ---------------------------------------------------------------------------
+
+func TestLoadConfig_AgentKeys(t *testing.T) {
+	keyText, err := agentauth.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := agentauth.ParsePrivateKey(keyText)
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "dg_agent_key")
+	if err := os.WriteFile(keyFile, []byte(keyText+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pubFile := filepath.Join(dir, "dg_agent_pubkey")
+	if err := os.WriteFile(pubFile, []byte(agentauth.PublicKeyText(key)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	clearConfigEnv(t, "DG_PASSWORD", "DG_AGENT_KEY", "DG_AGENT_PUBLIC_KEY")
+	t.Setenv("DG_AGENT_KEY_FILE", keyFile)
+	t.Setenv("DG_AGENT_PUBLIC_KEY_FILE", pubFile)
+	cfg := LoadConfig()
+	if !key.Equal(cfg.AgentKey) {
+		t.Error("AgentKey not read from DG_AGENT_KEY_FILE")
+	}
+	if len(cfg.AgentPublicKeys) != 1 || !cfg.AgentPublicKeys[0].Equal(key.Public()) {
+		t.Errorf("AgentPublicKeys = %v", cfg.AgentPublicKeys)
+	}
+}
+
+// A broken key is an error (LoadConfig makes it fatal), never a silent
+// fallback to the token or to no agents.
+func TestLoadAgentKeysErrors(t *testing.T) {
+	keyText, _ := agentauth.GenerateKey()
+	key, _ := agentauth.ParsePrivateKey(keyText)
+	pubText := agentauth.PublicKeyText(key)
+	dir := t.TempDir()
+
+	for _, tc := range []struct {
+		name, env, value string
+		load             func() error
+	}{
+		{"garbage private key", "DG_AGENT_KEY", "not-a-key", func() error { _, err := loadAgentKey(); return err }},
+		{"public key as the private key", "DG_AGENT_KEY", pubText, func() error { _, err := loadAgentKey(); return err }},
+		{"missing private key file", "DG_AGENT_KEY_FILE", filepath.Join(dir, "missing"), func() error { _, err := loadAgentKey(); return err }},
+		{"garbage public key", "DG_AGENT_PUBLIC_KEY", "not-a-key", func() error { _, err := loadAgentPublicKeys(); return err }},
+		{"private key given to an agent", "DG_AGENT_PUBLIC_KEY", keyText, func() error { _, err := loadAgentPublicKeys(); return err }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearConfigEnv(t, "DG_AGENT_KEY", "DG_AGENT_KEY_FILE", "DG_AGENT_PUBLIC_KEY", "DG_AGENT_PUBLIC_KEY_FILE")
+			t.Setenv(tc.env, tc.value)
+			err := tc.load()
+			if err == nil {
+				t.Fatal("got no error")
+			}
+			if name := strings.TrimSuffix(tc.env, "_FILE"); !strings.Contains(err.Error(), name) {
+				t.Errorf("error %q does not name %s", err, name)
+			}
+			if strings.Contains(err.Error(), keyText) {
+				t.Error("error echoes the private key")
+			}
+		})
+	}
+
+	clearConfigEnv(t, "DG_AGENT_KEY", "DG_AGENT_KEY_FILE", "DG_AGENT_PUBLIC_KEY", "DG_AGENT_PUBLIC_KEY_FILE")
+	if k, err := loadAgentKey(); k != nil || err != nil {
+		t.Errorf("unset private key: %v, %v", k, err)
+	}
+	if k, err := loadAgentPublicKeys(); k != nil || err != nil {
+		t.Errorf("unset public keys: %v, %v", k, err)
 	}
 }
 

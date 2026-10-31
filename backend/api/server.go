@@ -37,6 +37,27 @@ type SystemAPI interface {
 	ImageLister
 }
 
+// ServerOption customises NewServer.
+type ServerOption func(*serverOptions)
+
+type serverOptions struct {
+	agentProxy   *AgentProxy
+	allowedHosts *HostAllowlist
+	proxies      auth.TrustedProxies
+}
+
+// WithTrustedProxies names the reverse proxies whose X-Forwarded-For tells
+// clients apart for per-client connection limits.
+func WithTrustedProxies(p auth.TrustedProxies) ServerOption {
+	return func(o *serverOptions) { o.proxies = p }
+}
+
+// WithHostAllowlist answers only requests whose Host header allow serves
+// (see HostAllowlist); others get 403.
+func WithHostAllowlist(allow *HostAllowlist) ServerOption {
+	return func(o *serverOptions) { o.allowedHosts = allow }
+}
+
 // NewServer sets up the HTTP routes for the application.
 // Pass nil for authService to disable authentication. mode is the resolved
 // runtime mode (collector.ModeStandalone or collector.ModeSwarm); swarm mode
@@ -65,10 +86,16 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 		mux.HandleFunc("POST /api/login", authService.Login())
 		mux.HandleFunc("POST /api/logout", authService.Logout())
 		mux.HandleFunc("GET /api/auth/check", authService.Check())
+		mux.HandleFunc("GET "+auth.LoginScriptPath, authService.LoginScriptHandler())
 	}
 
 	mux.HandleFunc("GET /ws", hub.HandleWS)
 	if docker != nil {
+		clientKey := o.proxies.ClientKey
+		logStreams := newSlotLimiter(maxLogStreams, maxLogStreamsPerClient)
+		aggregateStreams := newSlotLimiter(maxAggregateStreams, maxAggregateStreamsPerClient)
+		logHistory := newSlotLimiter(maxLogHistoryRequests, maxLogHistoryRequestsPerClient)
+		inspects := newSlotLimiter(maxInspectRequests, maxInspectRequestsPerClient)
 		// Service logs are only aggregated in swarm mode; a standalone daemon
 		// rejects swarm API calls.
 		var services StackServiceAPI
@@ -76,19 +103,22 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 		if mode == collector.ModeSwarm {
 			services = docker
 			networkMembers = docker
-			mux.HandleFunc("GET /api/services/{id}/logs/history", HandleServiceLogsHistory(docker))
-			mux.HandleFunc("GET /api/services/{id}/logs", HandleServiceLogs(docker))
+			mux.HandleFunc("GET /api/services/{id}/logs/history", limitConcurrent(clientKey, HandleServiceLogsHistory(docker), logHistory))
+			mux.HandleFunc("GET /api/services/{id}/logs", limitConcurrent(clientKey, HandleServiceLogs(docker), logStreams))
 			mux.HandleFunc("GET /api/services/{id}", HandleServiceInspect(docker, docker))
 			mux.HandleFunc("GET /api/swarm/managers", HandleSwarmManagers(docker))
 		}
 		// Containers on other swarm nodes are served by their node's agent.
 		remote := o.agentProxy
-		mux.HandleFunc("GET /api/containers/{id}/logs/history", remote.wrap(HandleContainerLogsHistory(docker), docker, "/logs/history", false))
-		mux.HandleFunc("GET /api/containers/{id}/logs", remote.wrap(HandleContainerLogs(docker), docker, "/logs", true))
-		mux.HandleFunc("GET /api/logs/history", HandleAggregateLogsHistory(docker, docker, services))
-		mux.HandleFunc("GET /api/logs", HandleAggregateLogs(docker, docker, docker, services))
-		mux.HandleFunc("GET /api/containers/{id}", remote.wrap(HandleContainerInspect(docker), docker, "", false))
-		mux.HandleFunc("GET /api/volumes/{name}", remote.inspectVolume(docker))
+		if remote != nil {
+			remote.clientKey = clientKey
+		}
+		mux.HandleFunc("GET /api/containers/{id}/logs/history", limitConcurrent(clientKey, remote.wrap(HandleContainerLogsHistory(docker), docker, "/logs/history", false), logHistory))
+		mux.HandleFunc("GET /api/containers/{id}/logs", limitConcurrent(clientKey, remote.wrap(HandleContainerLogs(docker), docker, "/logs", true), logStreams))
+		mux.HandleFunc("GET /api/logs/history", limitConcurrent(clientKey, HandleAggregateLogsHistory(docker, docker, services), logHistory))
+		mux.HandleFunc("GET /api/logs", limitConcurrent(clientKey, HandleAggregateLogs(docker, docker, docker, services), logStreams, aggregateStreams))
+		mux.HandleFunc("GET /api/containers/{id}", limitConcurrent(clientKey, remote.wrap(HandleContainerInspect(docker), docker, "", false), inspects))
+		mux.HandleFunc("GET /api/volumes/{name}", limitConcurrent(clientKey, remote.inspectVolume(docker), inspects))
 		mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(docker, networkMembers))
 	}
 	if system != nil {
@@ -105,27 +135,41 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 				serviceLister = docker
 			}
 		}
-		mux.HandleFunc("GET /api/stats/history", HandleStatsHistory(statsHistory, lister, serviceLister))
+		statsQueries := newSlotLimiter(maxStatsHistoryRequests, maxStatsHistoryRequestsPerClient)
+		mux.HandleFunc("GET /api/stats/history", limitConcurrent(o.proxies.ClientKey, HandleStatsHistory(statsHistory, lister, serviceLister), statsQueries))
 	}
 	if eventHistory != nil {
 		mux.HandleFunc("GET /api/events/recent", HandleRecentEvents(eventHistory))
 	}
 	mux.HandleFunc("/", spaHandler(staticFS))
 
-	handler := securityHeaders(mux)
+	var handler http.Handler = mux
 	if authService != nil {
 		handler = authService.Middleware(handler)
 	}
-
-	return handler
+	// Reject state-changing requests (login, logout) sent cross-origin by a
+	// browser: SameSite=Lax cookies still flow between sibling subdomains.
+	handler = http.NewCrossOriginProtection().Handler(handler)
+	if o.allowedHosts != nil {
+		handler = hostCheck(o.allowedHosts, handler)
+	}
+	// Outermost, so the login page, 401s and rejections carry them too.
+	return securityHeaders(handler)
 }
+
+// contentSecurityPolicy allows scripts and connections from this origin
+// only, so no injected inline script runs and no script sends data
+// elsewhere; 'self' covers the app's WebSocket (ws: or wss: to the same
+// host and port).
+const contentSecurityPolicy = "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; " +
+	"base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 // securityHeaders adds baseline security headers to every response.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:")
+		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		w.Header().Set("X-XSS-Protection", "0")

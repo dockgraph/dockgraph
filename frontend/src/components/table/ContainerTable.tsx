@@ -2,6 +2,7 @@ import { memo } from "react";
 import { useTableSort } from "../../hooks/useTableSort";
 import { useTableGrouping } from "../../hooks/useTableGrouping";
 import { networkColor } from "../../utils/colors";
+import { portMapping } from "../../utils/ports";
 import { ContainerRow } from "./ContainerRow";
 import { GroupedTable } from "./GroupedTable";
 import { CONTAINER_GRID } from "./tableStyles";
@@ -59,7 +60,7 @@ export const ContainerTable = memo(function ContainerTable({
         name: n.name,
         image: n.image ?? "",
         status: n.status ?? "",
-        ports: n.ports?.map((p) => `${p.host}:${p.container}`).join(",") ?? "",
+        ports: n.ports?.map((p) => portMapping(p)).join(",") ?? "",
         network: n.networkId?.replace(/^network:/, "") ?? "",
       })}
       renderRow={(node) => (

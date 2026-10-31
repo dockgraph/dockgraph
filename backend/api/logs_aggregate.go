@@ -1,13 +1,10 @@
 package api
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,9 +24,7 @@ const selfExcludeValue = "true"
 // aggregateLine is one log line tagged with its source container.
 type aggregateLine struct {
 	Container string `json:"container"`
-	Stream    string `json:"stream"`
-	Line      string `json:"line"`
-	Timestamp string `json:"timestamp,omitempty"`
+	logEntry
 }
 
 // ContainerLister lists containers (used to enumerate log sources).
@@ -148,37 +143,64 @@ var logSourceTimeout = 5 * time.Second
 
 const maxConcurrentLogSources = 8
 
-// collectHistory fetches up to `limit` recent lines (before `before`, if set) from
-// every source in scope, tags each with its container or service name, and
-// merge-sorts ascending by timestamp. One source failing is skipped
-// (best-effort), not fatal.
+// collectHistory fetches up to `limit` recent lines (before `before`, if set)
+// from every source in scope, tags each with its container or service name,
+// and returns the newest limit of them across sources (within
+// maxHistoryPageBytes), ascending by timestamp. Each source's lines are
+// merged as soon as they arrive, so memory stays bounded however many
+// sources there are. One source failing is skipped (best-effort), not fatal.
+//
+// A source whose page was cut may hold lines older than the oldest it sent,
+// and the next page starts before the oldest line of this one; so this page
+// ends where the latest-ending cut source's lines end, and older lines of
+// other sources wait for the next page instead of being skipped.
 func collectHistory(ctx context.Context, scope logScope, lister ContainerLister, logger ContainerLogger, before string, limit int) ([]aggregateLine, error) {
 	sources, err := scope.listSources(ctx, lister, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	perSource := make([][]aggregateLine, len(sources))
+	page := newNewestLines[aggregateLine](before, limit)
+	var floor string // the page holds no line older than this
+	var mu sync.Mutex
 	sem := make(chan struct{}, maxConcurrentLogSources)
 	var wg sync.WaitGroup
-	for i, src := range sources {
+	for _, src := range sources {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			perSource[i] = fetchSourceHistory(ctx, src, before, limit)
+			lines := fetchSourceHistory(ctx, src, before, limit)
+			mu.Lock()
+			defer mu.Unlock()
+			if mayHoldOlder(lines, limit) && lines[0].Timestamp > floor {
+				floor = lines[0].Timestamp
+			}
+			for _, l := range lines {
+				page.add(l)
+			}
 		}()
 	}
 	wg.Wait()
-
-	var all []aggregateLine
-	for _, lines := range perSource {
-		all = append(all, lines...)
-	}
+	lines := page.result()
 	// RFC3339Nano UTC timestamps sort correctly as strings.
-	sort.SliceStable(all, func(i, j int) bool { return all[i].Timestamp < all[j].Timestamp })
-	return all, nil
+	start, _ := slices.BinarySearchFunc(lines, floor, func(l aggregateLine, ts string) int { return strings.Compare(l.Timestamp, ts) })
+	return lines[start:], nil
+}
+
+// mayHoldOlder reports whether a source's page (oldest first) may have been
+// cut, by limit or by maxHistoryPageBytes, rather than holding everything
+// the source has: it is full, or within one line of the size bound.
+func mayHoldOlder(lines []aggregateLine, limit int) bool {
+	if len(lines) == 0 {
+		return false
+	}
+	size := 0
+	for _, l := range lines {
+		size += l.size()
+	}
+	return len(lines) >= limit || size > maxHistoryPageBytes-maxLogLineSize
 }
 
 // fetchSourceHistory reads one source's history within logSourceTimeout and
@@ -193,7 +215,7 @@ func fetchSourceHistory(ctx context.Context, src logSource, before string, limit
 	}
 	lines := make([]aggregateLine, 0, len(entries))
 	for _, e := range entries {
-		lines = append(lines, aggregateLine{Container: src.name, Stream: e.Stream, Line: e.Line, Timestamp: e.Timestamp})
+		lines = append(lines, aggregateLine{Container: src.name, logEntry: e})
 	}
 	return lines
 }
@@ -357,25 +379,18 @@ func (a *logAggregator) follow(ctx context.Context, src logSource, since string)
 	}
 	defer rc.Close()
 
-	dlr := &dockerLogReader{reader: rc}
-	for {
-		streamType, payload, err := dlr.next()
-		if err != nil {
-			return last, nil
-		}
-		scanner := bufio.NewScanner(bytes.NewReader(payload))
-		for scanner.Scan() {
-			e := parseLogEntry(streamType, scanner.Text())
-			select {
-			case a.out <- aggregateLine{Container: src.name, Stream: e.Stream, Line: e.Line, Timestamp: e.Timestamp}:
-				if e.Timestamp != "" {
-					last = e.Timestamp
-				}
-			case <-ctx.Done():
-				return last, nil
+	eachLogEntry(rc, func(e logEntry) bool {
+		select {
+		case a.out <- aggregateLine{Container: src.name, logEntry: e}:
+			if e.Timestamp != "" {
+				last = e.Timestamp
 			}
+			return true
+		case <-ctx.Done():
+			return false
 		}
-	}
+	})
+	return last, nil
 }
 
 // logEventsFilter limits the event stream to container lifecycle events, plus
@@ -401,18 +416,17 @@ func HandleAggregateLogs(lister ContainerLister, logger ContainerLogger, eventsS
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
 
-		flusher, ok := w.(http.Flusher)
-		if !ok {
+		if _, ok := w.(http.Flusher); !ok {
 			http.Error(w, "streaming not supported", http.StatusInternalServerError)
 			return
 		}
-		disableWriteDeadline(w)
 		scope := newLogScope(r, services)
 		if scope.stack != "" && !validStackName.MatchString(scope.stack) {
 			jsonError(w, "invalid stack", http.StatusBadRequest)
 			return
 		}
-		flusher.Flush()
+		sw := newStreamWriter(w)
+		sw.Flush()
 
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
@@ -484,15 +498,17 @@ func HandleAggregateLogs(lister ContainerLister, logger ContainerLogger, eventsS
 			}
 		}()
 
-		// Writer loop: drain merged lines to SSE until the client disconnects.
+		// Writer loop: drain merged lines to SSE until the client disconnects
+		// or stops reading; returning cancels every follower.
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case line := <-agg.out:
 				data, _ := json.Marshal(line)
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				flusher.Flush()
+				if err := sw.send(data); err != nil {
+					return
+				}
 			}
 		}
 	}

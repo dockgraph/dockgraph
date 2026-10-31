@@ -118,6 +118,12 @@ describe('snapshotFingerprint', () => {
     expect(fp1).not.toBe(fp2);
   });
 
+  it('produces different fingerprints for different port ranges', () => {
+    const fp1 = snapshotFingerprint([{ ...web, ports: [{ host: 8000, hostEnd: 8010, container: 8000, containerEnd: 8010 }] }], []);
+    const fp2 = snapshotFingerprint([{ ...web, ports: [{ host: 8000, hostEnd: 8020, container: 8000, containerEnd: 8020 }] }], []);
+    expect(fp1).not.toBe(fp2);
+  });
+
   it('produces different fingerprints for different networkIds', () => {
     const fp1 = snapshotFingerprint([{ ...web, networkId: 'network:a' }], []);
     const fp2 = snapshotFingerprint([{ ...web, networkId: 'network:b' }], []);

@@ -79,5 +79,8 @@ func isPublicPath(method, path string) bool {
 	if method == http.MethodPost && path == "/api/login" {
 		return true
 	}
+	if method == http.MethodGet && path == LoginScriptPath {
+		return true
+	}
 	return false
 }

@@ -26,9 +26,9 @@ describe('useResourceDetail', () => {
   });
 
   it('shows the error message the server sent', async () => {
-    stubFetch(false, 502, { error: 'agent rejected token (check DG_AGENT_TOKEN on server and agents)' });
+    stubFetch(false, 502, { error: "agent rejected the server's credentials" });
     const { result } = renderHook(() => useResourceDetail('/api/containers/abc'));
-    await waitFor(() => expect(result.current.error).toBe('agent rejected token (check DG_AGENT_TOKEN on server and agents)'));
+    await waitFor(() => expect(result.current.error).toBe("agent rejected the server's credentials"));
     expect(result.current.data).toBeNull();
   });
 

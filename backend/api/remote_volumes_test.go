@@ -11,6 +11,7 @@ import (
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
+	"github.com/dockgraph/dockgraph/agentauth"
 	"github.com/dockgraph/dockgraph/collector"
 )
 
@@ -61,7 +62,7 @@ func nodesOf(body map[string]any) []string {
 func TestVolumeInspectFoundOnRemoteNode(t *testing.T) {
 	holder := &agentRecorder{body: `{"name":"shop_data","driver":"local"}`}
 	p := &AgentProxy{
-		Token:         "tok",
+		Auth:          agentauth.Token("tok"),
 		LocalHostname: "manager-1",
 		Agents: stubAgents{
 			volumeAgent(t, "worker-1", &agentRecorder{status: http.StatusNotFound, body: `{"error":"volume not found"}`}),
@@ -85,9 +86,73 @@ func TestVolumeInspectFoundOnRemoteNode(t *testing.T) {
 	}
 }
 
+// The server masks an agent's volume answer as it masks its own.
+func TestVolumeInspectMasksAgentAnswer(t *testing.T) {
+	holder := &agentRecorder{body: `{"name":"backup","driver":"cifs","scope":"local",` +
+		`"labels":{"backup.password":"pw-in-label","tier":"db"},` +
+		`"options":{"o":"addr=nas,password=pw-in-option","type":"cifs"},` +
+		`"status":{"token":"pw-in-status","mounted":true}}`}
+	p := &AgentProxy{
+		Auth:          agentauth.Token("tok"),
+		LocalHostname: "manager-1",
+		Agents:        stubAgents{volumeAgent(t, "worker-1", holder)},
+	}
+
+	code, body := getVolume(t, p, localVolumeMissing, "backup")
+	encoded, _ := json.Marshal(body)
+	if code != http.StatusOK {
+		t.Fatalf("status %d body %s", code, encoded)
+	}
+	if strings.Contains(string(encoded), "pw-in-") {
+		t.Errorf("agent credentials reached the client: %s", encoded)
+	}
+	for _, kept := range []string{`"cifs"`, `"db"`, `"addr=nas`, `"mounted":true`} {
+		if !strings.Contains(string(encoded), kept) {
+			t.Errorf("%s missing from %s", kept, encoded)
+		}
+	}
+}
+
+// A node whose agent already had its share of client requests is skipped
+// like an unreachable one.
+func TestVolumeInspectBoundsRequestsPerAgent(t *testing.T) {
+	oldRate, oldBurst := agentRequestRate, agentRequestBurst
+	agentRequestRate, agentRequestBurst = 0.001, 1
+	t.Cleanup(func() { agentRequestRate, agentRequestBurst = oldRate, oldBurst })
+
+	holder := &agentRecorder{body: `{"name":"backup","driver":"local"}`}
+	p := &AgentProxy{
+		Auth:          agentauth.Token("tok"),
+		LocalHostname: "manager-1",
+		Agents:        stubAgents{volumeAgent(t, "worker-1", holder)},
+	}
+
+	if code, body := getVolume(t, p, localVolumeMissing, "backup"); code != http.StatusOK {
+		t.Fatalf("first: status %d body %v", code, body)
+	}
+	if code, body := getVolume(t, p, localVolumeMissing, "backup"); code != http.StatusBadGateway {
+		t.Errorf("second: status %d body %v, want 502", code, body)
+	}
+}
+
+// A volume answer far larger than any volume's inspect is refused.
+func TestVolumeInspectOversizedAnswerIsBadGateway(t *testing.T) {
+	holder := &agentRecorder{body: `{"name":"backup","labels":{"x":"` + strings.Repeat("y", int(maxRemoteVolumeBytes)) + `"}}`}
+	p := &AgentProxy{
+		Auth:          agentauth.Token("tok"),
+		LocalHostname: "manager-1",
+		Agents:        stubAgents{volumeAgent(t, "worker-1", holder)},
+	}
+
+	code, body := getVolume(t, p, localVolumeMissing, "backup")
+	if code != http.StatusBadGateway {
+		t.Errorf("status %d body %v, want 502", code, body)
+	}
+}
+
 func TestVolumeInspectPrefersLocalNode(t *testing.T) {
 	p := &AgentProxy{
-		Token:         "tok",
+		Auth:          agentauth.Token("tok"),
 		LocalHostname: "manager-1",
 		Agents:        stubAgents{volumeAgent(t, "alpha", &agentRecorder{body: `{"name":"my-volume","driver":"remote-copy"}`})},
 	}
@@ -104,7 +169,7 @@ func TestVolumeInspectPrefersLocalNode(t *testing.T) {
 
 func TestVolumeInspectNotFoundAnywhere(t *testing.T) {
 	p := &AgentProxy{
-		Token:  "tok",
+		Auth:   agentauth.Token("tok"),
 		Agents: stubAgents{volumeAgent(t, "worker-1", &agentRecorder{status: http.StatusNotFound, body: `{}`})},
 	}
 
@@ -117,7 +182,7 @@ func TestVolumeInspectUnreachableNodeIsBadGateway(t *testing.T) {
 	gone := httptest.NewServer(http.NotFoundHandler())
 	gone.Close()
 	p := &AgentProxy{
-		Token:  "tok",
+		Auth:   agentauth.Token("tok"),
 		Agents: stubAgents{{Hostname: "worker-1", BaseURL: gone.URL}},
 	}
 
@@ -128,7 +193,7 @@ func TestVolumeInspectUnreachableNodeIsBadGateway(t *testing.T) {
 }
 
 func TestVolumeInspectTokenRejectedIsBadGateway(t *testing.T) {
-	p := &AgentProxy{Locator: &stubLocator{rejected: true}, Agents: stubAgents{}, Token: "tok"}
+	p := &AgentProxy{Locator: &stubLocator{rejected: true}, Agents: stubAgents{}, Auth: agentauth.Token("tok")}
 
 	code, body := getVolume(t, p, localVolumeMissing, "shop_data")
 	if msg, _ := body["error"].(string); code != http.StatusBadGateway || !strings.Contains(msg, "DG_AGENT_TOKEN") {
@@ -144,7 +209,7 @@ func TestVolumeInspectSlowNodeIsBounded(t *testing.T) {
 	block := make(chan struct{})
 	t.Cleanup(func() { close(block) })
 	p := &AgentProxy{
-		Token: "tok",
+		Auth: agentauth.Token("tok"),
 		Agents: stubAgents{
 			volumeAgent(t, "frozen", &agentRecorder{blockCh: block}),
 			volumeAgent(t, "worker-2", &agentRecorder{body: `{"name":"shop_data"}`}),
@@ -176,7 +241,7 @@ func TestServerRoutesVolumeInspectToAgents(t *testing.T) {
 	agent := volumeAgent(t, "worker-2", &agentRecorder{body: `{"name":"shop_data"}`})
 	docker := &stubDockerAPI{logger: &stubContainerLogger{}}
 	handler := NewServer(NewHub(), fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, docker, nil, nil, nil, "swarm",
-		WithAgentProxy(&AgentProxy{Locator: &stubLocator{}, Agents: stubAgents{agent}, Token: "tok"}))
+		WithAgentProxy(&AgentProxy{Locator: &stubLocator{}, Agents: stubAgents{agent}, Auth: agentauth.Token("tok")}))
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/volumes/shop_data", nil))

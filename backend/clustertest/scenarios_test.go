@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dockgraph/dockgraph/agentauth"
 )
 
 // ── Steady state ──────────────────────────────────────────────
@@ -369,20 +371,23 @@ func TestServerMoves(t *testing.T) {
 	})
 }
 
-func TestAgentTokenMismatch(t *testing.T) {
+// Agents given another public key refuse the server's signatures: the
+// server names the misconfiguration, and the UI sees neither a 401 nor a
+// misleading "not found".
+func TestAgentKeyMismatch(t *testing.T) {
 	before := serverTaskID(t)
-	createSecret(t, "dg_agent_token_bad", randomHex(t))
+	createConfig(t, "dg_agent_pubkey_bad", otherPublicKey(t))
 	// The rejection is logged once, as the agents roll over: watch from here.
 	since := time.Now()
 	on(t, leader, "service", "update", "--detach=false", "--quiet",
-		"--secret-rm", agentSecret, "--secret-add", "source=dg_agent_token_bad,target="+agentSecret, agentService)
+		"--config-rm", agentPubkeyConfig, "--config-add", "source=dg_agent_pubkey_bad,target=/"+agentPubkeyConfig, agentService)
 	t.Cleanup(func() {
 		on(t, leader, "service", "update", "--detach=false", "--quiet",
-			"--secret-rm", "dg_agent_token_bad", "--secret-add", "source="+agentSecret+",target="+agentSecret, agentService)
-		_, _ = tryOn(leader, "secret", "rm", "dg_agent_token_bad")
+			"--config-rm", "dg_agent_pubkey_bad", "--config-add", "source="+agentPubkeyConfig+",target=/"+agentPubkeyConfig, agentService)
+		_, _ = tryOn(leader, "config", "rm", "dg_agent_pubkey_bad")
 		waitConverged(t, "dg")
 		id := containerOn(t, "dgc-w1", "work_chatty")
-		eventually(t, 60*time.Second, "proxy recovers with the right token", func() error {
+		eventually(t, 60*time.Second, "proxy recovers with the right key", func() error {
 			if r := get(t, "/api/containers/"+id); r.code != http.StatusOK {
 				return fmt.Errorf("%d", r.code)
 			}
@@ -391,12 +396,12 @@ func TestAgentTokenMismatch(t *testing.T) {
 	})
 	waitConverged(t, "dg")
 
-	// Let at least one full agent refresh (30s) run with the bad token.
+	// Let at least one full agent refresh (30s) run with the wrong key.
 	time.Sleep(35 * time.Second)
 	logs := serverLogs(t, since)
 	t.Logf("server log during the mismatch:\n%s", tail(logs, 10))
-	if !strings.Contains(strings.ToLower(logs), "token") {
-		t.Errorf("server log never names the token as the problem")
+	if !strings.Contains(logs, "rejected the server's credentials") || !strings.Contains(logs, "DG_AGENT_PUBLIC_KEY") {
+		t.Errorf("server log never names the agent keys as the problem")
 	}
 	if total := strings.Count(logs, "\n"); total > 200 {
 		t.Errorf("server logged %d lines in ~65s (log flood)", total)
@@ -406,9 +411,9 @@ func TestAgentTokenMismatch(t *testing.T) {
 	// "not found" that hides the misconfiguration.
 	id := containerOn(t, "dgc-w1", "work_chatty")
 	r := get(t, "/api/containers/"+id)
-	t.Logf("remote inspect with a bad token: %d %.200s", r.code, r.body)
+	t.Logf("remote inspect with the wrong key: %d %.200s", r.code, r.body)
 	if r.code != http.StatusBadGateway {
-		t.Errorf("remote inspect with a bad token: %d, want 502", r.code)
+		t.Errorf("remote inspect with the wrong key: %d, want 502", r.code)
 	}
 	if r := get(t, "/api/containers/"+id+"/logs/history?limit=5"); r.code == http.StatusUnauthorized {
 		t.Errorf("agent auth failure surfaced as 401")
@@ -416,6 +421,56 @@ func TestAgentTokenMismatch(t *testing.T) {
 	if serverTaskID(t) != before {
 		t.Errorf("server restarted")
 	}
+}
+
+// Moving a running stack from the token to keys: agents still on the token
+// keep answering while the server signs its requests and also sends the
+// token.
+func TestTokenAgentsDuringMoveToKeys(t *testing.T) {
+	const legacySecret, target = "dg_agent_token_legacy", "dg_agent_token"
+	createSecret(t, legacySecret, randomHex(t))
+	tokenEnv := "DG_AGENT_TOKEN_FILE=/run/secrets/" + target
+	pubkeyEnv := "DG_AGENT_PUBLIC_KEY_FILE=/" + agentPubkeyConfig
+
+	// Server: key and token. Agents: token only.
+	on(t, leader, "service", "update", "--detach=false", "--quiet",
+		"--secret-add", "source="+legacySecret+",target="+target, "--env-add", tokenEnv, serverService)
+	on(t, leader, "service", "update", "--detach=false", "--quiet",
+		"--secret-add", "source="+legacySecret+",target="+target, "--env-add", tokenEnv,
+		"--env-rm", "DG_AGENT_PUBLIC_KEY_FILE", agentService)
+	t.Cleanup(func() {
+		on(t, leader, "service", "update", "--detach=false", "--quiet",
+			"--env-rm", "DG_AGENT_TOKEN_FILE", "--env-add", pubkeyEnv, "--secret-rm", legacySecret, agentService)
+		on(t, leader, "service", "update", "--detach=false", "--quiet",
+			"--env-rm", "DG_AGENT_TOKEN_FILE", "--secret-rm", legacySecret, serverService)
+		_, _ = tryOn(leader, "secret", "rm", legacySecret)
+		waitConverged(t, "dg")
+		id := containerOn(t, "dgc-w1", "work_chatty")
+		eventually(t, 90*time.Second, "proxy works with keys again", func() error {
+			if r := get(t, "/api/containers/"+id); r.code != http.StatusOK {
+				return fmt.Errorf("%d", r.code)
+			}
+			return nil
+		})
+	})
+	waitConverged(t, "dg")
+
+	id := containerOn(t, "dgc-w1", "work_chatty")
+	eventually(t, 90*time.Second, "remote inspect through token-only agents", func() error {
+		if r := get(t, "/api/containers/"+id); r.code != http.StatusOK {
+			return fmt.Errorf("%d %.200s", r.code, r.body)
+		}
+		return nil
+	})
+	eventually(t, 90*time.Second, "node stats from every node through token-only agents", func() error {
+		h := nodeStats(t)
+		for _, name := range allNodes() {
+			if latestMem(h, name) <= 0 {
+				return fmt.Errorf("node:%s has no recent sample", name)
+			}
+		}
+		return nil
+	})
 }
 
 // Nodes the scenarios add and remove themselves. Unnumbered, so they never
@@ -842,11 +897,37 @@ func TestChurnSoak(t *testing.T) {
 
 func createSecret(t *testing.T, name, value string) {
 	t.Helper()
-	cmd := exec.Command("docker", "exec", "-i", leader, "docker", "secret", "create", name, "-")
+	createObject(t, "secret", name, value)
+}
+
+func createConfig(t *testing.T, name, value string) {
+	t.Helper()
+	createObject(t, "config", name, value)
+}
+
+// createObject creates a swarm secret or config on the leader from value.
+func createObject(t *testing.T, kind, name, value string) {
+	t.Helper()
+	cmd := exec.Command("docker", "exec", "-i", leader, "docker", kind, "create", name, "-")
 	cmd.Stdin = strings.NewReader(value)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("secret create %s: %v\n%s", name, err, out)
+		t.Fatalf("%s create %s: %v\n%s", kind, name, err, out)
 	}
+}
+
+// otherPublicKey returns the public key of a fresh key pair, which the
+// server's signatures will not match.
+func otherPublicKey(t *testing.T) string {
+	t.Helper()
+	text, err := agentauth.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := agentauth.ParsePrivateKey(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return agentauth.PublicKeyText(key)
 }
 
 func randomHex(t *testing.T) string {

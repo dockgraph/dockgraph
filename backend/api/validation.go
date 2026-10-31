@@ -37,14 +37,13 @@ func inspectError(w http.ResponseWriter, kind string, err error) {
 	jsonError(w, kind+" inspect failed", http.StatusBadGateway)
 }
 
+// filterEnvVars splits "KEY=value" entries for the detail panel, masking
+// credentials (see secrets.MaskEnvValue).
 func filterEnvVars(envList []string) []map[string]string {
 	result := make([]map[string]string, 0, len(envList))
 	for _, e := range envList {
 		k, v, _ := strings.Cut(e, "=")
-		if secrets.IsSensitiveKey(k) {
-			v = secrets.Masked
-		}
-		result = append(result, map[string]string{"key": k, "value": v})
+		result = append(result, map[string]string{"key": k, "value": secrets.MaskEnvValue(k, v)})
 	}
 	return result
 }

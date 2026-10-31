@@ -111,10 +111,12 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
     sourceRef.current = null;
   }, []);
 
-  // Fetch a page of historical log lines from the REST endpoint.
+  // Fetch a page of historical log lines from the REST endpoint. A failed
+  // request (the server busy, a node unreachable) is an error, not an empty
+  // page: an empty page would end the history.
   const fetchHistory = useCallback(async (url: string, signal: AbortSignal): Promise<LogLine[]> => {
     const resp = await fetch(url, { signal });
-    if (!resp.ok) return [];
+    if (!resp.ok) throw new Error(`log history request failed: ${resp.status}`);
     const data: HistoryResponse = await resp.json();
     if (!data.lines) return [];
     return data.lines.map(toLogLine);
@@ -182,14 +184,17 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
   const showLatest = useCallback((fetched: LogLine[]) => {
     linesRef.current = fetched;
     setLines([...fetched]);
-    setHasMore(fetched.length >= pageSize);
+    // A page can hold fewer lines than asked for while older ones exist (the
+    // server bounds a page's size, and a TTY joins Docker's pieces of a long
+    // line), so only an empty page ends the history.
+    setHasMore(fetched.length > 0);
     detachedRef.current = false;
     setHasNewer(false);
     if (streamUrl) {
       const newest = fetched.length > 0 ? fetched[fetched.length - 1].timestamp : undefined;
       openSSE(newest ? appendParam(streamUrl, `since=${encodeURIComponent(newest)}`) : streamUrl);
     }
-  }, [pageSize, streamUrl, openSSE]);
+  }, [streamUrl, openSSE]);
 
   // Main effect: fetch initial history, then open SSE.
   useEffect(() => {
@@ -279,19 +284,22 @@ export function useLogs({ historyUrl, streamUrl, active, pageSize = DEFAULT_PAGE
       .then((fetched) => {
         if (abort.signal.aborted) return;
 
-        if (fetched.length === 0) {
+        // Lines at or after the cursor are already in the buffer. Agents of
+        // earlier versions still send the line at the cursor (Docker's
+        // until includes it).
+        let older = fetched.filter((l) => !l.timestamp || l.timestamp < oldest);
+        if (older.length === 0) {
           setHasMore(false);
           setLoadingMore(false);
           return;
         }
 
-        setHasMore(fetched.length >= pageSize);
+        setHasMore(true); // see showLatest: only an empty page ends the history
 
         // Drop lines already in the buffer (overlapping pages) when a key is set.
-        let older = fetched;
         if (dedupeKey) {
           const seen = new Set(linesRef.current.map(dedupeKey));
-          older = fetched.filter((l) => !seen.has(dedupeKey(l)));
+          older = older.filter((l) => !seen.has(dedupeKey(l)));
           if (older.length === 0) {
             setHasMore(false);
             setLoadingMore(false);

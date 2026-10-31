@@ -6,6 +6,7 @@ package agent
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dockgraph/dockgraph/agentauth"
 	"github.com/dockgraph/dockgraph/api"
 	"github.com/dockgraph/dockgraph/collector"
 )
@@ -24,12 +26,21 @@ import (
 // infoTimeout bounds the Docker Info call behind /agent/v1/info.
 const infoTimeout = 5 * time.Second
 
-// ErrNoToken is returned by New when no shared secret is configured.
-var ErrNoToken = errors.New("agent requires a token: set DG_AGENT_TOKEN or DG_AGENT_TOKEN_FILE")
+// rejectLogInterval is how often, at most, the agent logs rejected requests
+// for a given reason: a misconfigured server is rejected on every poll.
+const rejectLogInterval = 5 * time.Minute
+
+// ErrNoCredentials is returned by New when neither the server's public key
+// nor a token is configured.
+var ErrNoCredentials = errors.New("agent requires the server's public key: set DG_AGENT_PUBLIC_KEY_FILE (or the older DG_AGENT_TOKEN)")
 
 // Config configures an agent Server.
 type Config struct {
-	// Token is the bearer secret every /agent/v1 request must carry.
+	// PublicKeys are the server's public keys. When set, every /agent/v1
+	// request must be signed by one of them, and Token is ignored.
+	PublicKeys []ed25519.PublicKey
+	// Token is the older shared bearer secret, required of every /agent/v1
+	// request when no public key is configured.
 	Token string
 	// StatsInterval is how often local container stats are sampled.
 	StatsInterval time.Duration
@@ -43,17 +54,32 @@ type Config struct {
 type Server struct {
 	cli       collector.DockerClient
 	cfg       Config
+	verifier  *agentauth.Verifier // nil when the token is checked instead
 	tokenHash [sha256.Size]byte
 
 	mu      sync.RWMutex
 	samples []collector.ContainerSample
 	info    collector.AgentInfo // cached once a node ID is known
+
+	rejectMu     sync.Mutex
+	rejectLogged map[error]time.Time
 }
 
-// New creates an agent server. It refuses to start without a token.
+// New creates an agent server. It refuses to start without credentials:
+// the server's public keys or, failing those, a token.
 func New(cli collector.DockerClient, cfg Config) (*Server, error) {
-	if strings.TrimSpace(cfg.Token) == "" {
-		return nil, ErrNoToken
+	s := &Server{
+		cli:          cli,
+		samples:      []collector.ContainerSample{},
+		rejectLogged: make(map[error]time.Time),
+	}
+	switch {
+	case len(cfg.PublicKeys) > 0:
+		s.verifier = agentauth.NewVerifier(cfg.PublicKeys)
+	case strings.TrimSpace(cfg.Token) != "":
+		s.tokenHash = sha256.Sum256([]byte(cfg.Token))
+	default:
+		return nil, ErrNoCredentials
 	}
 	if cfg.StatsInterval <= 0 {
 		cfg.StatsInterval = 3 * time.Second
@@ -61,12 +87,8 @@ func New(cli collector.DockerClient, cfg Config) (*Server, error) {
 	if cfg.StatsWorkers < 1 {
 		cfg.StatsWorkers = 1
 	}
-	return &Server{
-		cli:       cli,
-		cfg:       cfg,
-		tokenHash: sha256.Sum256([]byte(cfg.Token)),
-		samples:   []collector.ContainerSample{},
-	}, nil
+	s.cfg = cfg
+	return s, nil
 }
 
 // Run samples local container stats every StatsInterval until ctx is
@@ -92,7 +114,7 @@ func (s *Server) Run(ctx context.Context) {
 }
 
 // Handler returns the agent's routes. Everything under /agent/v1 requires
-// the bearer token; /healthz is open for the container healthcheck.
+// the server's credentials; /healthz is open for the container healthcheck.
 func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
 	p := collector.AgentAPIPrefix
@@ -108,17 +130,48 @@ func (s *Server) Handler() http.Handler {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
-	mux.Handle(p+"/", s.requireToken(v1))
+	if s.verifier != nil {
+		mux.Handle(p+"/", s.requireSignature(v1))
+	} else {
+		mux.Handle(p+"/", s.requireToken(v1))
+	}
 	return mux
 }
 
-// Bearer challenges sent with a 401 (RFC 6750 section 3): without
-// credentials the challenge names only the scheme and realm, and a rejected
-// token adds error="invalid_token".
+// Challenges sent with a 401. Bearer ones follow RFC 6750 section 3:
+// without credentials the challenge names only the scheme and realm, and a
+// rejected token adds error="invalid_token".
 const (
 	challengeNoToken      = "Bearer realm=\"dockgraph-agent\""
 	challengeInvalidToken = "Bearer realm=\"dockgraph-agent\", error=\"invalid_token\""
+	challengeSignature    = agentauth.SignatureHeader + " realm=\"dockgraph-agent\""
 )
+
+// requireSignature rejects requests not signed by the server (see
+// agentauth.Verifier). A bearer token, if any, is ignored.
+func (s *Server) requireSignature(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := s.verifier.Verify(r); err != nil {
+			s.logRejected(r, err)
+			w.Header().Set("WWW-Authenticate", challengeSignature)
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// logRejected logs a rejected request, at most once per rejectLogInterval
+// for each reason.
+func (s *Server) logRejected(r *http.Request, err error) {
+	s.rejectMu.Lock()
+	defer s.rejectMu.Unlock()
+	if last, ok := s.rejectLogged[err]; ok && time.Since(last) < rejectLogInterval {
+		return
+	}
+	s.rejectLogged[err] = time.Now()
+	log.Printf("WARN  rejected a request from %s: %v (check that the server's DG_AGENT_KEY matches this agent's DG_AGENT_PUBLIC_KEY, and the node clocks)", r.RemoteAddr, err)
+}
 
 // requireToken rejects requests without the exact bearer token. Both sides
 // are hashed first so the comparison is constant-time regardless of length.

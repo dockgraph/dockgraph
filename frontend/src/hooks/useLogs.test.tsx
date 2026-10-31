@@ -145,6 +145,76 @@ describe('useLogs with a full buffer', () => {
     expect(texts(result)).toEqual(['l3', 'l4', 'l5', 'l6']);
   });
 
+  it('keeps paging back after a short page, until a page comes back empty', async () => {
+    // A page can hold fewer lines than asked for while older ones exist:
+    // the server bounds a page's size.
+    const pages: Record<string, ReturnType<typeof entry>[]> = {
+      [ts(1)]: [],
+      [ts(11)]: [entry('o1', 1)],
+    };
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      const before = new URL(url, 'http://x').searchParams.get('before');
+      const lines = before === null ? [entry('l1', 11)] : pages[before] ?? [];
+      return Promise.resolve(new Response(JSON.stringify({ lines }), { status: 200 }));
+    }));
+    const { result } = renderLogs();
+    await settle();
+    expect(result.current.hasMore).toBe(true);
+
+    act(() => result.current.loadMore());
+    await settle();
+    expect(texts(result)).toEqual(['o1', 'l1']);
+    expect(result.current.hasMore).toBe(true);
+
+    act(() => result.current.loadMore());
+    await settle();
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  it('ends paging when a server sends back only the line at the cursor', async () => {
+    // Docker's until includes the cursor line; a server passing it on as is
+    // answers every page with that line again.
+    const fetchMock = vi.fn((url: string) => {
+      const before = new URL(url, 'http://x').searchParams.get('before');
+      const lines = before === null ? [entry('l1', 11), entry('l2', 12)] : [entry('l1', 11)];
+      return Promise.resolve(new Response(JSON.stringify({ lines }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderLogs();
+    await settle();
+
+    act(() => result.current.loadMore());
+    await settle();
+    expect(texts(result)).toEqual(['l1', 'l2']);
+    expect(result.current.hasMore).toBe(false);
+    act(() => result.current.loadMore());
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps paging possible after a failed request for older lines', async () => {
+    let busy = true;
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('before=') && busy) {
+        return Promise.resolve(new Response(JSON.stringify({ error: 'busy' }), { status: 503 }));
+      }
+      const lines = url.includes('before=') ? [entry('o1', 1)] : [entry('l1', 11)];
+      return Promise.resolve(new Response(JSON.stringify({ lines }), { status: 200 }));
+    }));
+    const { result } = renderLogs();
+    await settle();
+
+    act(() => result.current.loadMore());
+    await settle();
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.loadingMore).toBe(false);
+
+    busy = false;
+    act(() => result.current.loadMore());
+    await settle();
+    expect(texts(result)).toEqual(['o1', 'l1']);
+  });
+
   it('keeps the lines a reader scrolled up to while the live tail fills the buffer', async () => {
     const { result } = renderLogs();
     await settle();

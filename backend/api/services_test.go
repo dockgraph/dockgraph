@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -176,6 +178,40 @@ func TestBuildServiceInspectResponseStack(t *testing.T) {
 				t.Errorf("stack = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// A range of service ports with one publish mode is one entry.
+func TestBuildServicePortsRanges(t *testing.T) {
+	var ports []swarm.PortConfig
+	for port := uint32(7000); port <= 7002; port++ {
+		ports = append(ports, swarm.PortConfig{PublishedPort: port, TargetPort: port, Protocol: "udp", PublishMode: "ingress"})
+	}
+	ports = append(ports,
+		swarm.PortConfig{PublishedPort: 7003, TargetPort: 7003, Protocol: "udp", PublishMode: "host"},
+		swarm.PortConfig{TargetPort: 9000, Protocol: "tcp", PublishMode: "ingress"},
+	)
+	want := []map[string]any{
+		{"host": 0, "container": 9000, "protocol": "tcp", "publishMode": "ingress"},
+		{"host": 7000, "hostEnd": 7002, "container": 7000, "containerEnd": 7002, "protocol": "udp", "publishMode": "ingress"},
+		{"host": 7003, "container": 7003, "protocol": "udp", "publishMode": "host"},
+	}
+	if got := buildServicePorts(ports); !reflect.DeepEqual(got, want) {
+		t.Errorf("ports = %v, want %v", got, want)
+	}
+}
+
+// A service's Args follow its Command on the task's command line, so the
+// value of a flag ending the Command is the first of the Args.
+func TestBuildServiceInspectResponseMasksArgsAfterCommand(t *testing.T) {
+	svc := swarm.Service{ID: "svc-cache"}
+	svc.Spec.TaskTemplate.ContainerSpec = &swarm.ContainerSpec{
+		Command: []string{"redis-server", "--requirepass"},
+		Args:    []string{"ServiceSecret3", "--port", "6379"},
+	}
+	resp := buildServiceInspectResponse(context.Background(), svc, nil, nil, nil)
+	if args, _ := resp["args"].([]string); !slices.Equal(args, []string{secrets.Masked, "--port", "6379"}) {
+		t.Errorf("args = %q, want the value after the command's flag masked", resp["args"])
 	}
 }
 

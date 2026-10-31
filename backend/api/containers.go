@@ -9,6 +9,7 @@ import (
 	"time"
 
 	containertypes "github.com/docker/docker/api/types/container"
+	"github.com/dockgraph/dockgraph/secrets"
 )
 
 // ContainerInspector is the subset of the Docker API needed for container inspection.
@@ -43,6 +44,7 @@ func HandleContainerInspect(inspector ContainerInspector) http.HandlerFunc {
 
 func buildInspectResponse(info containertypes.InspectResponse) map[string]any {
 	name := strings.TrimPrefix(info.Name, "/")
+	entrypoint, cmd := secrets.MaskCommand(info.Config.Entrypoint, info.Config.Cmd)
 
 	resp := map[string]any{
 		fieldName:       name,
@@ -56,12 +58,12 @@ func buildInspectResponse(info containertypes.InspectResponse) map[string]any {
 		"exitCode":      info.State.ExitCode,
 		"startedAt":     info.State.StartedAt,
 		"finishedAt":    info.State.FinishedAt,
-		"cmd":           info.Config.Cmd,
-		"entrypoint":    info.Config.Entrypoint,
+		fieldCmd:        cmd,
+		fieldEntrypoint: entrypoint,
 		"workingDir":    info.Config.WorkingDir,
 		"user":          info.Config.User,
-		"env":           filterEnvVars(info.Config.Env),
-		fieldLabels:     info.Config.Labels,
+		fieldEnv:        filterEnvVars(info.Config.Env),
+		fieldLabels:     secrets.MaskLabels(info.Config.Labels),
 		"restartPolicy": info.HostConfig.RestartPolicy,
 		"networkMode":   string(info.HostConfig.NetworkMode),
 		"ports":         buildPorts(info),
@@ -72,7 +74,7 @@ func buildInspectResponse(info containertypes.InspectResponse) map[string]any {
 	}
 
 	if info.State.Health != nil {
-		resp["health"] = buildHealth(info)
+		resp[fieldHealth] = buildHealth(info)
 	}
 
 	return resp

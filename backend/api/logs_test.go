@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -39,9 +41,22 @@ type stubContainerLogger struct {
 	data []byte
 	err  error
 	opts containertypes.LogsOptions // captured from last call
+	// When set, each call signals entered, then waits for block to close
+	// (or the request to end) before answering.
+	entered chan struct{}
+	block   chan struct{}
 }
 
-func (s *stubContainerLogger) ContainerLogs(_ context.Context, _ string, opts containertypes.LogsOptions) (io.ReadCloser, error) {
+func (s *stubContainerLogger) ContainerLogs(ctx context.Context, _ string, opts containertypes.LogsOptions) (io.ReadCloser, error) {
+	if s.block != nil {
+		s.entered <- struct{}{}
+		select {
+		case <-s.block:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return io.NopCloser(bytes.NewReader(s.data)), nil
+	}
 	s.opts = opts
 	if s.err != nil {
 		return nil, s.err
@@ -49,110 +64,204 @@ func (s *stubContainerLogger) ContainerLogs(_ context.Context, _ string, opts co
 	return io.NopCloser(bytes.NewReader(s.data)), nil
 }
 
-// --- dockerLogReader tests ---
+// --- logLineReader tests ---
 
-func TestDockerLogReaderStdout(t *testing.T) {
-	msg := "hello from stdout\n"
-	data := buildLogFrame(1, msg)
-	dlr := &dockerLogReader{reader: bytes.NewReader(data)}
-
-	stream, payload, err := dlr.next()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if stream != "stdout" {
-		t.Errorf("stream = %q, want %q", stream, "stdout")
-	}
-	if string(payload) != msg {
-		t.Errorf("payload = %q, want %q", string(payload), msg)
+// readAllLines drains a logLineReader into "stream|line" strings and returns
+// the error that ended it.
+func readAllLines(r io.Reader) ([]string, error) {
+	lr := newLogLineReader(r)
+	var got []string
+	for {
+		stream, line, err := lr.next()
+		if err != nil {
+			return got, err
+		}
+		got = append(got, stream+"|"+line)
 	}
 }
 
-func TestDockerLogReaderStderr(t *testing.T) {
-	msg := "error happened\n"
-	data := buildLogFrame(2, msg)
-	dlr := &dockerLogReader{reader: bytes.NewReader(data)}
-
-	stream, payload, err := dlr.next()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if stream != "stderr" {
-		t.Errorf("stream = %q, want %q", stream, "stderr")
-	}
-	if string(payload) != msg {
-		t.Errorf("payload = %q, want %q", string(payload), msg)
-	}
-}
-
-func TestDockerLogReaderMultipleFrames(t *testing.T) {
+func TestLogLineReaderMultiplexed(t *testing.T) {
 	var buf bytes.Buffer
 	buf.Write(buildLogFrame(1, "first\n"))
 	buf.Write(buildLogFrame(2, "second\n"))
-	buf.Write(buildLogFrame(1, "third\n"))
+	buf.Write(buildLogFrame(3, "daemon error\n"))
+	buf.Write(buildLogFrame(1, "a\n\nb\n"))
+	buf.Write(buildLogFrame(1, "no newline"))
+	buf.Write(buildLogFrame(1, ""))
 
-	dlr := &dockerLogReader{reader: &buf}
-
-	expected := []struct {
-		stream  string
-		payload string
-	}{
-		{"stdout", "first\n"},
-		{"stderr", "second\n"},
-		{"stdout", "third\n"},
+	got, err := readAllLines(&buf)
+	if err != io.EOF {
+		t.Fatalf("err = %v, want io.EOF", err)
 	}
-
-	for i, want := range expected {
-		stream, payload, err := dlr.next()
-		if err != nil {
-			t.Fatalf("frame %d: unexpected error: %v", i, err)
-		}
-		if stream != want.stream {
-			t.Errorf("frame %d: stream = %q, want %q", i, stream, want.stream)
-		}
-		if string(payload) != want.payload {
-			t.Errorf("frame %d: payload = %q, want %q", i, string(payload), want.payload)
-		}
-	}
-
-	// After all frames, next should return EOF.
-	_, _, err := dlr.next()
-	if err != io.EOF && err != io.ErrUnexpectedEOF {
-		t.Errorf("expected EOF after all frames, got %v", err)
+	want := []string{"stdout|first", "stderr|second", "stderr|daemon error", "stdout|a", "stdout|", "stdout|b", "stdout|no newline"}
+	if !slices.Equal(got, want) {
+		t.Errorf("lines = %q, want %q", got, want)
 	}
 }
 
-func TestDockerLogReaderEOFOnEmptyInput(t *testing.T) {
-	dlr := &dockerLogReader{reader: bytes.NewReader(nil)}
+// A TTY container's logs are raw text, not frames. Read as frames, the
+// timestamp at the start ("2026-10-") would be taken for a header whose size
+// field reads as ~723 MiB.
+func TestLogLineReaderRawTTYStream(t *testing.T) {
+	data := "2026-10-28T10:00:00.000000001Z tty line one\r\n" +
+		"2026-10-28T10:00:01.000000001Z tty line two\r\n" +
+		"2026-10-28T10:00:02.000000001Z last line without newline"
 
-	_, _, err := dlr.next()
-	if err != io.EOF && err != io.ErrUnexpectedEOF {
-		t.Errorf("expected EOF on empty input, got %v", err)
+	got, err := readAllLines(strings.NewReader(data))
+	if err != io.EOF {
+		t.Fatalf("err = %v, want io.EOF", err)
+	}
+	want := []string{
+		"stdout|2026-10-28T10:00:00.000000001Z tty line one",
+		"stdout|2026-10-28T10:00:01.000000001Z tty line two",
+		"stdout|2026-10-28T10:00:02.000000001Z last line without newline",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("lines = %q, want %q", got, want)
 	}
 }
 
-func TestDockerLogReaderPartialHeader(t *testing.T) {
+func TestLogLineReaderRawDaemonError(t *testing.T) {
+	got, err := readAllLines(strings.NewReader("Error grabbing logs: boom\n"))
+	if err != io.EOF {
+		t.Fatalf("err = %v, want io.EOF", err)
+	}
+	if want := []string{"stdout|Error grabbing logs: boom"}; !slices.Equal(got, want) {
+		t.Errorf("lines = %q, want %q", got, want)
+	}
+}
+
+// A raw line of up to 16 KiB, Docker's log message size, stays whole.
+func TestLogLineReaderRawLineUpTo16KiBStaysWhole(t *testing.T) {
+	ts := "2026-10-28T10:00:00.000000000Z "
+	line := ts + strings.Repeat("x", 16<<10-len(ts))
+	got, err := readAllLines(strings.NewReader(line + "\r\nnext\n"))
+	if err != io.EOF {
+		t.Fatalf("err = %v, want io.EOF", err)
+	}
+	if len(got) != 2 || got[0] != "stdout|"+line || got[1] != "stdout|next" {
+		t.Fatalf("got %d lines, want the line whole, then next", len(got))
+	}
+}
+
+// A longer raw line is cut at 16 KiB, keeping its timestamp, so it costs no
+// more memory than a frame of a multiplexed stream.
+func TestLogLineReaderRawLongLineCutAt16KiB(t *testing.T) {
+	long := "2026-10-28T10:00:00.000000000Z " + strings.Repeat("y", 3*maxLogLineSize)
+	got, err := readAllLines(strings.NewReader(long + "\nnext\n"))
+	if err != io.EOF {
+		t.Fatalf("err = %v, want io.EOF", err)
+	}
+	if len(got) != 2 || got[0] != "stdout|"+long[:maxLogLineSize] || got[1] != "stdout|next" {
+		t.Fatalf("got %d lines (first %d bytes), want the line cut at 16 KiB, then next", len(got), len(got[0]))
+	}
+}
+
+// Docker's own drivers split a long message into 16 KiB pieces, and each is
+// sent with its timestamp before it: such a piece stays whole.
+func TestLogLineReaderKeepsDockerPieceWhole(t *testing.T) {
+	piece := "2026-10-28T10:00:00.000000000Z " + strings.Repeat("y", 16<<10)
+	for _, data := range [][]byte{buildLogFrame(1, piece), []byte(piece + "\n")} {
+		got, err := readAllLines(bytes.NewReader(data))
+		if err != io.EOF {
+			t.Fatalf("err = %v, want io.EOF", err)
+		}
+		if len(got) != 1 || got[0] != "stdout|"+piece {
+			t.Errorf("got %d lines (first %d bytes), want the piece whole (%d bytes)", len(got), len(got[0])-len("stdout|"), len(piece))
+		}
+	}
+}
+
+// A multiplexed line is cut at 16 KiB like a raw one. Docker's own drivers
+// split messages there; drivers that don't (awslogs) send larger frames.
+func TestLogLineReaderMultiplexedLongLineCutAt16KiB(t *testing.T) {
+	long := "2026-10-28T10:00:00.000000000Z " + strings.Repeat("y", 64<<10)
+	data := slices.Concat(buildLogFrame(2, long+"\n"), buildLogFrame(1, "next\n"))
+	got, err := readAllLines(bytes.NewReader(data))
+	if err != io.EOF {
+		t.Fatalf("err = %v, want io.EOF", err)
+	}
+	if len(got) != 2 || got[0] != "stderr|"+long[:maxLogLineSize] || got[1] != "stdout|next" {
+		t.Fatalf("got %d lines (first %d bytes), want the line cut at 16 KiB, then next", len(got), len(got[0]))
+	}
+}
+
+// Every stream has a reader, most of them idle, so the read buffer stays
+// small; long raw lines are read through it in pieces.
+func TestLogLineReaderBufferIsSmall(t *testing.T) {
+	if logReadBufferSize > 4<<10 {
+		t.Errorf("read buffer %d bytes, want at most 4 KiB", logReadBufferSize)
+	}
+}
+
+func TestLogLineReaderEOFOnEmptyInput(t *testing.T) {
+	got, err := readAllLines(bytes.NewReader(nil))
+	if err != io.EOF || len(got) != 0 {
+		t.Errorf("got %q, %v; want no lines, io.EOF", got, err)
+	}
+}
+
+func TestLogLineReaderPartialHeader(t *testing.T) {
 	// Only 4 bytes — not enough for the 8-byte header.
-	dlr := &dockerLogReader{reader: bytes.NewReader([]byte{1, 0, 0, 0})}
-
-	_, _, err := dlr.next()
-	if err == nil {
-		t.Error("expected error on partial header, got nil")
+	_, err := readAllLines(bytes.NewReader([]byte{1, 0, 0, 0}))
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("err = %v, want io.ErrUnexpectedEOF", err)
 	}
 }
 
-func TestDockerLogReaderPartialPayload(t *testing.T) {
+func TestLogLineReaderPartialPayload(t *testing.T) {
 	// Header says 100 bytes, but only 5 bytes of payload follow.
 	header := make([]byte, 8)
 	header[0] = 1
 	binary.BigEndian.PutUint32(header[4:], 100)
 	data := slices.Concat(header, []byte("short"))
 
-	dlr := &dockerLogReader{reader: bytes.NewReader(data)}
+	_, err := readAllLines(bytes.NewReader(data))
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("err = %v, want io.ErrUnexpectedEOF", err)
+	}
+}
 
-	_, _, err := dlr.next()
-	if err == nil {
-		t.Error("expected error on truncated payload, got nil")
+func TestLogLineReaderRejectsOversizedFrame(t *testing.T) {
+	header := make([]byte, 8)
+	header[0] = 1
+	binary.BigEndian.PutUint32(header[4:], 0x2D31302D) // ~723 MiB
+	data := slices.Concat(buildLogFrame(1, "before\n"), header)
+
+	got, err := readAllLines(bytes.NewReader(data))
+	if !errors.Is(err, errLogFrameTooLarge) {
+		t.Fatalf("err = %v, want errLogFrameTooLarge", err)
+	}
+	if want := []string{"stdout|before"}; !slices.Equal(got, want) {
+		t.Errorf("lines = %q, want %q", got, want)
+	}
+}
+
+func TestLogLineReaderRejectsInvalidHeader(t *testing.T) {
+	// Padding bytes must be zero.
+	data := slices.Concat(buildLogFrame(1, "ok\n"), []byte{1, 'x', 0, 0, 0, 0, 0, 1, 'y'})
+
+	got, err := readAllLines(bytes.NewReader(data))
+	if !errors.Is(err, errInvalidLogFrame) {
+		t.Fatalf("err = %v, want errInvalidLogFrame", err)
+	}
+	if want := []string{"stdout|ok"}; !slices.Equal(got, want) {
+		t.Errorf("lines = %q, want %q", got, want)
+	}
+}
+
+func TestReadLogLinesRawTTYStream(t *testing.T) {
+	data := "2024-01-15T10:30:45.000000000Z tty one\r\n2024-01-15T10:30:46.000000000Z tty two\r\n"
+	lines := readLogLines(strings.NewReader(data), 100)
+
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2", len(lines))
+	}
+	if lines[0].Line != "tty one" || lines[0].Timestamp != "2024-01-15T10:30:45.000000000Z" || lines[0].Stream != "stdout" {
+		t.Errorf("lines[0] = %+v", lines[0])
+	}
+	if lines[1].Line != "tty two" {
+		t.Errorf("lines[1].Line = %q, want %q", lines[1].Line, "tty two")
 	}
 }
 
@@ -349,6 +458,170 @@ func TestReadLogLinesMultipleLinesPerFrame(t *testing.T) {
 	}
 }
 
+// dockerTimestamp is the fixed-width timestamp layout of Docker log lines.
+const dockerTimestamp = "2006-01-02T15:04:05.000000000Z07:00"
+
+// longLogLines returns n multiplexed frames of lines of size bytes, one
+// second apart, each starting with its index.
+func longLogLines(n, size int) []byte {
+	var data []byte
+	for i := range n {
+		ts := time.Date(2024, 1, 15, 10, 0, i, 0, time.UTC).Format(dockerTimestamp)
+		line := fmt.Sprintf("%s %d %s\n", ts, i, strings.Repeat("x", size))
+		data = append(data, buildLogFrame(1, line)...)
+	}
+	return data
+}
+
+// pageBytes sums the line text of a history page.
+func pageBytes(lines []logEntry) int {
+	n := 0
+	for _, l := range lines {
+		n += len(l.Line)
+	}
+	return n
+}
+
+// A history page holds at most maxHistoryPageBytes of lines, the newest
+// ones, however long they are.
+func TestReadLogLinesBoundsPageBytes(t *testing.T) {
+	lines := readLogLines(bytes.NewReader(longLogLines(200, 15<<10)), 200)
+	if got := pageBytes(lines); got > maxHistoryPageBytes {
+		t.Errorf("page holds %d bytes, want at most %d", got, maxHistoryPageBytes)
+	}
+	if len(lines) == 0 || !strings.HasPrefix(lines[len(lines)-1].Line, "199 ") {
+		t.Fatalf("page must end with the newest line")
+	}
+	for i := 1; i < len(lines); i++ {
+		if lines[i].Timestamp <= lines[i-1].Timestamp {
+			t.Fatalf("lines out of order at %d", i)
+		}
+	}
+}
+
+// The same bound holds for a service's history, read whole and filtered.
+func TestReadNewestLinesBeforeBoundsPageBytes(t *testing.T) {
+	lines := readNewestLinesBefore(bytes.NewReader(longLogLines(200, 15<<10)), "", 200)
+	if got := pageBytes(lines); got > maxHistoryPageBytes {
+		t.Errorf("page holds %d bytes, want at most %d", got, maxHistoryPageBytes)
+	}
+	if len(lines) == 0 || !strings.HasPrefix(lines[len(lines)-1].Line, "199 ") {
+		t.Fatalf("page must end with the newest line")
+	}
+}
+
+// Docker's Until is inclusive, so a container page asked for before a line
+// would hold that line again; it is dropped, so that paging back reaches an
+// empty page once the history is exhausted.
+func TestFetchLogHistoryDropsTheCursorLine(t *testing.T) {
+	data := longLogLines(3, 10) // seconds 0, 1 and 2
+	open := func(context.Context, string, containertypes.LogsOptions) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	}
+	cursor := time.Date(2024, 1, 15, 10, 0, 1, 0, time.UTC).Format(dockerTimestamp)
+
+	lines, err := fetchLogHistory(context.Background(), open, "web", false, cursor, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || !strings.HasPrefix(lines[0].Line, "0 ") {
+		t.Errorf("got %d lines, want only the one before the cursor", len(lines))
+	}
+}
+
+// A line larger than the whole budget still makes a page, so paging moves on.
+func TestHistoryPageKeepsOneOversizedLine(t *testing.T) {
+	old := maxHistoryPageBytes
+	maxHistoryPageBytes = 1 << 10
+	t.Cleanup(func() { maxHistoryPageBytes = old })
+
+	lines := readLogLines(bytes.NewReader(longLogLines(3, 4<<10)), 3)
+	if len(lines) != 1 || !strings.HasPrefix(lines[0].Line, "2 ") {
+		t.Fatalf("got %d lines, want only the newest", len(lines))
+	}
+}
+
+// History requests are bounded per client like log streams: each holds
+// Docker log streams and a page of lines while it runs.
+func TestLogHistoryRequestsAreLimitedPerClient(t *testing.T) {
+	logger := &stubContainerLogger{entered: make(chan struct{}, maxLogHistoryRequestsPerClient), block: make(chan struct{})}
+	srv := newTestServer(logger)
+	defer srv.Close()
+
+	var wg sync.WaitGroup
+	for range maxLogHistoryRequestsPerClient {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if resp, err := http.Get(srv.URL + "/api/containers/web/logs/history"); err == nil {
+				resp.Body.Close()
+			}
+		}()
+	}
+	for range maxLogHistoryRequestsPerClient {
+		<-logger.entered
+	}
+
+	for _, path := range []string{"/api/containers/web/logs/history", "/api/logs/history"} {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") == "" {
+			t.Errorf("%s over the limit: status %d, want 503 with Retry-After", path, resp.StatusCode)
+		}
+	}
+
+	close(logger.block)
+	wg.Wait()
+	resp, err := http.Get(srv.URL + "/api/containers/web/logs/history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("after the others ended: status %d, want 200", resp.StatusCode)
+	}
+}
+
+// Container inspect requests are bounded per client: one for a container on
+// another node holds the agent's answer while it is masked.
+func TestContainerInspectRequestsAreLimitedPerClient(t *testing.T) {
+	docker := &stubDockerAPI{
+		logger:         &stubContainerLogger{},
+		inspectEntered: make(chan struct{}, maxInspectRequestsPerClient),
+		inspectBlock:   make(chan struct{}),
+	}
+	srv := httptest.NewServer(NewServer(NewHub(), fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, docker, nil, nil, nil, ""))
+	defer srv.Close()
+
+	var wg sync.WaitGroup
+	for range maxInspectRequestsPerClient {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if resp, err := http.Get(srv.URL + "/api/containers/web"); err == nil {
+				resp.Body.Close()
+			}
+		}()
+	}
+	for range maxInspectRequestsPerClient {
+		<-docker.inspectEntered
+	}
+
+	resp, err := http.Get(srv.URL + "/api/containers/web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("over the limit: status %d, want 503", resp.StatusCode)
+	}
+	close(docker.inspectBlock)
+	wg.Wait()
+}
+
 // --- HandleContainerLogsHistory HTTP tests ---
 
 func newTestServer(logger *stubContainerLogger) *httptest.Server {
@@ -372,6 +645,9 @@ type stubDockerAPI struct {
 
 	// Swarm's own task counts, returned by ServiceList with Status set.
 	serviceStatus map[string]*swarm.ServiceStatus
+	// When set, each ContainerInspect signals inspectEntered, then waits for
+	// inspectBlock to close.
+	inspectEntered, inspectBlock chan struct{}
 	// Failure injection for the list calls.
 	taskErr, nodeErr, serviceListErr, serviceInspectErr error
 	serviceListCalls                                    int
@@ -444,7 +720,14 @@ func (s *stubDockerAPI) ContainerLogs(ctx context.Context, containerID string, o
 	return s.logger.ContainerLogs(ctx, containerID, opts)
 }
 
-func (s *stubDockerAPI) ContainerInspect(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+func (s *stubDockerAPI) ContainerInspect(ctx context.Context, _ string) (containertypes.InspectResponse, error) {
+	if s.inspectBlock != nil {
+		s.inspectEntered <- struct{}{}
+		select {
+		case <-s.inspectBlock:
+		case <-ctx.Done():
+		}
+	}
 	return containertypes.InspectResponse{}, errNotFoundStub
 }
 
@@ -512,6 +795,30 @@ func TestLogsHistoryValidRequest(t *testing.T) {
 	}
 	if result.Lines[1].Stream != "stderr" {
 		t.Errorf("lines[1].Stream = %q, want stderr", result.Lines[1].Stream)
+	}
+}
+
+func TestLogsHistoryTTYContainer(t *testing.T) {
+	raw := "2026-10-28T10:00:00.000000000Z tty hello\r\n2026-10-28T10:00:01.000000000Z tty world\r\n"
+	srv := newTestServer(&stubContainerLogger{data: []byte(raw)})
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/containers/tty-app/logs/history?limit=5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var result struct {
+		Lines []logEntry `json:"lines"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(result.Lines) != 2 || result.Lines[0].Line != "tty hello" || result.Lines[1].Line != "tty world" {
+		t.Errorf("lines = %+v, want the two TTY lines", result.Lines)
 	}
 }
 

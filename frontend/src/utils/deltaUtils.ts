@@ -1,4 +1,5 @@
 import type { DGNode, DGEdge, DeltaUpdate } from '../types';
+import { containerPorts, hostPorts } from './ports';
 
 /** Replica counts, update state and per-task states of a service node. */
 function serviceKey(n: DGNode): string {
@@ -22,7 +23,7 @@ export function snapshotFingerprint(nodes: DGNode[], edges: DGEdge[]): string {
   const nk = (nodes ?? [])
     .map(
       (n) =>
-        `${n.id}:${n.status ?? ''}:${n.image ?? ''}:${n.networkId ?? ''}:${(n.ports ?? []).map((p) => `${p.host}-${p.container}`).join(';')}:${n.stack ?? ''}:${serviceKey(n)}:${JSON.stringify(n.swarmNode ?? null)}`
+        `${n.id}:${n.status ?? ''}:${n.image ?? ''}:${n.networkId ?? ''}:${(n.ports ?? []).map((p) => `${hostPorts(p)}>${containerPorts(p)}/${p.protocol ?? ''}`).join(';')}:${n.stack ?? ''}:${serviceKey(n)}:${JSON.stringify(n.swarmNode ?? null)}`
     )
     .sort()
     .join(',');

@@ -42,8 +42,9 @@ const (
 	clusterScript = "../../test/swarm_cluster.sh"
 	serverService = "dg_server"
 	agentService  = "dg_agent"
-	agentSecret   = "dg_agent_token"
-	workStack     = "work"
+	// The agents' public key config, mounted at /<name> (stack.yml).
+	agentPubkeyConfig = "dg_agent_pubkey"
+	workStack         = "work"
 )
 
 // The cluster as found by TestMain: the numbered managers (dgc-mN) and

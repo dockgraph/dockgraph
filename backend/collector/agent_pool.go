@@ -9,14 +9,15 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"slices"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
+	"github.com/dockgraph/dockgraph/agentauth"
 )
 
 // AgentAPIPrefix is the path prefix of every per-node agent endpoint.
@@ -47,12 +48,21 @@ const (
 	defaultAgentRequestTimeout = 5 * time.Second
 	agentResolveTimeout        = 5 * time.Second
 	agentTaskLookupTimeout     = 5 * time.Second
-	// maxAgentResponseBytes bounds a decoded agent response.
-	maxAgentResponseBytes = 16 << 20
+	// maxAgentInfoBytes bounds an agent's /info answer.
+	maxAgentInfoBytes = 64 << 10
+	// maxAgentSamples bounds the containers one agent may report per poll:
+	// every sample is kept in the stats history, so a report must cost no
+	// more than a busy node's.
+	maxAgentSamples = 2000
 )
 
-// errAgentUnauthorized reports an agent that rejected the server's token.
-var errAgentUnauthorized = errors.New("agent rejected the token")
+// maxAgentStatsBytes bounds an agent's /stats answer; maxAgentSamples full
+// samples fit in it. A variable so tests can lower it.
+var maxAgentStatsBytes int64 = 4 << 20
+
+// errAgentUnauthorized reports an agent that rejected the server's
+// credentials.
+var errAgentUnauthorized = errors.New("agent rejected the server's credentials")
 
 // HostResolver resolves a DNS name to addresses; *net.Resolver satisfies it.
 type HostResolver interface {
@@ -71,8 +81,9 @@ type AgentPoolConfig struct {
 	Addr string
 	// Port is the agent HTTP port used when Addr carries none.
 	Port string
-	// Token is the bearer secret sent to agents.
-	Token string
+	// Auth adds the server's credentials (a signature, the token or both)
+	// to every request for an agent. Required.
+	Auth agentauth.Authorizer
 	// LocalNodeID is this server's swarm node. Its agent is not polled for
 	// stats (the local stats worker already covers it) and its containers
 	// are never proxied.
@@ -111,22 +122,25 @@ type AgentPool struct {
 	// resolved holds the addresses the agent DNS name resolved to at the
 	// last refresh, to detect agents that came or went in between.
 	resolved []string
-	// owners maps the container IDs seen in the last remote stats poll to
-	// the node that reported them.
-	owners map[string]string
-	// taskOwners does the same for task IDs and task container names
-	// ({service}.{slot|node}.{taskID}), which are unique cluster-wide too.
-	taskOwners map[string]string
-	// names maps the other container names seen in the last remote stats
-	// poll to their node, or to "" when several nodes reported the name:
-	// names of standalone containers are only unique per node.
-	names map[string]string
+	// verified maps agent addresses to the node the swarm confirmed each
+	// runs on, reused when the swarm can't be asked.
+	verified map[string]string
+	// What the last remote stats poll reported. "" marks a key agents
+	// reported differently: an agent vouches only for its own node, and
+	// names are unique per node only. Task containers map to their task,
+	// not a node: the swarm, not the agent, says where a task runs.
+	owners map[string]string // standalone container ID → node
+	names  map[string]string // standalone container name → node
+	tasks  map[string]string // task container ID or name, or task ID → task ID
+	// placements caches where the swarm runs each sampled task: a task never
+	// moves to another node. Pruned to the sampled tasks every poll.
+	placements map[string]string // task ID → node
 	// reporting lists the hostnames of agents that answered the last remote
 	// stats poll, even with no samples (e.g. only the agent runs there).
 	reporting []string
 
 	lastCount int           // agents found by the previous refresh; -1 before the first
-	rejected  int           // agents that rejected the token at the last refresh
+	rejected  int           // agents that rejected the credentials at the last refresh
 	retryMin  time.Duration // first retry delay while no agent is known
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
@@ -143,7 +157,13 @@ func NewAgentPool(cfg AgentPoolConfig) *AgentPool {
 	if cfg.Client == nil {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.Proxy = nil
-		cfg.Client = &http.Client{Timeout: cfg.RequestTimeout, Transport: transport}
+		cfg.Client = &http.Client{
+			Timeout:   cfg.RequestTimeout,
+			Transport: transport,
+			// No agent endpoint redirects; following one would let an agent
+			// point the server at any address.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		}
 	}
 	if cfg.ResolveInterval <= 0 {
 		cfg.ResolveInterval = defaultAgentResolveInterval
@@ -154,9 +174,11 @@ func NewAgentPool(cfg AgentPoolConfig) *AgentPool {
 	return &AgentPool{
 		cfg:        cfg,
 		agents:     make(map[string]agentEndpoint),
+		verified:   make(map[string]string),
 		owners:     make(map[string]string),
-		taskOwners: make(map[string]string),
 		names:      make(map[string]string),
+		tasks:      make(map[string]string),
+		placements: make(map[string]string),
 		lastCount:  -1,
 		retryMin:   agentRetryInitial,
 	}
@@ -251,7 +273,7 @@ func (p *AgentPool) Refresh(ctx context.Context) {
 		go func() {
 			defer wg.Done()
 			var info AgentInfo
-			if getErr := p.getJSON(ctx, addr, "/info", &info); getErr != nil {
+			if getErr := p.getJSON(ctx, addr, "/info", maxAgentInfoBytes, &info); getErr != nil {
 				// Rejections are summarised once below rather than logged
 				// per agent on every refresh.
 				if errors.Is(getErr, errAgentUnauthorized) {
@@ -270,9 +292,10 @@ func (p *AgentPool) Refresh(ctx context.Context) {
 	}
 	wg.Wait()
 
+	verified := p.verifyNodes(ctx, addrs, infos)
 	agents := make(map[string]agentEndpoint, len(addrs))
 	for i, info := range infos {
-		if info == nil {
+		if info == nil || verified[addrs[i]] != info.NodeID {
 			continue
 		}
 		if _, dup := agents[info.NodeID]; dup {
@@ -284,6 +307,7 @@ func (p *AgentPool) Refresh(ctx context.Context) {
 	p.mu.Lock()
 	p.agents = agents
 	p.resolved = addrs
+	p.verified = verified
 	changed := len(agents) != p.lastCount
 	p.lastCount = len(agents)
 	p.mu.Unlock()
@@ -313,11 +337,99 @@ func (p *AgentPool) Refresh(ctx context.Context) {
 	p.recordRejections(host, rejected, len(agents))
 }
 
-// recordRejections stores how many agents rejected the token and logs when
-// that number changes: a mismatched token hides every container on those
-// nodes, so it must be named plainly, but only once. Recovery is only
-// announced when agents actually accepted the token, not when the rejecting
-// ones merely went away.
+// verifyNodes returns, for each agent address whose /info answered, the
+// node it runs on once the swarm confirms it: a running task on the node the
+// agent names must hold the agent's address. The node decides which
+// containers the agent is asked about, so an agent's word alone is not
+// taken. When the task list can't be read, earlier confirmations stand.
+// Without a task lister (Tasks unset) claims are taken as they are.
+func (p *AgentPool) verifyNodes(ctx context.Context, addrs []string, infos []*AgentInfo) map[string]string {
+	verified := make(map[string]string, len(addrs))
+	if p.cfg.Tasks == nil {
+		for i, info := range infos {
+			if info != nil {
+				verified[addrs[i]] = info.NodeID
+			}
+		}
+		return verified
+	}
+
+	nodesByIP, err := p.taskAddresses(ctx)
+	p.mu.RLock()
+	previous := p.verified
+	p.mu.RUnlock()
+	for i, info := range infos {
+		if info == nil {
+			continue
+		}
+		addr := addrs[i]
+		if err != nil {
+			if previous[addr] == info.NodeID {
+				verified[addr] = info.NodeID
+			}
+			continue
+		}
+		if ip := hostIP(addr); ip.IsValid() && nodesByIP[ip][info.NodeID] {
+			verified[addr] = info.NodeID
+		} else {
+			warnOnce("agent-node:"+addr+":"+info.NodeID,
+				"agents: %s claims node %s, but no running task on that node has its address; ignoring it", addr, info.NodeID)
+		}
+	}
+	if err != nil {
+		log.Printf("agents: verifying agent nodes: %v; keeping %d earlier confirmation(s)", err, len(verified))
+	}
+	return verified
+}
+
+// taskAddresses maps every address of a running task's network attachments
+// to the nodes running such a task.
+func (p *AgentPool) taskAddresses(ctx context.Context) (map[netip.Addr]map[string]bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, agentTaskLookupTimeout)
+	defer cancel()
+	tasks, err := p.cfg.Tasks.TaskList(ctx, swarm.TaskListOptions{
+		Filters: filters.NewArgs(filters.Arg("desired-state", string(swarm.TaskStateRunning))),
+	})
+	if err != nil {
+		return nil, err
+	}
+	nodes := make(map[netip.Addr]map[string]bool)
+	for _, t := range tasks {
+		for _, a := range t.NetworksAttachments {
+			for _, cidr := range a.Addresses {
+				prefix, err := netip.ParsePrefix(cidr)
+				if err != nil {
+					continue
+				}
+				ip := prefix.Addr().Unmap()
+				if nodes[ip] == nil {
+					nodes[ip] = make(map[string]bool)
+				}
+				nodes[ip][t.NodeID] = true
+			}
+		}
+	}
+	return nodes, nil
+}
+
+// hostIP returns the IP of a host:port agent address.
+func hostIP(addr string) netip.Addr {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return netip.Addr{}
+	}
+	return ip.Unmap()
+}
+
+// recordRejections stores how many agents rejected the server's credentials
+// and logs when that number changes: a key or token mismatch hides every
+// container on those nodes, so it must be named plainly, but only once.
+// Recovery is only announced when agents actually accepted the credentials,
+// not when the rejecting ones merely went away.
 func (p *AgentPool) recordRejections(host string, rejected, accepted int) {
 	p.mu.Lock()
 	prev := p.rejected
@@ -327,16 +439,17 @@ func (p *AgentPool) recordRejections(host string, rejected, accepted int) {
 	switch {
 	case rejected == prev:
 	case rejected > 0:
-		log.Printf("agents: %d agent(s) via %s rejected the token; check that DG_AGENT_TOKEN matches on the server and every agent", rejected, host)
+		log.Printf("agents: %d agent(s) via %s rejected the server's credentials; check that the server's DG_AGENT_KEY matches the agents' DG_AGENT_PUBLIC_KEY (or, without keys, that DG_AGENT_TOKEN matches), and the node clocks", rejected, host)
 	case accepted > 0:
-		log.Printf("agents: all agents via %s accept the token again", host)
+		log.Printf("agents: all agents via %s accept the server's credentials again", host)
 	}
 }
 
-// TokenRejected reports whether an agent rejected the token at the last
-// refresh. Containers on its node can then not be reached, which callers
-// should report as a misconfiguration rather than as missing containers.
-func (p *AgentPool) TokenRejected() bool {
+// CredentialsRejected reports whether an agent rejected the server's
+// credentials at the last refresh. Containers on its node can then not be
+// reached, which callers should report as a misconfiguration rather than as
+// missing containers.
+func (p *AgentPool) CredentialsRejected() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.rejected > 0
@@ -429,233 +542,53 @@ func (p *AgentPool) RemoteAgents() []RemoteAgent {
 	return out
 }
 
-// Samples polls /stats on every remote agent concurrently and returns their
-// samples, each stamped with the agent's node ID and hostname. Agents that
-// fail or time out are skipped for this round. It also
-// records which node owns each sampled container for LocateContainer.
-func (p *AgentPool) Samples(ctx context.Context) []ContainerSample {
-	agents := p.remoteEndpoints()
-	if len(agents) == 0 {
-		p.mu.Lock()
-		p.owners = make(map[string]string)
-		p.taskOwners = make(map[string]string)
-		p.names = make(map[string]string)
-		p.reporting = nil
-		p.mu.Unlock()
-		return nil
-	}
-
-	var (
-		mu         sync.Mutex
-		wg         sync.WaitGroup
-		samples    []ContainerSample
-		owners     = make(map[string]string)
-		taskOwners = make(map[string]string)
-		names      = make(map[string]string)
-		reporting  []string
-	)
-	for nodeID, a := range agents {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			var resp AgentStats
-			if err := p.getJSON(ctx, a.addr, "/stats", &resp); err != nil {
-				if ctx.Err() == nil {
-					log.Printf("agents: %s (node %s) /stats: %v", a.addr, a.hostname, err)
-				}
-				return
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			reporting = append(reporting, a.hostname)
-			for _, s := range resp.Samples {
-				if s.ID == "" || s.Name == "" {
-					continue
-				}
-				// Attribute the sample to the node the pool discovered the
-				// agent on; whatever the agent reported is overridden.
-				s.NodeID = nodeID
-				s.NodeHostname = a.hostname
-				samples = append(samples, s)
-				owners[s.ID] = nodeID
-				if tid := s.TaskID(); tid != "" {
-					taskOwners[tid] = nodeID
-					taskOwners[s.Name] = nodeID
-				} else if owner, seen := names[s.Name]; seen && owner != nodeID {
-					names[s.Name] = "" // same name on several nodes
-				} else {
-					names[s.Name] = nodeID
-				}
-			}
-		}()
-	}
-	wg.Wait()
-
-	sort.Strings(reporting)
-	p.mu.Lock()
-	p.owners = owners
-	p.taskOwners = taskOwners
-	p.names = names
-	p.reporting = reporting
-	p.mu.Unlock()
-	return samples
-}
-
-// ReportingNodes returns the hostnames of the remote agents that answered
-// the last Samples round, including those that reported no containers.
-func (p *AgentPool) ReportingNodes() []string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return append([]string(nil), p.reporting...)
-}
-
-// LocateContainer returns the base URL (http://host:port) of the agent on
-// the node running container id (an ID, ID prefix, name or task ID), when
-// that node is not the local one and has a known agent. A name or ID prefix
-// matching containers on several nodes is not located.
-func (p *AgentPool) LocateContainer(ctx context.Context, id string) (string, bool) {
-	nodeID := p.uniqueOwner(id)
-	if nodeID == "" {
-		var named bool
-		if nodeID, named = p.nameOwner(id); !named {
-			nodeID = p.ownerFromTasks(ctx, id)
-		}
-	}
-	return p.agentURL(nodeID)
-}
-
-// LocateCached is LocateContainer limited to the last remote stats poll and
-// to keys unique cluster-wide (container ID or ID prefix, task ID, task
-// container name), so a local container can't share them. It makes no
-// Docker call.
-func (p *AgentPool) LocateCached(id string) (string, bool) {
-	return p.agentURL(p.uniqueOwner(id))
-}
-
-// agentURL returns the base URL of nodeID's agent, unless nodeID is empty,
-// the local node or has no known agent.
-func (p *AgentPool) agentURL(nodeID string) (string, bool) {
-	if nodeID == "" || nodeID == p.cfg.LocalNodeID {
-		return "", false
-	}
-	p.mu.RLock()
-	a, ok := p.agents[nodeID]
-	p.mu.RUnlock()
-	if !ok {
-		return "", false
-	}
-	return "http://" + a.addr, true
-}
-
-// uniqueOwner looks id up in the last remote stats poll by container ID or
-// ID prefix (12+ characters), task ID or task container name. A prefix
-// matching containers on several nodes has no owner.
-func (p *AgentPool) uniqueOwner(id string) string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	if nodeID, ok := p.owners[id]; ok {
-		return nodeID
-	}
-	if nodeID, ok := p.taskOwners[id]; ok {
-		return nodeID
-	}
-	nodeID := ""
-	if len(id) >= 12 {
-		for key, owner := range p.owners {
-			if !strings.HasPrefix(key, id) {
-				continue
-			}
-			if nodeID != "" && owner != nodeID {
-				return "" // ambiguous prefix
-			}
-			nodeID = owner
-		}
-	}
-	return nodeID
-}
-
-// nameOwner looks a container name up in the last remote stats poll. found
-// is true when the name was seen; nodeID is then "" if several nodes run a
-// container with that name.
-func (p *AgentPool) nameOwner(name string) (nodeID string, found bool) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	nodeID, found = p.names[name]
-	return nodeID, found
-}
-
-// ownerFromTasks finds the task running container id through the swarm
-// task list. Task container names are {service}.{slot|node}.{taskID}. Only
-// an id that may be a container ID needs the whole list; any other is
-// filtered down to its task ID.
-func (p *AgentPool) ownerFromTasks(ctx context.Context, id string) string {
-	if p.cfg.Tasks == nil {
-		return ""
-	}
-	taskID := id[strings.LastIndexByte(id, '.')+1:]
-	if taskID == "" {
-		return ""
-	}
-	var opts swarm.TaskListOptions
-	if !maybeContainerID(id) {
-		opts.Filters = filters.NewArgs(filters.Arg("id", taskID))
-	}
-	ctx, cancel := context.WithTimeout(ctx, agentTaskLookupTimeout)
-	defer cancel()
-	tasks, err := p.cfg.Tasks.TaskList(ctx, opts)
-	if err != nil {
-		log.Printf("agents: task lookup for %s: %v", id, err)
-		return ""
-	}
-	for _, t := range tasks {
-		if t.ID == taskID {
-			return t.NodeID
-		}
-		if cs := t.Status.ContainerStatus; cs != nil && cs.ContainerID != "" {
-			if cs.ContainerID == id || (len(id) >= 12 && strings.HasPrefix(cs.ContainerID, id)) {
-				return t.NodeID
-			}
-		}
-	}
-	return ""
-}
-
-// maybeContainerID reports whether id can be a container ID or an ID prefix
-// long enough to match one (12 to 64 hex digits).
-func maybeContainerID(id string) bool {
-	if len(id) < 12 || len(id) > 64 {
-		return false
-	}
-	for _, c := range id {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
-}
+// errAgentAnswerTooLarge reports an agent answer over its size bound.
+var errAgentAnswerTooLarge = errors.New("answer too large")
 
 // getJSON performs an authenticated GET on an agent endpoint and decodes
-// the JSON response into out.
-func (p *AgentPool) getJSON(ctx context.Context, addr, path string, out any) error {
+// its JSON answer, at most limit bytes, into out.
+func (p *AgentPool) getJSON(ctx context.Context, addr, path string, limit int64, out any) error {
+	body, err := p.get(ctx, addr, path, limit)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(body, out)
+}
+
+// get performs an authenticated GET on an agent endpoint and returns its
+// answer, refused when over limit bytes.
+func (p *AgentPool) get(ctx context.Context, addr, path string, limit int64) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.cfg.RequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+AgentAPIPrefix+path, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+p.cfg.Token)
 	req.Header.Set("Accept", "application/json")
+	if err := p.cfg.Auth.Authorize(req); err != nil {
+		return nil, err
+	}
 	resp, err := p.cfg.Client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			return errAgentUnauthorized
+			return nil, errAgentUnauthorized
 		}
-		return fmt.Errorf("status %d", resp.StatusCode)
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, maxAgentResponseBytes)).Decode(out)
+	if resp.ContentLength > limit {
+		return nil, errAgentAnswerTooLarge
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, errAgentAnswerTooLarge
+	}
+	return body, nil
 }

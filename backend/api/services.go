@@ -202,8 +202,9 @@ func buildServiceInspectResponse(ctx context.Context, svc swarm.Service, tasks [
 
 	if cs := svc.Spec.TaskTemplate.ContainerSpec; cs != nil {
 		resp["image"] = cs.Image
-		resp["cmd"] = cs.Command
-		resp["args"] = cs.Args
+		// A service's Command replaces the image entrypoint and its Args the
+		// command, so together they are the command line the task runs.
+		resp["cmd"], resp["args"] = secrets.MaskCommand(cs.Command, cs.Args)
 		resp["workingDir"] = cs.Dir
 		resp["user"] = cs.User
 		resp["env"] = filterEnvVars(cs.Env)
@@ -221,16 +222,39 @@ func buildServiceInspectResponse(ctx context.Context, svc swarm.Service, tasks [
 	return resp
 }
 
-// buildServicePorts lists the service endpoint's ports, published or not.
+// buildServicePorts lists the service endpoint's ports, published or not,
+// those of one publish mode with ranges as ranges (collector.PortRanges):
+// hostEnd and containerEnd end a range.
 func buildServicePorts(ports []swarm.PortConfig) []map[string]any {
-	result := make([]map[string]any, 0, len(ports))
+	var modes []swarm.PortConfigPublishMode
+	byMode := make(map[swarm.PortConfigPublishMode][]collector.PortMapping)
 	for _, p := range ports {
-		result = append(result, map[string]any{
-			"host":        p.PublishedPort,
-			"container":   p.TargetPort,
-			"protocol":    string(p.Protocol),
-			"publishMode": string(p.PublishMode),
+		if _, ok := byMode[p.PublishMode]; !ok {
+			modes = append(modes, p.PublishMode)
+		}
+		byMode[p.PublishMode] = append(byMode[p.PublishMode], collector.PortMapping{
+			Host:      int(p.PublishedPort),
+			Container: int(p.TargetPort),
+			Protocol:  string(p.Protocol),
 		})
+	}
+	result := make([]map[string]any, 0, len(ports))
+	for _, mode := range modes {
+		for _, m := range collector.PortRanges(byMode[mode]) {
+			entry := map[string]any{
+				"host":        m.Host,
+				"container":   m.Container,
+				"protocol":    m.Protocol,
+				"publishMode": string(mode),
+			}
+			if m.HostEnd != 0 {
+				entry["hostEnd"] = m.HostEnd
+			}
+			if m.ContainerEnd != 0 {
+				entry["containerEnd"] = m.ContainerEnd
+			}
+			result = append(result, entry)
+		}
 	}
 	return result
 }

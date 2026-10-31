@@ -186,7 +186,7 @@ func TestFilterEnvVars(t *testing.T) {
 	})
 
 	t.Run("value containing equals sign", func(t *testing.T) {
-		input := []string{"CONFIG=key=value=extra"}
+		input := []string{"CONFIG=mode=value=extra"}
 		result := filterEnvVars(input)
 
 		if len(result) != 1 {
@@ -195,7 +195,7 @@ func TestFilterEnvVars(t *testing.T) {
 		if result[0]["key"] != "CONFIG" {
 			t.Errorf("expected key CONFIG, got %q", result[0]["key"])
 		}
-		if result[0]["value"] != "key=value=extra" {
+		if result[0]["value"] != "mode=value=extra" {
 			t.Errorf("expected value to preserve inner '=' signs, got %q", result[0]["value"])
 		}
 	})

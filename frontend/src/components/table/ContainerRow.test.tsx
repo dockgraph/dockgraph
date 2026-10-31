@@ -67,6 +67,17 @@ describe("ContainerRow", () => {
     expect(screen.getByText(/MEM/)).toBeDefined();
   });
 
+  it("lists up to three port mappings and counts the rest", () => {
+    const ports = [
+      { host: 8000, hostEnd: 8010, container: 80, containerEnd: 90 },
+      { host: 3000, container: 3000 },
+      { host: 9000, hostEnd: 9002, container: 9000 },
+      { host: 5432, container: 5432 },
+    ];
+    render(<ContainerRow node={{ ...node, ports }} stats={stats} selected={false} onClick={() => {}} gridTemplate="1fr 1fr 1fr 1fr 1fr" />);
+    expect(screen.getByText("8000-8010:80-90, 3000:3000, 9000-9002:9000 +1")).toBeDefined();
+  });
+
   it("shows 'No stats available' when stats is undefined", () => {
     render(<ContainerRow node={node} stats={undefined} selected={false} onClick={() => {}} gridTemplate="1fr 1fr 1fr 1fr 1fr" />);
     expect(screen.getByText("No stats available")).toBeDefined();

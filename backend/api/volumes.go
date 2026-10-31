@@ -8,6 +8,7 @@ import (
 	"time"
 
 	volumetypes "github.com/docker/docker/api/types/volume"
+	"github.com/dockgraph/dockgraph/secrets"
 )
 
 // VolumeInspector is the subset of the Docker API needed for volume inspection.
@@ -46,10 +47,11 @@ func buildVolumeResponse(vol volumetypes.Volume) map[string]any {
 		"driver":     vol.Driver,
 		"mountpoint": vol.Mountpoint,
 		"createdAt":  vol.CreatedAt,
-		fieldStatus:  vol.Status,
-		fieldLabels:  vol.Labels,
+		fieldStatus:  maskDriverStatus(vol.Status),
+		fieldLabels:  secrets.MaskLabels(vol.Labels),
 		"scope":      vol.Scope,
-		"options":    vol.Options,
+		// Driver options can hold mount credentials (CIFS "o=…,password=…").
+		fieldOptions: secrets.MaskLabels(vol.Options),
 	}
 
 	if vol.UsageData != nil {

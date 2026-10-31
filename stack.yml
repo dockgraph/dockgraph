@@ -1,7 +1,12 @@
 # DockGraph for Docker Swarm.
 #
-#   # 1. Create the shared agent token (once per swarm, on a manager):
-#   openssl rand -hex 32 | docker secret create dg_agent_token -
+#   # 1. Create the agent keys (once per swarm, on a manager). The server
+#   #    signs its requests to the agents with the private key, a secret
+#   #    only the server gets; agents check them with the public key:
+#   (umask 077 && docker run --rm dockgraph/dockgraph --agent-keygen > dg_agent_key)
+#   docker run --rm -i dockgraph/dockgraph --agent-pubkey < dg_agent_key | docker config create dg_agent_pubkey -
+#   docker secret create dg_agent_key dg_agent_key
+#   rm dg_agent_key
 #
 #   # 2. Deploy (on a manager):
 #   docker stack deploy -c stack.yml dockgraph
@@ -11,6 +16,9 @@
 # `server` runs on a manager (it needs the swarm API) and serves the UI.
 # `agent` runs on every node and exposes that node's container stats,
 # inspect and logs to the server over the internal overlay network only.
+#
+# Upgrading a stack that used the dg_agent_token secret: see "Moving from
+# the agent token to keys" in the README.
 #
 # Optional variables (interpolated by `docker stack deploy`):
 #   DG_IMAGE      image to run (default dockgraph/dockgraph:latest)
@@ -33,7 +41,7 @@ services:
       DG_PORT: "7800"
       DG_AGENT_ADDR: "tasks.agent"   # DNS name of every agent task in this stack
       DG_AGENT_PORT: "7801"
-      DG_AGENT_TOKEN_FILE: "/run/secrets/dg_agent_token"
+      DG_AGENT_KEY_FILE: "/run/secrets/dg_agent_key"
       # DG_SWARM_POLL_INTERVAL: "5s"
       # Require a login for the web UI and WebSocket (recommended). Either
       # inline, or from a Docker secret (create it first with
@@ -41,12 +49,15 @@ services:
       # uncomment the dg_password secret below and at the bottom of the file):
       # DG_PASSWORD: ""
       # DG_PASSWORD_FILE: "/run/secrets/dg_password"
+      # Without a password, only IP addresses and localhost are served;
+      # list the host names you open the UI under:
+      # DG_ALLOWED_HOSTS: "dockgraph.example.com"
       # Keep 0.0.0.0 in swarm: 127.0.0.1 would cut the routing mesh off.
       # DG_BIND_ADDR: "0.0.0.0"
       # Stack name = what you pass to `docker stack deploy`:
       # DG_COMPOSE_PATH: "shop=/stacks/shop.yml"
     secrets:
-      - dg_agent_token
+      - dg_agent_key   # the private key: only the server may hold it
       # - dg_password
     networks:
       - internal
@@ -83,9 +94,9 @@ services:
     environment:
       DG_MODE: "agent"
       DG_AGENT_PORT: "7801"
-      DG_AGENT_TOKEN_FILE: "/run/secrets/dg_agent_token"
-    secrets:
-      - dg_agent_token
+      DG_AGENT_PUBLIC_KEY_FILE: "/dg_agent_pubkey"
+    configs:
+      - dg_agent_pubkey   # mounted at /dg_agent_pubkey
     networks:
       - internal
     healthcheck:
@@ -113,13 +124,19 @@ networks:
   internal:
     driver: overlay
     attachable: false   # only this stack's services can join
-    # Uncomment to encrypt server<->agent traffic between nodes (IPsec;
-    # not supported on every platform, e.g. Docker Desktop).
-    # driver_opts:
-    #   encrypted: "true"
+    # Encrypts server<->agent traffic between nodes (IPsec), which carries
+    # container logs and inspect data. Remove these two lines only on
+    # platforms without IPsec support (e.g. Docker Desktop), and only when
+    # the nodes share a trusted network.
+    driver_opts:
+      encrypted: "true"
 
 secrets:
-  dg_agent_token:
+  dg_agent_key:
     external: true
   # dg_password:
   #   external: true
+
+configs:
+  dg_agent_pubkey:
+    external: true

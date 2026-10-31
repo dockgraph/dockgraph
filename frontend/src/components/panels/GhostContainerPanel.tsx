@@ -2,6 +2,7 @@ import { useTheme } from '../../theme';
 import { Section } from './shared';
 import { Copyable } from './Copyable';
 import { DetailPanelCompose } from './DetailPanelCompose';
+import { containerPorts, hostPorts, portMapping } from '../../utils/ports';
 import type { DGNode } from '../../types';
 
 interface Props {
@@ -22,12 +23,12 @@ export function GhostContainerPanel({ node, onNavigate }: Props) {
             return (
               <Copyable
                 key={i}
-                value={`${p.host}:${p.container}${proto}`}
+                value={`${portMapping(p)}${proto}`}
                 style={{ display: 'block', fontSize: 11, color: theme.panelText, marginBottom: 2 }}
               >
-                <span style={{ fontFamily: 'var(--dg-font-mono)' }}>{p.host}</span>
+                <span style={{ fontFamily: 'var(--dg-font-mono)' }}>{hostPorts(p)}</span>
                 <span style={{ color: theme.nodeSubtext }}> → </span>
-                <span style={{ fontFamily: 'var(--dg-font-mono)' }}>{p.container}{proto}</span>
+                <span style={{ fontFamily: 'var(--dg-font-mono)' }}>{containerPorts(p)}{proto}</span>
               </Copyable>
             );
           })}

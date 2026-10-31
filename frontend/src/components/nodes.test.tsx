@@ -81,6 +81,12 @@ describe('ContainerNode', () => {
     expect(screen.getByText(/:8080/)).toBeDefined();
   });
 
+  it('renders a port range as one mapping', () => {
+    renderContainer({ ports: [{ host: 49152, hostEnd: 65535, container: 49152, containerEnd: 65535, protocol: 'udp' }] });
+    expect(screen.getByText(/:49152-65535/)).toBeDefined();
+    expect(screen.queryByText(/^\+/)).toBeNull();
+  });
+
   it('truncates ports beyond 3 and shows overflow count', () => {
     const ports = [
       { host: '80', container: '80' },

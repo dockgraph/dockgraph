@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
-	"net"
+	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,6 +17,11 @@ const (
 	maxRequestBody = 1024
 )
 
+// loginQueueTimeout bounds how long a login waits for a free password
+// verification slot (see maxConcurrentChecks) before it is turned away. A
+// variable so tests can lower it.
+var loginQueueTimeout = 5 * time.Second
+
 // Service holds auth dependencies shared by handlers and middleware.
 type Service struct {
 	PasswordHash string
@@ -22,7 +29,17 @@ type Service struct {
 	Sessions     *SessionManager
 	Limiter      *RateLimiter
 	LoginPage    []byte
+	// LoginScript is the login page's script, served at LoginScriptPath so
+	// the page needs no inline script under the Content-Security-Policy.
+	LoginScript []byte
+	// Proxies are the reverse proxies trusted to report the client's address
+	// and scheme; empty trusts none.
+	Proxies TrustedProxies
 }
+
+// LoginScriptPath is where the login page loads its script from. Like the
+// page itself it is served without a session.
+const LoginScriptPath = "/login.js"
 
 // Login returns a handler for POST /api/login.
 func (s *Service) Login() http.HandlerFunc {
@@ -34,9 +51,17 @@ func (s *Service) Login() http.HandlerFunc {
 
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 
-		ip := clientIP(r)
-		if !s.Limiter.Allow(ip) {
-			writeRateLimited(w, s.Limiter.RetryAfter(ip))
+		client := r.RemoteAddr
+		if addr, ok := s.Proxies.ClientAddr(r); ok {
+			client = addr.String()
+		}
+		key := s.Proxies.ClientKey(r)
+		if allowed, firstRefusal := s.Limiter.attempt(key); !allowed {
+			retryAfter := max(s.Limiter.RetryAfter(key), 1)
+			if firstRefusal {
+				log.Printf("WARN  too many login attempts from %s: refusing them for %ds", client, retryAfter)
+			}
+			writeRateLimited(w, retryAfter)
 			return
 		}
 
@@ -48,8 +73,19 @@ func (s *Service) Login() http.HandlerFunc {
 			return
 		}
 
-		ok, err := CheckPassword(body.Password, s.PasswordHash)
+		ctx, cancel := context.WithTimeout(r.Context(), loginQueueTimeout)
+		ok, err := CheckPasswordBounded(ctx, body.Password, s.PasswordHash)
+		cancel()
+		if errors.Is(err, ErrBusy) {
+			// The password was never checked: don't count the attempt.
+			s.Limiter.Forget(key)
+			if r.Context().Err() == nil {
+				writeBusy(w)
+			}
+			return
+		}
 		if err != nil || !ok {
+			log.Printf("WARN  failed login from %s", client)
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -77,7 +113,7 @@ func (s *Service) Logout() http.HandlerFunc {
 			Path:     "/",
 			MaxAge:   -1,
 			HttpOnly: true,
-			Secure:   r.TLS != nil,
+			Secure:   s.Proxies.IsHTTPS(r),
 			SameSite: http.SameSiteLaxMode,
 		})
 		w.Header().Set("Cache-Control", "no-store")
@@ -116,24 +152,28 @@ func (s *Service) setSessionCookie(w http.ResponseWriter, r *http.Request) error
 		Path:     "/",
 		MaxAge:   int(sessionMaxAge.Seconds()),
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   s.Proxies.IsHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 	return nil
 }
 
-// clientIP extracts the client address from the request for rate-limiting.
-// It uses RemoteAddr directly, which means all requests behind a reverse proxy
-// appear to originate from the proxy's IP. In such deployments the rate limiter
-// will bucket all clients together. For DockGraph's typical use (local network
-// or single-user), this is acceptable. Trusting X-Forwarded-For without a
-// known proxy allowlist would let attackers spoof their IP and bypass limits.
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+// LoginScriptHandler returns a handler serving LoginScript.
+func (s *Service) LoginScriptHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(s.LoginScript)
 	}
-	return host
+}
+
+// writeBusy answers a login that found every verification slot taken.
+func writeBusy(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", "1")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "server busy"})
 }
 
 func writeRateLimited(w http.ResponseWriter, retryAfter int) {

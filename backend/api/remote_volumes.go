@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -21,6 +20,11 @@ import (
 // nodes, so a frozen node cannot hold the detail panel. A variable so tests
 // can lower it.
 var volumeLookupTimeout = 5 * time.Second
+
+// maxRemoteVolumeBytes caps one agent's volume answer. A volume's inspect is
+// a few labels and options; every node is asked at once, so the cap is far
+// below that of other agent answers.
+var maxRemoteVolumeBytes int64 = 1 << 20
 
 // RemoteAgentLister lists the agents on other swarm nodes.
 // *collector.AgentPool implements it.
@@ -72,13 +76,13 @@ func (p *AgentProxy) inspectVolume(inspector VolumeInspector) http.HandlerFunc {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				lookups[i+1] = p.lookupRemoteVolume(ctx, a, name)
+				lookups[i+1] = p.lookupRemoteVolume(ctx, r, a, name)
 			}()
 		}
 		wg.Wait()
 
 		var found []volumeLookup
-		failed, rejected := false, p.tokenRejected()
+		failed, rejected := false, p.credentialsRejected()
 		for _, l := range lookups {
 			switch {
 			case l.err != nil:
@@ -90,8 +94,8 @@ func (p *AgentProxy) inspectVolume(inspector VolumeInspector) http.HandlerFunc {
 			}
 		}
 		if len(found) == 0 {
-			// A node that did not answer, or whose agent refused the token,
-			// may hold the volume.
+			// A node that did not answer, or whose agent refused the
+			// server's credentials, may hold the volume.
 			switch {
 			case rejected:
 				jsonError(w, errAgentAuth.Error(), http.StatusBadGateway)
@@ -130,9 +134,9 @@ func (p *AgentProxy) lookupLocalVolume(ctx context.Context, inspector VolumeInsp
 	return l
 }
 
-// lookupRemoteVolume asks one agent for the volume. A 404 means the node
-// does not have it, which is not an error.
-func (p *AgentProxy) lookupRemoteVolume(ctx context.Context, a collector.RemoteAgent, name string) volumeLookup {
+// lookupRemoteVolume asks one agent for the volume, for client request r.
+// A 404 means the node does not have it, which is not an error.
+func (p *AgentProxy) lookupRemoteVolume(ctx context.Context, r *http.Request, a collector.RemoteAgent, name string) volumeLookup {
 	l := volumeLookup{node: a.Hostname}
 	target := a.BaseURL + collector.AgentAPIPrefix + "/volumes/" + url.PathEscape(name)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
@@ -140,8 +144,15 @@ func (p *AgentProxy) lookupRemoteVolume(ctx context.Context, a collector.RemoteA
 		l.err = err
 		return l
 	}
-	req.Header.Set("Authorization", "Bearer "+p.Token)
+	if !p.allowRequest(r, req.URL.Host) {
+		l.err = errAgentBusy
+		return l
+	}
 	req.Header.Set("Accept", "application/json")
+	if err := p.Auth.Authorize(req); err != nil {
+		l.err = err
+		return l
+	}
 
 	resp, err := p.transport().RoundTrip(req)
 	if err != nil {
@@ -152,9 +163,7 @@ func (p *AgentProxy) lookupRemoteVolume(ctx context.Context, a collector.RemoteA
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		if err := json.NewDecoder(io.LimitReader(resp.Body, maxRemoteResponseBytes)).Decode(&l.resp); err != nil {
-			l.err = fmt.Errorf("decoding agent response: %w", err)
-		}
+		l.resp, l.err = readRemoteVolume(resp)
 	case http.StatusNotFound:
 	case http.StatusUnauthorized, http.StatusForbidden:
 		l.err = errAgentAuth
@@ -162,4 +171,22 @@ func (p *AgentProxy) lookupRemoteVolume(ctx context.Context, a collector.RemoteA
 		l.err = fmt.Errorf("agent returned status %d", resp.StatusCode)
 	}
 	return l
+}
+
+// readRemoteVolume reads an agent's volume answer, bounded, and masks it.
+// Its fields stay raw JSON: only the masked ones are decoded.
+func readRemoteVolume(answer *http.Response) (map[string]any, error) {
+	data, err := readBounded(answer, maxRemoteVolumeBytes)
+	if err != nil {
+		return nil, err
+	}
+	fields, err := remaskVolume(data)
+	if err != nil {
+		return nil, fmt.Errorf("decoding agent response: %w", err)
+	}
+	resp := make(map[string]any, len(fields))
+	for k, v := range fields {
+		resp[k] = v
+	}
+	return resp, nil
 }

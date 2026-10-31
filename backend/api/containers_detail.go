@@ -1,21 +1,59 @@
 package api
 
 import (
+	"strconv"
+
 	containertypes "github.com/docker/docker/api/types/container"
+	"github.com/dockgraph/dockgraph/collector"
+	"github.com/dockgraph/dockgraph/secrets"
 )
 
+// buildPorts lists the container's published ports, ranges as ranges
+// (collector.PortRanges), each side written as Docker writes it: "8000" or
+// "8000-8010". A port bound for both IPv4 and IPv6 is listed once.
 func buildPorts(info containertypes.InspectResponse) []map[string]any {
 	ports := make([]map[string]any, 0)
+	if info.NetworkSettings == nil {
+		return ports
+	}
+	var mappings []collector.PortMapping
+	seen := make(map[collector.PortMapping]bool)
 	for port, bindings := range info.NetworkSettings.Ports {
 		for _, b := range bindings {
-			ports = append(ports, map[string]any{
-				"hostPort":      b.HostPort,
-				"containerPort": port.Port(),
-				"protocol":      port.Proto(),
-			})
+			host, err := strconv.Atoi(b.HostPort)
+			if err != nil {
+				// Not a port number: listed as Docker gives it.
+				ports = append(ports, map[string]any{
+					"hostPort":      b.HostPort,
+					"containerPort": port.Port(),
+					"protocol":      port.Proto(),
+				})
+				continue
+			}
+			m := collector.PortMapping{Host: host, Container: port.Int(), Protocol: port.Proto()}
+			if !seen[m] {
+				seen[m] = true
+				mappings = append(mappings, m)
+			}
 		}
 	}
+	for _, m := range collector.PortRanges(mappings) {
+		ports = append(ports, map[string]any{
+			"hostPort":      portSpan(m.Host, m.HostEnd),
+			"containerPort": portSpan(m.Container, m.ContainerEnd),
+			"protocol":      m.Protocol,
+		})
+	}
 	return ports
+}
+
+// portSpan writes a port, or the range of ports from start to end when end
+// is set, as Docker does.
+func portSpan(start, end int) string {
+	if end == 0 {
+		return strconv.Itoa(start)
+	}
+	return strconv.Itoa(start) + "-" + strconv.Itoa(end)
 }
 
 func buildMounts(info containertypes.InspectResponse) []map[string]any {
@@ -84,7 +122,8 @@ func buildHealth(info containertypes.InspectResponse) map[string]any {
 			"start":    entry.Start,
 			"end":      entry.End,
 			"exitCode": entry.ExitCode,
-			"output":   entry.Output,
+			// Probe output often echoes responses from internal endpoints.
+			"output": secrets.MaskValue(entry.Output),
 		})
 	}
 	resp["log"] = logs

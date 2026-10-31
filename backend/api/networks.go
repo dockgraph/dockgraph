@@ -14,6 +14,7 @@ import (
 	networktypes "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/dockgraph/dockgraph/collector"
+	"github.com/dockgraph/dockgraph/secrets"
 )
 
 // NetworkInspector is the subset of the Docker API needed for network inspection.
@@ -170,8 +171,8 @@ func buildNetworkInspectResponse(network networktypes.Inspect, taskContainers ma
 		"internal":   network.Internal,
 		"enableIPv6": network.EnableIPv6,
 		"created":    network.Created,
-		"options":    network.Options,
-		fieldLabels:  network.Labels,
+		"options":    secrets.MaskLabels(network.Options),
+		fieldLabels:  secrets.MaskLabels(network.Labels),
 	}
 
 	if network.IPAM.Config != nil {

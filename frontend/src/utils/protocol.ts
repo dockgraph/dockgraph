@@ -2,7 +2,7 @@
  * WebSocket wire protocol version this bundle understands. Must match
  * collector.ProtocolVersion in the backend.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 const RELOAD_KEY = 'dg_protocol_reload';
 

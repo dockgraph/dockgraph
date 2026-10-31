@@ -17,11 +17,18 @@ import (
 const (
 	pongTimeout = 60 * time.Second
 	pingPeriod  = 30 * time.Second
+	// maxClientMessageSize caps a data message from a client. The UI sends
+	// none (pongs are control frames, which the limit does not cover), and
+	// gorilla buffers a whole message in memory before ReadMessage returns,
+	// so the cap bounds the memory one message can take.
+	maxClientMessageSize = 512
 )
 
 // checkOrigin validates WebSocket upgrade requests by comparing the Origin
 // header against the request Host. Only same-origin browser requests and
-// non-browser clients (which never send an Origin header) are accepted.
+// non-browser clients (which never send an Origin header) are accepted. A
+// foreign name made to resolve here passes this check, so the Host is
+// vetted before it, by hostCheck or the session cookie (see HostAllowlist).
 func checkOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
@@ -37,6 +44,7 @@ var upgrader = websocket.Upgrader{
 
 type wsClient struct {
 	conn      *websocket.Conn
+	key       string // per-client limit bucket (see Hub.ClientKey)
 	sendCh    chan collector.WireMessage
 	done      chan struct{}
 	issuedAt  time.Time // JWT issued-at (zero when auth disabled)
@@ -49,16 +57,44 @@ type Hub struct {
 	clients      map[*wsClient]bool
 	current      *collector.GraphSnapshot
 	closed       bool
-	MaxClients   int
+	MaxClients   int                                      // 0 means no bound
 	CheckExpired func(issuedAt, expiresAt time.Time) bool // nil when auth disabled
+	// MaxClientsPerKey bounds the connections sharing one ClientKey, so one
+	// client cannot take every MaxClients slot; 0 means no bound.
+	MaxClientsPerKey int
+	// ClientKey buckets a connection for MaxClientsPerKey; nil buckets by
+	// the peer address.
+	ClientKey func(*http.Request) string
+
+	// slots counts connections against MaxClients and MaxClientsPerKey,
+	// built on first use so the bounds can be set after NewHub.
+	slotsOnce sync.Once
+	slots     *slotLimiter
 }
 
 // NewHub creates an empty WebSocket hub.
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*wsClient]bool),
-		MaxClients: 128,
+		clients:          make(map[*wsClient]bool),
+		MaxClients:       128,
+		MaxClientsPerKey: maxWSClientsPerClient,
 	}
+}
+
+// limiter returns the hub's connection slots.
+func (h *Hub) limiter() *slotLimiter {
+	h.slotsOnce.Do(func() {
+		h.slots = newSlotLimiter(h.MaxClients, h.MaxClientsPerKey)
+	})
+	return h.slots
+}
+
+// clientKey returns the per-client bucket of r.
+func (h *Hub) clientKey(r *http.Request) string {
+	if h.ClientKey != nil {
+		return h.ClientKey(r)
+	}
+	return auth.TrustedProxies(nil).ClientKey(r)
 }
 
 // HandleWS upgrades an HTTP request to a WebSocket connection and registers
@@ -79,22 +115,23 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 	c := &wsClient{
 		conn:      conn,
+		key:       h.clientKey(r),
 		sendCh:    make(chan collector.WireMessage, 32),
 		done:      make(chan struct{}),
 		issuedAt:  iat,
 		expiresAt: exp,
 	}
 
-	h.mu.Lock()
-	if h.closed {
-		h.mu.Unlock()
+	if !h.limiter().acquire(c.key) {
+		conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "too many connections"))
 		conn.Close()
 		return
 	}
-	if h.MaxClients > 0 && len(h.clients) >= h.MaxClients {
+	h.mu.Lock()
+	if h.closed {
 		h.mu.Unlock()
-		conn.WriteMessage(websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "too many connections"))
+		h.limiter().release(c.key)
 		conn.Close()
 		return
 	}
@@ -106,14 +143,15 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		c.sendCh <- collector.NewSnapshotMessage(*snapshot)
 	}
 
-	go c.writePump()
+	go c.writePump(h)
 	go c.readPump(h)
 }
 
 // writePump sends queued state messages to the WebSocket connection
 // and issues periodic pings to detect stale connections. Exits when
-// the done channel is closed by readPump.
-func (c *wsClient) writePump() {
+// the done channel is closed by readPump, or when a write fails or times
+// out; it then closes the connection and frees its slot.
+func (c *wsClient) writePump(h *Hub) {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		if r := recover(); r != nil {
@@ -121,10 +159,14 @@ func (c *wsClient) writePump() {
 		}
 		ticker.Stop()
 		c.conn.Close()
+		// Freed only now: a writer stuck on a client that stopped reading
+		// still holds the connection and its message.
+		h.limiter().release(c.key)
 	}()
 	for {
 		select {
 		case msg := <-c.sendCh:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(streamWriteTimeout))
 			if err := c.conn.WriteJSON(msg); err != nil {
 				return
 			}
@@ -140,7 +182,7 @@ func (c *wsClient) writePump() {
 
 // readPump keeps the connection alive by handling pong responses. When the
 // client disconnects (read error), it unregisters from the hub and closes
-// the done channel to shut down the writer.
+// the done channel to shut down the writer, which frees the slot.
 func (c *wsClient) readPump(h *Hub) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -152,6 +194,7 @@ func (c *wsClient) readPump(h *Hub) {
 		close(c.done)
 	}()
 
+	c.conn.SetReadLimit(maxClientMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongTimeout))
 	c.conn.SetPongHandler(func(string) error {
 		c.conn.SetReadDeadline(time.Now().Add(pongTimeout))
@@ -239,14 +282,24 @@ func (h *Hub) Shutdown() {
 	}
 	h.mu.Unlock()
 
+	// The close frame waits for a writer stuck on a client that stopped
+	// reading; every client is closed at once, within one shared second, so
+	// shutdown doesn't take a second per stuck client.
+	deadline := time.Now().Add(time.Second)
+	var wg sync.WaitGroup
 	for _, c := range clients {
-		_ = c.conn.WriteControl(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down"),
-			time.Now().Add(time.Second),
-		)
-		_ = c.conn.Close()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = c.conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down"),
+				deadline,
+			)
+			_ = c.conn.Close()
+		}()
 	}
+	wg.Wait()
 }
 
 // ClientCount returns the number of active WebSocket connections.

@@ -17,6 +17,7 @@ import (
 	networktypes "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/swarm"
 	volumetypes "github.com/docker/docker/api/types/volume"
+	"github.com/dockgraph/dockgraph/secrets"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -386,7 +387,8 @@ func serviceVolumeMounts(svc swarm.Service) []mount.Mount {
 }
 
 // servicePorts converts the service endpoint's published ports into the
-// wire-format representation. Unpublished (target-only) ports are skipped.
+// wire-format representation, ranges as ranges (see PortRanges).
+// Unpublished (target-only) ports are skipped.
 func servicePorts(ports []swarm.PortConfig) []PortMapping {
 	var result []PortMapping
 	for _, p := range ports {
@@ -399,7 +401,7 @@ func servicePorts(ports []swarm.PortConfig) []PortMapping {
 			Protocol:  string(p.Protocol),
 		})
 	}
-	return result
+	return PortRanges(result)
 }
 
 // stripImageDigest drops the "@sha256:..." pin that swarm appends to service
@@ -479,7 +481,9 @@ func buildTaskInfo(t swarm.Task, hostnames map[string]string) TaskInfo {
 		NodeHostname: hostnames[t.NodeID],
 		State:        string(t.Status.State),
 		DesiredState: string(t.DesiredState),
-		Error:        t.Status.Err,
+		// Free text from the daemon, which may quote a command or an image
+		// reference with credentials.
+		Error: secrets.MaskValue(t.Status.Err),
 	}
 	if t.Status.ContainerStatus != nil {
 		ti.ContainerID = t.Status.ContainerStatus.ContainerID
