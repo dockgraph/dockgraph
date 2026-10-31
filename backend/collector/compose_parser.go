@@ -1,12 +1,10 @@
 package collector
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/compose-spec/compose-go/v2/loader"
 	composetypes "github.com/compose-spec/compose-go/v2/types"
@@ -124,43 +122,27 @@ func buildComposeVolumeNodes(project *composetypes.Project, naming composeNaming
 	return nodes
 }
 
-// parseComposePorts converts compose port configs into the common PortMapping format.
-// Port ranges (e.g. "8080-8090") are expanded into individual mappings.
+// parseComposePorts converts compose port configs into the common
+// PortMapping format, ranges as ranges (see PortRanges). The loader lists a
+// range of ports ("8000-8010:8000-8010") port by port; a published range for
+// one target port ("8000-8010:80") is one mapping, Docker publishing the
+// target on one host port of the range.
 func parseComposePorts(ports []composetypes.ServicePortConfig) []PortMapping {
 	var result []PortMapping
 	for _, p := range ports {
 		if p.Published == "" {
 			continue
 		}
-
-		proto := p.Protocol
-		if proto == "" {
-			proto = "tcp"
+		mapping := PortMapping{Container: int(p.Target), Protocol: cmp.Or(p.Protocol, "tcp")}
+		if n, _ := fmt.Sscanf(p.Published, "%d-%d", &mapping.Host, &mapping.HostEnd); n < 1 {
+			continue
 		}
-
-		var startHost, endHost int
-		if n, _ := fmt.Sscanf(p.Published, "%d-%d", &startHost, &endHost); n == 2 && endHost >= startHost {
-			containerPort := int(p.Target)
-			for hp := startHost; hp <= endHost; hp++ {
-				result = append(result, PortMapping{
-					Host:      hp,
-					Container: containerPort + (hp - startHost),
-					Protocol:  proto,
-				})
-			}
-		} else {
-			var hostPort int
-			if n, _ := fmt.Sscanf(p.Published, "%d", &hostPort); n < 1 {
-				continue
-			}
-			result = append(result, PortMapping{
-				Host:      hostPort,
-				Container: int(p.Target),
-				Protocol:  proto,
-			})
+		if mapping.HostEnd <= mapping.Host {
+			mapping.HostEnd = 0
 		}
+		result = append(result, mapping)
 	}
-	return result
+	return PortRanges(result)
 }
 
 // buildServiceNode creates a container node (or, for a swarm stack, a service
@@ -271,10 +253,11 @@ func isComposeServiceSelfExcluded(svc composetypes.ServiceConfig) bool {
 // buildComposeConfig extracts service configuration from a compose service
 // for display in the detail panel when the container isn't running.
 func buildComposeConfig(svc composetypes.ServiceConfig, naming composeNaming) *ComposeConfig {
+	entrypoint, command := secrets.MaskCommand(svc.Entrypoint, svc.Command)
 	cfg := &ComposeConfig{
 		Service:    svc.Name,
-		Command:    svc.Command,
-		Entrypoint: svc.Entrypoint,
+		Command:    command,
+		Entrypoint: entrypoint,
 		Restart:    svc.Restart,
 		User:       svc.User,
 		WorkingDir: svc.WorkingDir,
@@ -292,11 +275,7 @@ func buildComposeConfig(svc composetypes.ServiceConfig, naming composeNaming) *C
 			if v == nil {
 				continue
 			}
-			if secrets.IsSensitiveKey(k) {
-				cfg.Environment[k] = secrets.Masked
-			} else {
-				cfg.Environment[k] = *v
-			}
+			cfg.Environment[k] = secrets.MaskEnvValue(k, *v)
 		}
 	}
 
@@ -343,6 +322,10 @@ func buildComposeConfig(svc composetypes.ServiceConfig, naming composeNaming) *C
 type composeParseOptions struct {
 	ProjectName string
 	Swarm       bool
+	// ReadRoots are the directories a parse may read files under: the
+	// compose paths it was found through. Empty means the file's own
+	// directory.
+	ReadRoots []string
 }
 
 // parseComposeFile loads a Docker Compose file and converts it into a graph
@@ -351,28 +334,84 @@ func parseComposeFile(ctx context.Context, path, sourceName string) (GraphSnapsh
 	return parseComposeFileWith(ctx, path, sourceName, composeParseOptions{})
 }
 
-// parseComposeFileWith is parseComposeFile with explicit naming/mode options.
+// parseComposeFileWith is parseComposeFile with explicit naming/mode
+// options. The parse runs in a process of its own (see
+// parseComposeInChild), stopped after composeParseTimeout.
 func parseComposeFileWith(ctx context.Context, path, sourceName string, opts composeParseOptions) (GraphSnapshot, error) {
-	data, err := os.ReadFile(path)
+	path = filepath.Clean(path)
+	roots := opts.ReadRoots
+	if len(roots) == 0 {
+		roots = []string{filepath.Dir(path)}
+	}
+	ctx, cancel := context.WithTimeout(ctx, composeParseTimeout)
+	defer cancel()
+	return composeParseRunner(ctx, composeParseRequest{
+		Path:        path,
+		SourceName:  sourceName,
+		ProjectName: opts.ProjectName,
+		Swarm:       opts.Swarm,
+		ReadRoots:   roots,
+	})
+}
+
+// recoverParse runs parse, the parse of the compose file at path, turning a
+// panic into an error: the loader panics on some mistyped fields, such as
+// an extends file that is not a string.
+func recoverParse(path string, parse func() (GraphSnapshot, error)) (snap GraphSnapshot, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%s: loading failed: %v", path, r)
+		}
+	}()
+	return parse()
+}
+
+// baseLoadOptions returns the loader options every load of a parse shares,
+// workingDir being the load's and files the parse's extends files.
+// env_file and label_file paths would be read from DockGraph's own
+// filesystem, not the host's, so they are skipped: only values written in
+// compose files are displayed. Includes are done by includeLoader, and
+// extends files are checked by extendsFileGuard.
+func baseLoadOptions(workingDir string, files *extendsFiles) func(*loader.Options) {
+	return func(o *loader.Options) {
+		o.SkipResolveEnvironment = true
+		o.SkipResolveLabels = true
+		o.SkipInclude = true
+		o.ResourceLoaders = []loader.ResourceLoader{extendsFileGuard{workingDir: workingDir, files: files}}
+	}
+}
+
+// loadComposeFile does the work of parseComposeFileWith.
+func loadComposeFile(ctx context.Context, path, sourceName string, opts composeParseOptions) (snap GraphSnapshot, err error) {
+	budget := &composeBudget{}
+	extends := newExtendsFiles(budget)
+
+	data, err := budget.read(path)
 	if err != nil {
 		return GraphSnapshot{}, err
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
+	file, projectName, err := composeMainFile(ctx, path, data, opts, budget, extends)
+	if err != nil {
+		return GraphSnapshot{}, err
+	}
+	// As with `docker compose -f path`, the project directory is the file's:
+	// relative extends files and bind mounts are relative to it.
+	dir := filepath.Dir(path)
 	project, err := loader.LoadWithContext(ctx, composetypes.ConfigDetails{
-		ConfigFiles: []composetypes.ConfigFile{
-			{Filename: path, Content: data},
-		},
-	}, func(o *loader.Options) {
+		WorkingDir:  dir,
+		ConfigFiles: []composetypes.ConfigFile{file},
+	}, baseLoadOptions(dir, extends), func(o *loader.Options) {
 		switch {
+		case projectName != "":
+			// Named by composeMainFile as the cases below and the file's
+			// own name would name it, which spares the loader reading the
+			// file once more for its name.
+			o.SetProjectName(projectName, true)
 		case opts.ProjectName != "":
 			o.SetProjectName(loader.NormalizeProjectName(opts.ProjectName), true)
 		case opts.Swarm:
 			// Stack files rarely declare `name`; default to the file basename.
-			base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-			o.SetProjectName(loader.NormalizeProjectName(base), false)
+			o.SetProjectName(loader.NormalizeProjectName(fileBaseName(path)), false)
 		}
 	})
 	if err != nil {
@@ -380,7 +419,6 @@ func parseComposeFileWith(ctx context.Context, path, sourceName string, opts com
 	}
 
 	naming := newComposeNaming(project, opts.Swarm)
-	var snap GraphSnapshot
 
 	networkNodes, trackedNets := buildComposeNetworkNodes(project, naming, sourceName)
 	snap.Nodes = append(snap.Nodes, networkNodes...)

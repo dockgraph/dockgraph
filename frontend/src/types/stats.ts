@@ -153,7 +153,8 @@ export interface ServiceDetail {
   labels?: Record<string, string> | null;
   createdAt?: string;
   updatedAt?: string;
-  ports: { host: number; container: number; protocol: string; publishMode: string }[];
+  /** hostEnd and containerEnd end a range of ports, as in PortMapping. */
+  ports: { host: number; hostEnd?: number; container: number; containerEnd?: number; protocol: string; publishMode: string }[];
   networks: { name: string; aliases?: string[] | null }[];
   image?: string;
   cmd?: string[] | null;

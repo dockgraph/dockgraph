@@ -993,3 +993,13 @@ func TestSelfServicesTransientError(t *testing.T) {
 		t.Errorf("transient failure not retried after the TTL: %d calls", calls)
 	}
 }
+
+// A task's error is free text from the daemon (a failed pull names the
+// image reference, a failed start the command) and is masked like a value.
+func TestBuildTaskInfoMasksError(t *testing.T) {
+	task := swarm.Task{ID: "t1", Status: swarm.TaskStatus{Err: "pull failed: https://deploy:RegPass1@registry.example.com/v2/"}}
+	got := buildTaskInfo(task, nil).Error
+	if got != "pull failed: https://deploy:********@registry.example.com/v2/" {
+		t.Errorf("Error = %q", got)
+	}
+}

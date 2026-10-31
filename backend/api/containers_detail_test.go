@@ -1,6 +1,8 @@
 package api
 
 import (
+	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -95,6 +97,29 @@ func TestBuildPorts(t *testing.T) {
 			if !hostPorts[expected] {
 				t.Errorf("expected hostPort %s in results", expected)
 			}
+		}
+	})
+
+	t.Run("range bound for IPv4 and IPv6 is one entry", func(t *testing.T) {
+		portMap := nat.PortMap{}
+		for port := 8000; port <= 8002; port++ {
+			host := strconv.Itoa(port)
+			portMap[nat.Port(host+"/udp")] = []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: host}, {HostIP: "::", HostPort: host}}
+		}
+		portMap["9000/tcp"] = []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "9000"}, {HostIP: "::", HostPort: "9000"}}
+		ports := buildPorts(containertypes.InspectResponse{NetworkSettings: networkSettingsWithPorts(portMap)})
+		want := []map[string]any{
+			{"hostPort": "8000-8002", "containerPort": "8000-8002", "protocol": "udp"},
+			{"hostPort": "9000", "containerPort": "9000", "protocol": "tcp"},
+		}
+		if !reflect.DeepEqual(ports, want) {
+			t.Errorf("ports = %v, want %v", ports, want)
+		}
+	})
+
+	t.Run("no network settings", func(t *testing.T) {
+		if ports := buildPorts(containertypes.InspectResponse{}); len(ports) != 0 {
+			t.Errorf("expected 0 ports, got %v", ports)
 		}
 	})
 

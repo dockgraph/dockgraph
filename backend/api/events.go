@@ -18,7 +18,7 @@ func HandleRecentEvents(history *collector.EventHistory) http.HandlerFunc {
 			}
 		}
 
-		events := history.Recent(limit)
+		events := history.Recent(limit) // attributes are masked on Add
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{

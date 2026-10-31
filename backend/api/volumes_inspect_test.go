@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	cerrdefs "github.com/containerd/errdefs"
@@ -38,6 +39,73 @@ func validVolume() volumetypes.Volume {
 		Labels:     map[string]string{"app": "database", "tier": "storage"},
 		Options:    map[string]string{"type": "nfs", "device": ":/exports/data"},
 		Status:     map[string]any{"mounted": true},
+	}
+}
+
+func TestHandleVolumeInspect_MasksDriverCredentials(t *testing.T) {
+	vol := validVolume()
+	vol.Options = map[string]string{"type": "cifs", "device": "//nas/share", "o": "addr=10.0.0.5,username=app,password=CifsPass1"}
+	vol.Labels = map[string]string{"backup.token": "tok-123", "app": "files"}
+
+	w := httptest.NewRecorder()
+	newVolumeInspectServer(&stubVolumeInspector{result: vol}).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/volumes/my-volume", nil))
+
+	var body struct {
+		Options map[string]string `json:"options"`
+		Labels  map[string]string `json:"labels"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got := body.Options["o"]; got != "addr=10.0.0.5,username=app,password=********" {
+		t.Errorf(`options["o"] = %q`, got)
+	}
+	if body.Labels["backup.token"] != "********" || body.Labels["app"] != "files" {
+		t.Errorf("labels = %v", body.Labels)
+	}
+}
+
+// Driver status is free-form and masked like options.
+func TestHandleVolumeInspect_MasksDriverStatus(t *testing.T) {
+	vol := validVolume()
+	vol.Status = map[string]any{"mounted": true, "token": "tok-123", "source": "smb://app:SmbPass1@nas/share"}
+
+	w := httptest.NewRecorder()
+	newVolumeInspectServer(&stubVolumeInspector{result: vol}).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/volumes/my-volume", nil))
+
+	var body struct {
+		Status map[string]any `json:"status"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Status["token"] != "********" || body.Status["source"] != "smb://app:********@nas/share" || body.Status["mounted"] != true {
+		t.Errorf("status = %v", body.Status)
+	}
+}
+
+// Nested status values are masked too.
+func TestHandleVolumeInspect_MasksNestedDriverStatus(t *testing.T) {
+	vol := validVolume()
+	vol.Status = map[string]any{
+		"mount": map[string]any{"password": "NestedPass1", "server": "nas"},
+		"args":  []any{"--password", "ListPass1", "--port", "445"},
+		"mixed": []any{"-o", "--password", "MixedPass1", 1},
+		"urls":  []any{"smb://app:UrlPass1@nas/share"},
+	}
+
+	w := httptest.NewRecorder()
+	newVolumeInspectServer(&stubVolumeInspector{result: vol}).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/volumes/my-volume", nil))
+	body := w.Body.String()
+	for _, secret := range []string{"NestedPass1", "ListPass1", "MixedPass1", "UrlPass1"} {
+		if strings.Contains(body, secret) {
+			t.Errorf("%s in %s", secret, body)
+		}
+	}
+	for _, kept := range []string{`"server":"nas"`, `"445"`} {
+		if !strings.Contains(body, kept) {
+			t.Errorf("%s missing from %s", kept, body)
+		}
 	}
 }
 

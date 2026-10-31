@@ -47,46 +47,67 @@ func (d *dockerHealth) HealthCheck(ctx context.Context) error {
 	return err
 }
 
+// printUsage prints the --help text.
+func printUsage() {
+	fmt.Println("Usage: dockgraph [--version | --help | --healthcheck | --agent-keygen | --agent-pubkey]")
+	fmt.Println()
+	fmt.Println("  --agent-keygen  Print a new private key for the swarm server (DG_AGENT_KEY)")
+	fmt.Println("  --agent-pubkey  Read that private key from stdin and print the agents' public key")
+	fmt.Println()
+	fmt.Println("Real-time Docker infrastructure topology visualizer.")
+	fmt.Println()
+	fmt.Println("Environment variables:")
+	fmt.Println("  DG_BIND_ADDR       Listen address (default: 0.0.0.0)")
+	fmt.Println("  DG_PORT            HTTP port (default: 7800)")
+	fmt.Println("  DG_POLL_INTERVAL   Docker API poll interval (default: 30s)")
+	fmt.Println("  DG_COMPOSE_PATH    Comma-separated compose/stack file paths, optionally name=/path (default: auto-detect)")
+	fmt.Println("  DG_PASSWORD        Password for UI/WebSocket access (or DG_PASSWORD_FILE; default: disabled)")
+	fmt.Println("  DG_TRUSTED_PROXIES Reverse proxy IPs/CIDRs whose X-Forwarded-For/-Proto are trusted (default: none)")
+	fmt.Println("  DG_ALLOWED_HOSTS   Host names served besides IPs and localhost, .example.com for subdomains, * for any")
+	fmt.Println("                     (default: checked only without DG_PASSWORD)")
+	fmt.Println("  DG_STATS_INTERVAL  Stats poll interval (default: 3s)")
+	fmt.Println("  DG_STATS_WORKERS   Max concurrent stats calls (default: 50)")
+	fmt.Println("  DG_MODE            auto | standalone | swarm | agent (default: auto)")
+	fmt.Println("  DG_SWARM_POLL_INTERVAL  Swarm task poll interval (default: 5s)")
+	fmt.Println("  DG_AGENT_PORT      Per-node agent HTTP port (default: 7801)")
+	fmt.Println("  DG_AGENT_ADDR      DNS name resolving to all agents (default: tasks.agent)")
+	fmt.Println("  DG_AGENT_KEY       Server: private key signing agent requests (or DG_AGENT_KEY_FILE)")
+	fmt.Println("  DG_AGENT_PUBLIC_KEY  Agent: the server's public key(s) (or DG_AGENT_PUBLIC_KEY_FILE)")
+	fmt.Println("  DG_AGENT_TOKEN     Older shared agent secret, used without keys (or DG_AGENT_TOKEN_FILE)")
+}
+
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Println("dockgraph", Version)
-		os.Exit(0)
-	}
+	// First: a process started to parse a compose file does only that.
+	collector.ServeComposeParse()
 
-	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
-		fmt.Println("Usage: dockgraph [--version | --help | --healthcheck]")
-		fmt.Println()
-		fmt.Println("Real-time Docker infrastructure topology visualizer.")
-		fmt.Println()
-		fmt.Println("Environment variables:")
-		fmt.Println("  DG_BIND_ADDR       Listen address (default: 0.0.0.0)")
-		fmt.Println("  DG_PORT            HTTP port (default: 7800)")
-		fmt.Println("  DG_POLL_INTERVAL   Docker API poll interval (default: 30s)")
-		fmt.Println("  DG_COMPOSE_PATH    Comma-separated compose/stack file paths, optionally name=/path (default: auto-detect)")
-		fmt.Println("  DG_PASSWORD        Password for UI/WebSocket access (or DG_PASSWORD_FILE; default: disabled)")
-		fmt.Println("  DG_STATS_INTERVAL  Stats poll interval (default: 3s)")
-		fmt.Println("  DG_STATS_WORKERS   Max concurrent stats calls (default: 50)")
-		fmt.Println("  DG_MODE            auto | standalone | swarm | agent (default: auto)")
-		fmt.Println("  DG_SWARM_POLL_INTERVAL  Swarm task poll interval (default: 5s)")
-		fmt.Println("  DG_AGENT_PORT      Per-node agent HTTP port (default: 7801)")
-		fmt.Println("  DG_AGENT_ADDR      DNS name resolving to all agents (default: tasks.agent)")
-		fmt.Println("  DG_AGENT_TOKEN     Shared agent secret (or DG_AGENT_TOKEN_FILE; required in agent mode)")
-		os.Exit(0)
-	}
-
-	// Before LoadConfig: the probe runs every healthcheck interval and must
-	// not read secrets or run the Argon2id password hash each time.
-	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {
-		httpClient := &http.Client{Timeout: 5 * time.Second}
-		resp, err := httpClient.Get("http://localhost:" + healthcheckPort() + "/healthz")
-		if err != nil {
-			os.Exit(1)
+	if len(os.Args) > 1 {
+		switch arg := os.Args[1]; arg {
+		case "--version":
+			fmt.Println("dockgraph", Version)
+			os.Exit(0)
+		case "--help", "-h":
+			printUsage()
+			os.Exit(0)
+		case cmdAgentKeygen, cmdAgentPubkey:
+			if err := runKeyCommand(arg, os.Stdin, os.Stdout); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		case "--healthcheck":
+			// Before LoadConfig: the probe runs every healthcheck interval and
+			// must not read secrets or run the Argon2id password hash each time.
+			httpClient := &http.Client{Timeout: 5 * time.Second}
+			resp, err := httpClient.Get("http://localhost:" + healthcheckPort() + "/healthz")
+			if err != nil {
+				os.Exit(1)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				os.Exit(1)
+			}
+			os.Exit(0)
 		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			os.Exit(1)
-		}
-		os.Exit(0)
 	}
 
 	cfg := LoadConfig()
@@ -112,8 +133,8 @@ func main() {
 	log.Printf("INFO  Running in %s mode", mode)
 
 	if cfg.PasswordHash == "" {
-		log.Println("WARN  Authentication is disabled. Set DG_PASSWORD to enable protection.")
-		log.Println("WARN  Tip: generate a strong password with: openssl rand -base64 24")
+		log.Println("WARN  Authentication is disabled: anyone who can reach this port, including other containers on this host, can read container configuration and logs.")
+		log.Println("WARN  Set DG_PASSWORD (or DG_PASSWORD_FILE) unless the port is published on 127.0.0.1 only. Tip: openssl rand -base64 24")
 	} else {
 		log.Println("INFO  Authentication enabled")
 	}
@@ -153,16 +174,26 @@ func main() {
 	}
 
 	sc := collector.NewStatsCollector(dockerCli, cfg.StatsInterval, cfg.StatsWorkers)
-	var serverOpts []api.ServerOption
+	serverOpts := []api.ServerOption{api.WithTrustedProxies(cfg.TrustedProxies)}
+	allowedHosts := cfg.AllowedHosts
+	if allowedHosts == nil && cfg.PasswordHash == "" {
+		// Without a session cookie, which the browser keeps per host name,
+		// the Host header is what tells a foreign name resolving here apart.
+		allowedHosts = &api.HostAllowlist{}
+		log.Println("INFO  Serving requests for IP addresses and localhost only; list host names in DG_ALLOWED_HOSTS")
+	}
+	if allowedHosts != nil {
+		serverOpts = append(serverOpts, api.WithHostAllowlist(allowedHosts))
+	}
 	if swarmMode {
 		sc.SetLocalNode(swarmInfo.NodeID, hostname)
-		if cfg.AgentToken == "" {
-			log.Println("INFO  DG_AGENT_TOKEN not set: agents disabled, stats and container logs limited to this node")
-		} else {
+		agentAuth, notice := serverAgentAuth(cfg)
+		log.Println(notice)
+		if agentAuth != nil {
 			pool := collector.NewAgentPool(collector.AgentPoolConfig{
 				Addr:        cfg.AgentAddr,
 				Port:        cfg.AgentPort,
-				Token:       cfg.AgentToken,
+				Auth:        agentAuth,
 				LocalNodeID: swarmInfo.NodeID,
 				Tasks:       dockerCli,
 			})
@@ -172,7 +203,7 @@ func main() {
 			serverOpts = append(serverOpts, api.WithAgentProxy(&api.AgentProxy{
 				Locator:       pool,
 				Agents:        pool,
-				Token:         cfg.AgentToken,
+				Auth:          agentAuth,
 				LocalHostname: hostname,
 			}))
 		}
@@ -200,6 +231,8 @@ func main() {
 			Sessions:     auth.NewSessionManager(),
 			Limiter:      auth.NewRateLimiter(5, time.Minute),
 			LoginPage:    frontend.LoginHTML,
+			LoginScript:  frontend.LoginScript,
+			Proxies:      cfg.TrustedProxies,
 		}
 		go func() {
 			ticker := time.NewTicker(5 * time.Minute)
@@ -216,6 +249,7 @@ func main() {
 	}
 
 	hub := api.NewHub()
+	hub.ClientKey = cfg.TrustedProxies.ClientKey
 	if authService != nil {
 		hub.CheckExpired = func(iat, exp time.Time) bool {
 			return time.Now().After(exp) || !authService.Sessions.IsValid(iat)
@@ -271,9 +305,15 @@ func main() {
 }
 
 // runAgent serves the per-node agent API (DG_MODE=agent) until ctx is
-// cancelled. It exits when no agent token is configured.
+// cancelled. It exits without credentials (the server's public key or a
+// token) and when given the server's private key.
 func runAgent(ctx context.Context, cfg Config, dockerCli *client.Client) {
+	notice, err := agentAuthNotice(cfg)
+	if err != nil {
+		log.Fatalf("agent: %v", err)
+	}
 	srv, err := agent.New(dockerCli, agent.Config{
+		PublicKeys:    cfg.AgentPublicKeys,
 		Token:         cfg.AgentToken,
 		StatsInterval: cfg.StatsInterval,
 		StatsWorkers:  cfg.StatsWorkers,
@@ -283,6 +323,7 @@ func runAgent(ctx context.Context, cfg Config, dockerCli *client.Client) {
 		log.Fatalf("agent: %v", err)
 	}
 	log.Println("INFO  Running in agent mode")
+	log.Println(notice)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

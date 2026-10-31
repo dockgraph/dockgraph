@@ -5,6 +5,7 @@ import { STATUS_COLORS, networkColor } from "../../utils/colors";
 import { METRIC_COLORS } from "../dashboard/palette";
 import { formatBytes } from "../../utils/formatBytes";
 import { INACTIVE_OPACITY } from "../../utils/constants";
+import { portMapping } from "../../utils/ports";
 import { isServiceLive, projectOf, replicaText } from "../../utils/stack";
 import { tableRow } from "./tableStyles";
 import type { DGNode } from "../../types";
@@ -23,7 +24,7 @@ const ACTIVE_STATUSES = new Set(["running", "unhealthy"]);
 function formatPorts(node: DGNode): string {
   if (!node.ports || node.ports.length === 0) return "\u2014";
   const visible = node.ports.slice(0, 3);
-  const text = visible.map((p) => `${p.host}:${p.container}`).join(", ");
+  const text = visible.map((p) => portMapping(p)).join(", ");
   const overflow = node.ports.length - 3;
   return overflow > 0 ? `${text} +${overflow}` : text;
 }

@@ -76,9 +76,9 @@ func containerStatus(state, statusStr string) string {
 }
 
 // extractPorts converts Docker's port list into the wire-format representation,
-// keeping only ports that have a published (host) mapping. Docker returns
-// separate entries for IPv4 and IPv6 bindings, so we deduplicate by
-// host:container pair.
+// keeping only ports that have a published (host) mapping, ranges as ranges
+// (see PortRanges). Docker returns separate entries for IPv4 and IPv6
+// bindings, so we deduplicate by host:container pair.
 func extractPorts(apiPorts []containertypes.Port) []PortMapping {
 	type portKey struct{ host, container int }
 	seen := make(map[portKey]bool)
@@ -95,5 +95,5 @@ func extractPorts(apiPorts []containertypes.Port) []PortMapping {
 			}
 		}
 	}
-	return ports
+	return PortRanges(ports)
 }

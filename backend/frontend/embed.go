@@ -7,3 +7,6 @@ var Assets embed.FS
 
 //go:embed login.html
 var LoginHTML []byte
+
+//go:embed login.js
+var LoginScript []byte

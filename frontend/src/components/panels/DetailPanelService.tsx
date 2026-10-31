@@ -11,6 +11,7 @@ import { DetailPanelMounts } from './DetailPanelMounts';
 import { DetailPanelEnv } from './DetailPanelEnv';
 import { DetailPanelLabels } from './DetailPanelLabels';
 import { DetailPanelLogs } from './DetailPanelLogs';
+import { portSpan } from '../../utils/ports';
 import { taskContainerName } from '../../utils/stack';
 import { taskSlot } from '../../utils/nodeTransform';
 import type { ContainerStatsData, ServiceDetail } from '../../types/stats';
@@ -67,8 +68,8 @@ export function DetailPanelService({ detail, statsMap, active, onNavigate }: Pro
   const mono = monoStyle(theme.panelText);
   const tasks = detail.tasks ?? [];
   const ports = (detail.ports ?? []).map((p) => ({
-    hostPort: p.host ? String(p.host) : '—',
-    containerPort: String(p.container),
+    hostPort: p.host ? portSpan(p.host, p.hostEnd) : '—',
+    containerPort: portSpan(p.container, p.containerEnd),
     protocol: p.publishMode ? `${p.protocol} (${p.publishMode})` : p.protocol,
   }));
 

@@ -63,16 +63,10 @@ func HandleStatsHistory(history *collector.StatsHistory, lister ContainerLister,
 			return
 		}
 
-		now := time.Now()
-		result := history.Query(now.Add(-dur), now)
-
+		// The series are chosen before the query, which thins its points
+		// by the series it returns.
 		wantNodes := scope == scopeNodes
-		for name := range result.Containers {
-			if collector.IsNodeSeries(name) != wantNodes {
-				delete(result.Containers, name)
-			}
-		}
-
+		keep := func(name string) bool { return collector.IsNodeSeries(name) == wantNodes }
 		if stack != "" {
 			members, err := stackContainerNames(r.Context(), lister, stack)
 			if err != nil {
@@ -84,12 +78,13 @@ func HandleStatsHistory(history *collector.StatsHistory, lister ContainerLister,
 				jsonError(w, "failed to resolve stack", http.StatusInternalServerError)
 				return
 			}
-			for name := range result.Containers {
-				if !members[name] && !isServiceSeries(name, svcNames) {
-					delete(result.Containers, name)
-				}
+			keep = func(name string) bool {
+				return !collector.IsNodeSeries(name) && (members[name] || isServiceSeries(name, svcNames))
 			}
 		}
+
+		now := time.Now()
+		result := history.Query(now.Add(-dur), now, keep)
 
 		resolution := 3
 		if dur > time.Hour {

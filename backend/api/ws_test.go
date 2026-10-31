@@ -1,6 +1,8 @@
 package api
 
 import (
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -169,6 +171,149 @@ func TestClientCount(t *testing.T) {
 
 	if hub.ClientCount() != 0 {
 		t.Errorf("expected 0 clients after disconnect, got %d", hub.ClientCount())
+	}
+}
+
+func TestHubClosesOnOversizedClientMessage(t *testing.T) {
+	hub := NewHub()
+	server, ws := dialHub(t, hub)
+	defer server.Close()
+	defer ws.Close()
+
+	if err := ws.WriteMessage(websocket.TextMessage, make([]byte, maxClientMessageSize+1)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		_, _, err := ws.ReadMessage()
+		if err == nil {
+			continue // a snapshot or stats message queued before the close
+		}
+		if !websocket.IsCloseError(err, websocket.CloseMessageTooBig) {
+			t.Fatalf("read error = %v, want close 1009 (message too big)", err)
+		}
+		break
+	}
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() == 0 })
+}
+
+// A connection keeps its slot until its writer is done, and a write to a
+// client that stops reading times out, so a client cannot leave writers
+// behind beyond the connection limits.
+func TestHubHoldsSlotUntilStalledWriterTimesOut(t *testing.T) {
+	prev := streamWriteTimeout
+	streamWriteTimeout = 2 * time.Second
+	t.Cleanup(func() { streamWriteTimeout = prev })
+
+	hub := NewHub()
+	hub.MaxClientsPerKey = 1
+	server := httptest.NewServer(http.HandlerFunc(hub.HandleWS))
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	// A client that never reads, with a small receive buffer, stalls the
+	// writer on a large message.
+	stalled := websocket.Dialer{NetDial: func(network, addr string) (net.Conn, error) {
+		conn, err := net.Dial(network, addr)
+		if err == nil {
+			_ = conn.(*net.TCPConn).SetReadBuffer(4096)
+		}
+		return conn, err
+	}}
+	a, _, err := stalled.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer a.Close()
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() == 1 })
+	nodes := make([]collector.Node, 4000)
+	for i := range nodes {
+		nodes[i] = collector.Node{ID: fmt.Sprint("container:", i), Type: "container", Name: strings.Repeat("n", 4096)}
+	}
+	start := time.Now()
+	hub.Broadcast(collector.StateMessage{Type: "snapshot", Snapshot: &collector.GraphSnapshot{Nodes: nodes}})
+	time.Sleep(300 * time.Millisecond) // the writer fills the socket buffers
+
+	// Its reader ends on EOF, sending nothing that would fail the writer at
+	// once; the writer is still stuck, so the slot stays taken.
+	if err := a.UnderlyingConn().(*net.TCPConn).CloseWrite(); err != nil {
+		t.Fatalf("close write: %v", err)
+	}
+	waitFor(t, time.Second, func() bool { return hub.ClientCount() == 0 })
+	b, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer b.Close()
+	b.SetReadDeadline(time.Now().Add(time.Second))
+	if _, _, err := b.ReadMessage(); !websocket.IsCloseError(err, websocket.CloseTryAgainLater) {
+		t.Fatalf("second connection: read error %v, want close 1013 while the first one's writer holds the slot", err)
+	}
+
+	// The write times out, the writer exits and frees the slot.
+	waitFor(t, 3*streamWriteTimeout, func() bool {
+		l := hub.limiter()
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		return l.total == 0
+	})
+	if elapsed := time.Since(start); elapsed < streamWriteTimeout {
+		t.Errorf("slot freed after %s, before the write deadline (%s) could end the writer", elapsed, streamWriteTimeout)
+	}
+}
+
+// Shutdown takes about a second overall, not a second per client, however
+// many writers are stuck on clients that stopped reading.
+func TestHubShutdownBoundedWithStuckWriters(t *testing.T) {
+	hub := NewHub()
+	server := httptest.NewServer(http.HandlerFunc(hub.HandleWS))
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	stalled := websocket.Dialer{NetDial: func(network, addr string) (net.Conn, error) {
+		conn, err := net.Dial(network, addr)
+		if err == nil {
+			_ = conn.(*net.TCPConn).SetReadBuffer(4096)
+		}
+		return conn, err
+	}}
+	const n = 5
+	for range n {
+		c, _, err := stalled.Dial(wsURL, nil)
+		if err != nil {
+			t.Fatalf("dial: %v", err)
+		}
+		defer c.Close()
+	}
+	waitFor(t, 2*time.Second, func() bool { return hub.ClientCount() == n })
+	nodes := make([]collector.Node, 4000)
+	for i := range nodes {
+		nodes[i] = collector.Node{ID: fmt.Sprint("container:", i), Type: "container", Name: strings.Repeat("n", 4096)}
+	}
+	hub.Broadcast(collector.StateMessage{Type: "snapshot", Snapshot: &collector.GraphSnapshot{Nodes: nodes}})
+	time.Sleep(300 * time.Millisecond) // the writers fill the socket buffers
+
+	start := time.Now()
+	hub.Shutdown()
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("Shutdown took %s with %d stuck writers, want about a second", elapsed, n)
+	}
+}
+
+func TestHubKeepsClientWithinMessageLimit(t *testing.T) {
+	hub := NewHub()
+	server, ws := dialHub(t, hub)
+	defer server.Close()
+	defer ws.Close()
+
+	if err := ws.WriteMessage(websocket.TextMessage, make([]byte, maxClientMessageSize)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	hub.Broadcast(collector.StateMessage{Type: "delta", Delta: &collector.DeltaUpdate{}})
+	ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var wireMsg collector.WireMessage
+	if err := ws.ReadJSON(&wireMsg); err != nil {
+		t.Fatalf("read error: %v", err)
 	}
 }
 

@@ -1,6 +1,14 @@
+/**
+ * A published port, or a range of them: with hostEnd and containerEnd, host
+ * ports host..hostEnd map one to one to container ports
+ * container..containerEnd; with hostEnd alone, the container port is
+ * published on one host port of that range.
+ */
 export interface PortMapping {
   host: number;
+  hostEnd?: number;
   container: number;
+  containerEnd?: number;
   protocol?: string;
 }
 

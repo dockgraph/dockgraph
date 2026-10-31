@@ -7,6 +7,7 @@ import { StatsMini } from './StatsMini';
 import { STATUS_COLORS, STATUS_LABELS } from '../utils/colors';
 import { useTheme } from '../theme';
 import { ghostBorder, railColor, NODE_NAME_FONT, REPLICA_BADGE_FONT } from '../utils/nodeStyles';
+import { containerPorts, hostPorts } from '../utils/ports';
 import { CONTAINER_NODE_HEIGHT, INACTIVE_OPACITY, zoomSelector } from '../utils/constants';
 import { isServiceLive, replicaText } from '../utils/stack';
 import type { ServiceNodeData } from '../types';
@@ -165,7 +166,7 @@ export const ServiceNode = memo(function ServiceNode({ data }: NodeProps) {
         <div style={{ marginTop: 5, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {dgNode.ports.slice(0, 3).map((p, i) => (
             <span
-              key={`${i}-${p.host}-${p.container}`}
+              key={`${i}-${hostPorts(p)}-${containerPorts(p)}`}
               style={{
                 fontFamily: 'var(--dg-font-mono)',
                 fontSize: 9.5,
@@ -177,7 +178,7 @@ export const ServiceNode = memo(function ServiceNode({ data }: NodeProps) {
                 whiteSpace: 'nowrap',
               }}
             >
-              {p.host ? <>:{p.host}&#8201;&rarr;&#8201;</> : null}{p.container}
+              {p.host ? <>:{hostPorts(p)}&#8201;&rarr;&#8201;</> : null}{containerPorts(p)}
             </span>
           ))}
           {dgNode.ports.length > 3 && (

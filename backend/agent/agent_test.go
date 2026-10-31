@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 	systemtypes "github.com/docker/docker/api/types/system"
 	volumetypes "github.com/docker/docker/api/types/volume"
+	"github.com/dockgraph/dockgraph/agentauth"
 	"github.com/dockgraph/dockgraph/collector"
 )
 
@@ -118,11 +120,98 @@ func get(t *testing.T, url, bearer string) *http.Response {
 	return resp
 }
 
-func TestNewRequiresToken(t *testing.T) {
+func TestNewRequiresCredentials(t *testing.T) {
 	for _, tok := range []string{"", "   "} {
-		if _, err := New(&stubDocker{}, Config{Token: tok}); !errors.Is(err, ErrNoToken) {
-			t.Errorf("token %q: got %v, want ErrNoToken", tok, err)
+		if _, err := New(&stubDocker{}, Config{Token: tok}); !errors.Is(err, ErrNoCredentials) {
+			t.Errorf("token %q: got %v, want ErrNoCredentials", tok, err)
 		}
+	}
+}
+
+// signedTestServer starts an agent that accepts only requests signed with
+// the returned key.
+func signedTestServer(t *testing.T) (*agentauth.Signer, *httptest.Server) {
+	t.Helper()
+	keyText, err := agentauth.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := agentauth.ParsePrivateKey(keyText)
+	publicKeys, _ := agentauth.ParsePublicKeys(agentauth.PublicKeyText(key))
+	// The token is set too: with keys it must be ignored.
+	srv, err := New(&stubDocker{}, Config{PublicKeys: publicKeys, Token: token, StatsInterval: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	return agentauth.NewSigner(key), ts
+}
+
+func TestSignedModeAcceptsSignedRequests(t *testing.T) {
+	signer, ts := signedTestServer(t)
+	for _, path := range []string{"/info", "/stats", "/containers/shop_web.1.t1", "/volumes/shop_data"} {
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+collector.AgentAPIPrefix+path, nil)
+		if err := signer.Authorize(req); err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", path, resp.StatusCode)
+		}
+	}
+}
+
+// With keys, the token no longer opens the agent, nor does a request signed
+// by another key.
+func TestSignedModeRejectsTokenAndOtherKeys(t *testing.T) {
+	_, ts := signedTestServer(t)
+	url := ts.URL + collector.AgentAPIPrefix + "/info"
+
+	resp := get(t, url, token)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("token only: status %d, want 401", resp.StatusCode)
+	}
+	if got := resp.Header.Get("WWW-Authenticate"); got != challengeSignature {
+		t.Errorf("WWW-Authenticate %q, want %q", got, challengeSignature)
+	}
+
+	otherText, _ := agentauth.GenerateKey()
+	other, _ := agentauth.ParsePrivateKey(otherText)
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	_ = agentauth.NewSigner(other).Authorize(req)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != http.StatusUnauthorized {
+		t.Errorf("other key: status %d, want 401", r.StatusCode)
+	}
+
+	if resp := get(t, ts.URL+"/healthz", ""); resp.StatusCode != http.StatusOK {
+		t.Errorf("healthz: %d", resp.StatusCode)
+	}
+}
+
+// A misconfigured server is rejected on every poll; the agent logs each
+// reason only once in a while.
+func TestSignedModeLogsRejectionsSparingly(t *testing.T) {
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	_, ts := signedTestServer(t)
+	for range 5 {
+		get(t, ts.URL+collector.AgentAPIPrefix+"/stats", "")
+	}
+	if n := strings.Count(buf.String(), "rejected a request"); n != 1 {
+		t.Errorf("logged %d rejections, want 1:\n%s", n, buf.String())
 	}
 }
 

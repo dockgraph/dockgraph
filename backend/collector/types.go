@@ -23,11 +23,17 @@ import (
 	volumetypes "github.com/docker/docker/api/types/volume"
 )
 
-// PortMapping represents a host-to-container port binding.
+// PortMapping represents a host-to-container port binding, or a range of
+// them (see PortRanges). With HostEnd and ContainerEnd set, host ports Host
+// to HostEnd map one to one to container ports Container to ContainerEnd;
+// with HostEnd alone, the container port is published on one host port of
+// that range, as Docker picks it.
 type PortMapping struct {
-	Host      int    `json:"host"`
-	Container int    `json:"container"`
-	Protocol  string `json:"protocol,omitempty"`
+	Host         int    `json:"host"`
+	HostEnd      int    `json:"hostEnd,omitempty"`
+	Container    int    `json:"container"`
+	ContainerEnd int    `json:"containerEnd,omitempty"`
+	Protocol     string `json:"protocol,omitempty"`
 }
 
 // Node represents a single element in the infrastructure graph.
@@ -172,8 +178,10 @@ type DeltaUpdate struct {
 // message. Bump it on any change an older frontend cannot safely render; the
 // frontend reloads itself to fetch a matching bundle when it differs.
 //
-// Version 2 adds the "service" and "swarmnode" node types.
-const ProtocolVersion = 2
+// Version 2 adds the "service" and "swarmnode" node types. Version 3 lists
+// port ranges as one mapping (hostEnd, containerEnd), which an older
+// frontend would show as their first port only.
+const ProtocolVersion = 3
 
 // WireMessage is the envelope sent over the WebSocket connection.
 // Type is either "snapshot" or "delta", and Data contains the corresponding payload.

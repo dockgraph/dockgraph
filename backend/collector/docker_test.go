@@ -143,10 +143,11 @@ func TestExtractPorts(t *testing.T) {
 	if len(ports) != 2 {
 		t.Fatalf("expected 2 ports, got %d", len(ports))
 	}
-	if ports[0].Host != 8080 || ports[0].Container != 80 {
+	// Sorted by host port.
+	if ports[0].Host != 443 || ports[0].Container != 443 {
 		t.Errorf("first port: got %+v", ports[0])
 	}
-	if ports[1].Host != 443 || ports[1].Container != 443 {
+	if ports[1].Host != 8080 || ports[1].Container != 80 {
 		t.Errorf("second port: got %+v", ports[1])
 	}
 }

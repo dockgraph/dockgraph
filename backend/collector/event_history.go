@@ -3,6 +3,8 @@ package collector
 import (
 	"sync"
 	"time"
+
+	"github.com/dockgraph/dockgraph/secrets"
 )
 
 // DockerEvent is a simplified Docker event stored in the history buffer.
@@ -32,8 +34,19 @@ func NewEventHistory(capacity int) *EventHistory {
 	}
 }
 
-// Add appends an event in O(1), overwriting the oldest if at capacity.
+// eventAttributes are the event attributes the history keeps. Docker also
+// attaches every label of a container to its events; those are dropped, as
+// whoever runs a container controls their number and size, and they are
+// where credentials turn up.
+var eventAttributes = []string{"name", "image", "exitCode", "signal", "driver", "type", "container"}
+
+// Add appends an event in O(1), overwriting the oldest if at capacity. It
+// keeps only eventAttributes, each cut to MaxNameBytes like the name, so an
+// event costs a bounded amount whatever its container carries. The values
+// kept are masked here, once, and never held in clear.
 func (h *EventHistory) Add(e DockerEvent) {
+	e.Name = CapText(e.Name, MaxNameBytes)
+	e.Attributes = keptAttributes(e.Attributes)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.buf[h.head] = e
@@ -41,6 +54,23 @@ func (h *EventHistory) Add(e DockerEvent) {
 	if h.count < h.capacity {
 		h.count++
 	}
+}
+
+// keptAttributes returns the eventAttributes of attrs, values cut to
+// MaxNameBytes and masked, or nil when attrs has none of them.
+func keptAttributes(attrs map[string]string) map[string]string {
+	var kept map[string]string
+	for _, k := range eventAttributes {
+		v, ok := attrs[k]
+		if !ok {
+			continue
+		}
+		if kept == nil {
+			kept = make(map[string]string, len(eventAttributes))
+		}
+		kept[k] = secrets.MaskEnvValue(k, CapText(v, MaxNameBytes))
+	}
+	return kept
 }
 
 // Recent returns the last n events in reverse chronological order.

@@ -5,6 +5,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
+	"net/textproto"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -12,28 +15,22 @@ import (
 	"time"
 
 	containertypes "github.com/docker/docker/api/types/container"
+	"github.com/dockgraph/dockgraph/agentauth"
+	"github.com/dockgraph/dockgraph/auth"
 )
 
 // stubLocator maps container IDs to agent base URLs.
 type stubLocator struct {
 	mu       sync.Mutex
 	urls     map[string]string // found by LocateContainer
-	cached   map[string]string // found by LocateCached
 	calls    int               // LocateContainer calls
-	rejected bool              // TokenRejected result
+	rejected bool              // CredentialsRejected result
 }
 
-func (s *stubLocator) TokenRejected() bool {
+func (s *stubLocator) CredentialsRejected() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.rejected
-}
-
-func (s *stubLocator) LocateCached(id string) (string, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	u, ok := s.cached[id]
-	return u, ok
 }
 
 func (s *stubLocator) LocateContainer(_ context.Context, id string) (string, bool) {
@@ -82,19 +79,16 @@ func (a *agentRecorder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func newProxiedServer(t *testing.T, agent *agentRecorder, locator *stubLocator) *httptest.Server {
+func newProxiedServer(t *testing.T, agent http.Handler, locator *stubLocator) *httptest.Server {
 	t.Helper()
 	agentSrv := httptest.NewServer(agent)
 	t.Cleanup(agentSrv.Close)
 	for id := range locator.urls {
 		locator.urls[id] = agentSrv.URL
 	}
-	for id := range locator.cached {
-		locator.cached[id] = agentSrv.URL
-	}
 	docker := &stubDockerAPI{logger: &stubContainerLogger{}} // ContainerInspect always fails: nothing is local
 	handler := NewServer(NewHub(), fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, docker, nil, nil, nil, "swarm",
-		WithAgentProxy(&AgentProxy{Locator: locator, Token: "tok"}))
+		WithAgentProxy(&AgentProxy{Locator: locator, Auth: agentauth.Token("tok")}))
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return srv
@@ -172,6 +166,72 @@ func TestAgentProxyLogsStreamFlushesAndCancels(t *testing.T) {
 	}
 }
 
+// Every route that reaches an agent signs its request, and the request the
+// agent receives (after the reverse proxy rewrote host, path and headers)
+// is exactly what was signed.
+func TestAgentProxySignedRequestsVerify(t *testing.T) {
+	keyText, err := agentauth.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := agentauth.ParsePrivateKey(keyText)
+	publicKeys, _ := agentauth.ParsePublicKeys(agentauth.PublicKeyText(key))
+	verifier := agentauth.NewVerifier(publicKeys)
+
+	var mu sync.Mutex
+	var verified []error
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := verifier.Verify(r)
+		mu.Lock()
+		verified = append(verified, err)
+		mu.Unlock()
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"name":"x"}`)
+	}))
+	t.Cleanup(agentSrv.Close)
+
+	proxy := &AgentProxy{
+		Locator: &stubLocator{urls: map[string]string{"shop_web.2.t2": agentSrv.URL}},
+		Agents:  stubAgents{{Hostname: "worker-1", BaseURL: agentSrv.URL}},
+		Auth:    agentauth.NewSigner(key),
+	}
+	docker := &stubDockerAPI{logger: &stubContainerLogger{}} // nothing is local
+	srv := httptest.NewServer(NewServer(NewHub(), fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, docker, nil, nil, nil, "swarm",
+		WithAgentProxy(proxy)))
+	t.Cleanup(srv.Close)
+
+	for _, path := range []string{
+		"/api/containers/shop_web.2.t2",
+		"/api/containers/shop_web.2.t2/logs/history?limit=5&before=2026-01-01T00:00:00.000000000Z",
+		"/api/containers/shop_web.2.t2/logs?tail=10",
+		"/api/volumes/shop_data",
+	} {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: status %d", path, resp.StatusCode)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(verified) != 4 {
+		t.Fatalf("agent received %d requests, want 4", len(verified))
+	}
+	for i, err := range verified {
+		if err != nil {
+			t.Errorf("request %d: %v", i+1, err)
+		}
+	}
+}
+
 func TestAgentProxyAgentAuthFailureIsBadGateway(t *testing.T) {
 	agent := &agentRecorder{status: http.StatusUnauthorized, body: `{"error":"unauthorized"}`, ctype: "application/json"}
 	locator := &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}}
@@ -205,34 +265,48 @@ func TestAgentProxyTokenRejectedIsBadGateway(t *testing.T) {
 	}
 }
 
+// setRemoteCaps lowers both one-shot response caps for a test.
+func setRemoteCaps(t *testing.T, limit int64) {
+	t.Helper()
+	oldResponse, oldInspect := maxRemoteResponseBytes, maxRemoteInspectBytes
+	maxRemoteResponseBytes, maxRemoteInspectBytes = limit, limit
+	t.Cleanup(func() { maxRemoteResponseBytes, maxRemoteInspectBytes = oldResponse, oldInspect })
+}
+
 func TestAgentProxyOversizedResponseIsBadGateway(t *testing.T) {
-	old := maxRemoteResponseBytes
-	maxRemoteResponseBytes = 64
-	t.Cleanup(func() { maxRemoteResponseBytes = old })
+	setRemoteCaps(t, 64)
 
 	big := `{"name":"` + strings.Repeat("x", 100) + `"}`
-	for _, chunked := range []bool{false, true} {
-		agent := &agentRecorder{body: big, ctype: "application/json", chunked: chunked}
-		locator := &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}}
-		srv := newProxiedServer(t, agent, locator)
+	for _, path := range []string{"/api/containers/shop_web.2.t2", "/api/containers/shop_web.2.t2/logs/history"} {
+		for _, chunked := range []bool{false, true} {
+			agent := &agentRecorder{body: big, ctype: "application/json", chunked: chunked}
+			locator := &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}}
+			srv := newProxiedServer(t, agent, locator)
 
-		resp, err := http.Get(srv.URL + "/api/containers/shop_web.2.t2")
-		if err != nil {
-			t.Fatal(err)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusBadGateway {
-			t.Errorf("chunked=%v: status %d body %s, want 502", chunked, resp.StatusCode, body)
+			resp, err := http.Get(srv.URL + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusBadGateway {
+				t.Errorf("%s chunked=%v: status %d body %s, want 502", path, chunked, resp.StatusCode, body)
+			}
 		}
 	}
 }
 
+// An inspect answer is decoded to be masked again, so its cap is the lower
+// of the two.
+func TestAgentProxyInspectCapIsLower(t *testing.T) {
+	if maxRemoteInspectBytes >= maxRemoteResponseBytes {
+		t.Errorf("inspect cap %d, want below the response cap %d", maxRemoteInspectBytes, maxRemoteResponseBytes)
+	}
+}
+
 func TestAgentProxyChunkedResponseAtCapPassesThrough(t *testing.T) {
-	old := maxRemoteResponseBytes
 	want := `{"name":"shop_web.2.t2"}`
-	maxRemoteResponseBytes = int64(len(want))
-	t.Cleanup(func() { maxRemoteResponseBytes = old })
+	setRemoteCaps(t, int64(len(want)))
 
 	agent := &agentRecorder{body: want, ctype: "application/json", chunked: true}
 	locator := &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}}
@@ -251,7 +325,7 @@ func TestAgentProxyChunkedResponseAtCapPassesThrough(t *testing.T) {
 
 func TestAgentProxyUnreachableAgent(t *testing.T) {
 	locator := &stubLocator{urls: map[string]string{"shop_web.2.t2": "http://127.0.0.1:1"}}
-	proxy := &AgentProxy{Locator: locator, Token: "tok"}
+	proxy := &AgentProxy{Locator: locator, Auth: agentauth.Token("tok")}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/containers/{id}", proxy.wrap(HandleContainerInspect(&stubContainerInspector{err: errNotFoundStub}), &stubContainerInspector{err: errNotFoundStub}, "", false))
 
@@ -264,7 +338,7 @@ func TestAgentProxyUnreachableAgent(t *testing.T) {
 
 func TestAgentProxyLocalAndUnknownServedLocally(t *testing.T) {
 	locator := &stubLocator{urls: map[string]string{}}
-	proxy := &AgentProxy{Locator: locator, Token: "tok"}
+	proxy := &AgentProxy{Locator: locator, Auth: agentauth.Token("tok")}
 
 	// Local container: served locally, locator not consulted.
 	local := &stubContainerInspector{result: validContainerInspectResponse()}
@@ -321,28 +395,333 @@ func (c *countingInspector) ContainerInspect(ctx context.Context, id string) (co
 	return c.stubContainerInspector.ContainerInspect(ctx, id)
 }
 
-func TestAgentProxyCachedRemoteSkipsLocalProbe(t *testing.T) {
-	agent := &agentRecorder{body: `{"lines":[]}`, ctype: "application/json"}
+// A container the local daemon has is served locally even when the locator
+// would place it on another node.
+func TestAgentProxyLocalContainerWinsOverLocator(t *testing.T) {
+	agent := &agentRecorder{body: `{"name":"from-agent"}`, ctype: "application/json"}
 	agentSrv := httptest.NewServer(agent)
 	t.Cleanup(agentSrv.Close)
-	locator := &stubLocator{cached: map[string]string{"shop_web.2.t2": agentSrv.URL}}
-	proxy := &AgentProxy{Locator: locator, Token: "tok"}
-	inspector := &countingInspector{stubContainerInspector: stubContainerInspector{err: errNotFoundStub}}
+	locator := &stubLocator{urls: map[string]string{"web": agentSrv.URL}}
+	proxy := &AgentProxy{Locator: locator, Auth: agentauth.Token("tok")}
+	inspector := &countingInspector{stubContainerInspector: stubContainerInspector{result: validContainerInspectResponse()}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/containers/{id}/logs/history", proxy.wrap(HandleContainerLogsHistory(&stubDockerAPI{logger: &stubContainerLogger{}}), inspector, "/logs/history", false))
+	mux.HandleFunc("GET /api/containers/{id}", proxy.wrap(HandleContainerInspect(inspector), inspector, "", false))
 
-	for range 3 {
-		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/containers/shop_web.2.t2/logs/history?limit=5", nil))
-		if rec.Code != http.StatusOK {
-			t.Fatalf("status %d", rec.Code)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/containers/web", nil))
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "from-agent") {
+		t.Fatalf("status %d body %s, want the local container", rec.Code, rec.Body.String())
+	}
+	if locator.calls != 0 || agent.path != "" {
+		t.Errorf("locator calls %d, agent path %q; want neither for a local container", locator.calls, agent.path)
+	}
+}
+
+// Only a fixed content type passes from an agent to the browser, so an
+// agent's answer can never be read as a page or script of this origin.
+func TestAgentProxyFixesResponseHeaders(t *testing.T) {
+	for _, tc := range []struct {
+		name, path, ctype string
+		status            int
+		want              string
+	}{
+		{"one-shot as HTML", "/api/containers/shop_web.2.t2", "text/html", http.StatusOK, "application/json"},
+		{"history as script", "/api/containers/shop_web.2.t2/logs/history", "application/javascript", http.StatusOK, "application/json"},
+		{"stream", "/api/containers/shop_web.2.t2/logs", "text/html", http.StatusOK, "text/event-stream"},
+		{"stream error", "/api/containers/shop_web.2.t2/logs", "text/html", http.StatusInternalServerError, "application/json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agent := &agentRecorder{body: `{}`, ctype: tc.ctype, status: tc.status}
+			locator := &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}}
+			srv := newProxiedServer(t, agent, locator)
+
+			resp, err := http.Get(srv.URL + tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if got := resp.Header.Get("Content-Type"); got != tc.want {
+				t.Errorf("Content-Type = %q, want %q", got, tc.want)
+			}
+			if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+			}
+		})
+	}
+}
+
+func TestAgentProxyRedirectIsBadGateway(t *testing.T) {
+	agent := &agentRecorder{status: http.StatusFound, ctype: "text/html"}
+	locator := &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}}
+	srv := newProxiedServer(t, agent, locator)
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Get(srv.URL + "/api/containers/shop_web.2.t2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status %d, want 502", resp.StatusCode)
+	}
+}
+
+// proxiedRoutes are the routes that reach a container's agent: one-shot
+// inspect and log history, and the log stream.
+var proxiedRoutes = []string{
+	"/api/containers/shop_web.2.t2",
+	"/api/containers/shop_web.2.t2/logs/history",
+	"/api/containers/shop_web.2.t2/logs",
+}
+
+// An agent that switches protocols gets a 502 on every route: the browser's
+// connection is never handed over to the agent.
+func TestAgentProxyRefusesProtocolSwitch(t *testing.T) {
+	agent := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		conn, buf, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = buf.WriteString("HTTP/1.1 101 Switching Protocols\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 5\r\n\r\nhello")
+		_ = buf.Flush()
+		_, _ = io.Copy(io.Discard, conn) // hold the connection until the server drops it
+	})
+	srv := newProxiedServer(t, agent, &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}})
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	for _, path := range proxiedRoutes {
+		resp, err := client.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadGateway || strings.Contains(string(body), "hello") {
+			t.Errorf("%s: status %d body %q, want 502", path, resp.StatusCode, body)
 		}
 	}
-	if agent.path != "/agent/v1/containers/shop_web.2.t2/logs/history" {
-		t.Errorf("agent path %q", agent.path)
+}
+
+// Informational responses from an agent (103 Early Hints) don't reach the
+// browser, and the final response keeps the server's security headers.
+func TestAgentProxyDropsInformationalResponses(t *testing.T) {
+	agent := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Link", "</x.js>; rel=preload; as=script")
+		w.Header().Set("Set-Cookie", "dg_session=from-agent")
+		w.WriteHeader(http.StatusEarlyHints)
+		w.Header().Del("Link")
+		w.Header().Del("Set-Cookie")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{}`)
+	})
+	srv := newProxiedServer(t, agent, &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}})
+
+	for _, path := range proxiedRoutes {
+		var informational []int
+		trace := &httptrace.ClientTrace{Got1xxResponse: func(code int, _ textproto.MIMEHeader) error {
+			informational = append(informational, code)
+			return nil
+		}}
+		ctx, cancel := context.WithTimeout(httptrace.WithClientTrace(context.Background(), trace), 5*time.Second)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+path, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			cancel()
+			t.Fatalf("%s: %v", path, err)
+		}
+		if path == proxiedRoutes[2] {
+			buf := make([]byte, 2)
+			_, _ = resp.Body.Read(buf) // the stream stays open; its headers are what matters
+		} else {
+			_, _ = io.ReadAll(resp.Body)
+		}
+		resp.Body.Close()
+		cancel()
+
+		if len(informational) != 0 {
+			t.Errorf("%s: informational responses reached the client: %v", path, informational)
+		}
+		for _, h := range []string{"Content-Security-Policy", "X-Content-Type-Options", "X-Frame-Options"} {
+			if resp.Header.Get(h) == "" {
+				t.Errorf("%s: final response lost %s", path, h)
+			}
+		}
+		if c := resp.Header.Get("Set-Cookie"); c != "" {
+			t.Errorf("%s: agent cookie reached the client: %q", path, c)
+		}
 	}
-	if inspector.calls != 0 || locator.calls != 0 {
-		t.Errorf("local probes %d, full locates %d; want none for a cached remote container", inspector.calls, locator.calls)
+}
+
+// Trailers an agent sends after its body are dropped like its headers.
+func TestAgentProxyDropsTrailers(t *testing.T) {
+	agent := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Trailer", "X-Agent")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{}`)
+		w.Header().Set("X-Agent", "announced")
+		w.Header().Set(http.TrailerPrefix+"Set-Cookie", "dg_session=from-agent")
+	})
+	srv := newProxiedServer(t, agent, &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}})
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	for _, path := range proxiedRoutes {
+		resp, err := client.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		_, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if len(resp.Trailer) != 0 {
+			t.Errorf("%s: agent trailers reached the client: %v", path, resp.Trailer)
+		}
+	}
+}
+
+// An agent's error answer on the log stream route is bounded like a
+// one-shot response; only a 200 stream is unbounded.
+func TestAgentProxyStreamErrorIsBounded(t *testing.T) {
+	setRemoteCaps(t, 64)
+
+	agent := &agentRecorder{status: http.StatusInternalServerError, ctype: "application/json", body: `{"error":"` + strings.Repeat("x", 100) + `"}`}
+	srv := newProxiedServer(t, agent, &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}})
+
+	resp, err := http.Get(srv.URL + "/api/containers/shop_web.2.t2/logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway || strings.Contains(string(body), "xxxx") {
+		t.Errorf("status %d body %q, want 502 without the agent's body", resp.StatusCode, body)
+	}
+}
+
+// The server masks an agent's inspect answer as it masks its own, so
+// credentials stay masked whichever agent version answers.
+func TestAgentProxyMasksAgentInspect(t *testing.T) {
+	agent := &agentRecorder{ctype: "application/json", body: `{"name":"shop_web.2.t2","image":"shop/web:1",` +
+		`"env":[{"key":"DATABASE_URL","value":"postgres://app:pw-in-env@db/app"},{"key":"LOG_LEVEL","value":"debug"}],` +
+		`"labels":{"app.db.password":"pw-in-label","tier":"web"},` +
+		`"entrypoint":["app","--password"],"cmd":["pw-in-cmd"],` +
+		`"health":{"status":"healthy","failingStreak":0,"log":[{"exitCode":0,"output":"token=pw-in-health"}]}}`}
+	srv := newProxiedServer(t, agent, &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}})
+
+	resp, err := http.Get(srv.URL + "/api/containers/shop_web.2.t2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d body %s", resp.StatusCode, body)
+	}
+	if strings.Contains(string(body), "pw-in-") {
+		t.Errorf("agent credentials reached the client: %s", body)
+	}
+	for _, kept := range []string{`"shop_web.2.t2"`, `"shop/web:1"`, `"debug"`, `"web"`, `"healthy"`} {
+		if !strings.Contains(string(body), kept) {
+			t.Errorf("%s missing from %s", kept, body)
+		}
+	}
+}
+
+// Agents answer a success with 200 only; any other success status would
+// skip the masking of a 200, so it is refused.
+func TestAgentProxyRefusesOtherSuccessStatuses(t *testing.T) {
+	for _, status := range []int{http.StatusCreated, http.StatusNonAuthoritativeInfo, http.StatusPartialContent} {
+		agent := &agentRecorder{status: status, ctype: "application/json", body: `{"env":[{"key":"DB_PASSWORD","value":"pw-in-env"}]}`}
+		srv := newProxiedServer(t, agent, &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}})
+		resp, err := http.Get(srv.URL + "/api/containers/shop_web.2.t2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadGateway || strings.Contains(string(body), "pw-in-") {
+			t.Errorf("agent %d: status %d body %s, want 502", status, resp.StatusCode, body)
+		}
+	}
+}
+
+// An agent answer that isn't an inspect object is refused rather than
+// passed through unmasked.
+func TestAgentProxyRefusesMalformedAgentInspect(t *testing.T) {
+	agent := &agentRecorder{ctype: "application/json", body: `["not", "an", "object"]`}
+	srv := newProxiedServer(t, agent, &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}})
+
+	resp, err := http.Get(srv.URL + "/api/containers/shop_web.2.t2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status %d, want 502", resp.StatusCode)
+	}
+}
+
+// Requests made for clients are bounded per agent, so client traffic can't
+// fill the agent's replay cache; over the bound the client gets a 503.
+func TestAgentProxyBoundsRequestsPerAgent(t *testing.T) {
+	oldRate, oldBurst := agentRequestRate, agentRequestBurst
+	agentRequestRate, agentRequestBurst = 0.001, 2
+	t.Cleanup(func() { agentRequestRate, agentRequestBurst = oldRate, oldBurst })
+
+	agent := &agentRecorder{body: `{"name":"shop_web.2.t2"}`, ctype: "application/json"}
+	srv := newProxiedServer(t, agent, &stubLocator{urls: map[string]string{"shop_web.2.t2": ""}})
+
+	var codes []int
+	for range 3 {
+		resp, err := http.Get(srv.URL + "/api/containers/shop_web.2.t2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		codes = append(codes, resp.StatusCode)
+		if resp.StatusCode == http.StatusServiceUnavailable && resp.Header.Get("Retry-After") == "" {
+			t.Error("503 without Retry-After")
+		}
+	}
+	if codes[0] != http.StatusOK || codes[1] != http.StatusOK || codes[2] != http.StatusServiceUnavailable {
+		t.Errorf("statuses %v, want [200 200 503]", codes)
+	}
+}
+
+// One client gets only a share of an agent's requests, so it can't use them
+// up for everyone else.
+func TestAgentProxyBoundsEachClientsShare(t *testing.T) {
+	oldRate, oldBurst := agentClientRequestRate, agentClientRequestBurst
+	agentClientRequestRate, agentClientRequestBurst = 0.001, 2
+	t.Cleanup(func() { agentClientRequestRate, agentClientRequestBurst = oldRate, oldBurst })
+
+	agentSrv := httptest.NewServer(&agentRecorder{body: `{"name":"shop_web.2.t2"}`, ctype: "application/json"})
+	t.Cleanup(agentSrv.Close)
+	proxies, err := auth.ParseTrustedProxies("127.0.0.1/32")
+	if err != nil {
+		t.Fatal(err)
+	}
+	docker := &stubDockerAPI{logger: &stubContainerLogger{}}
+	srv := httptest.NewServer(NewServer(NewHub(), fstest.MapFS{"index.html": {Data: []byte("ok")}}, &stubHealth{}, nil, docker, nil, nil, nil, "swarm",
+		WithTrustedProxies(proxies),
+		WithAgentProxy(&AgentProxy{Locator: &stubLocator{urls: map[string]string{"shop_web.2.t2": agentSrv.URL}}, Auth: agentauth.Token("tok")})))
+	t.Cleanup(srv.Close)
+
+	get := func(client string) int {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/containers/shop_web.2.t2", nil)
+		req.Header.Set("X-Forwarded-For", client)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if a := []int{get("203.0.113.1"), get("203.0.113.1"), get("203.0.113.1")}; !slices.Equal(a, []int{200, 200, 503}) {
+		t.Errorf("client a: %v, want [200 200 503]", a)
+	}
+	if b := get("203.0.113.2"); b != http.StatusOK {
+		t.Errorf("client b after a used its share: %d, want 200", b)
 	}
 }
 

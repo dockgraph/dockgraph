@@ -47,6 +47,35 @@ func TestHandleRecentEvents(t *testing.T) {
 	}
 }
 
+func TestHandleRecentEvents_OmitsLabels(t *testing.T) {
+	h := collector.NewEventHistory(10)
+	h.Add(collector.DockerEvent{
+		Timestamp: time.Now(),
+		Action:    "start",
+		Type:      "container",
+		Name:      "web",
+		Attributes: map[string]string{
+			"name":            "web",
+			"app.db.password": "LabelPass1",
+			"traefik.http.middlewares.auth.basicauth.users": "admin:$apr1$xyz",
+		},
+	})
+
+	w := httptest.NewRecorder()
+	HandleRecentEvents(h)(w, httptest.NewRequest(http.MethodGet, "/api/events/recent", nil))
+
+	var body struct {
+		Events []collector.DockerEvent `json:"events"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	attrs := body.Events[0].Attributes
+	if len(attrs) != 1 || attrs["name"] != "web" {
+		t.Errorf("attributes = %v, want only the name", attrs)
+	}
+}
+
 func TestHandleRecentEvents_DefaultLimit(t *testing.T) {
 	h := collector.NewEventHistory(100)
 	handler := HandleRecentEvents(h)

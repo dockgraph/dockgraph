@@ -21,8 +21,11 @@ type ComposeCollector struct {
 	names   map[string]string // path -> explicit project/stack name
 	swarm   bool
 	updates chan StateUpdate
-	stopCh  chan struct{}
+	cancel  context.CancelFunc // ends the watcher and a scan in progress; set by Start
 	wg      sync.WaitGroup
+	// parsed holds the graph of each file as the last scan had it, used
+	// by scans only.
+	parsed map[string]GraphSnapshot
 }
 
 // NewComposeCollector creates a collector that watches the given paths
@@ -33,7 +36,6 @@ func NewComposeCollector(paths []string) *ComposeCollector {
 	c := &ComposeCollector{
 		names:   make(map[string]string),
 		updates: make(chan StateUpdate, 16),
-		stopCh:  make(chan struct{}),
 	}
 	for _, entry := range paths {
 		name, path := splitNamedPath(entry)
@@ -84,25 +86,26 @@ func (c *ComposeCollector) Updates() <-chan StateUpdate {
 	return c.updates
 }
 
-// Start performs an initial scan and launches a background goroutine
-// to watch for file changes.
+// Start launches a background goroutine that scans the compose paths, at
+// once and whenever their files change. It returns without waiting for the
+// first scan: a parse may take up to composeParseTimeout, and nothing else
+// waits on compose files.
 func (c *ComposeCollector) Start(ctx context.Context) error {
-	if err := c.scan(ctx); err != nil {
-		return err
-	}
-
+	ctx, c.cancel = context.WithCancel(ctx)
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		c.watchFiles(ctx)
 	}()
-
 	return nil
 }
 
-// Stop signals the file watcher to exit and waits for it to finish.
+// Stop ends a scan in progress, signals the file watcher to exit and waits
+// for it to finish.
 func (c *ComposeCollector) Stop() error {
-	close(c.stopCh)
+	if c.cancel != nil {
+		c.cancel()
+	}
 	c.wg.Wait()
 	return nil
 }
@@ -112,23 +115,40 @@ func (c *ComposeCollector) scan(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	roots := c.readRoots()
 
 	var allNodes []Node
 	var allEdges []Edge
+	parsed := make(map[string]GraphSnapshot, len(files))
 
 	for _, f := range files {
 		sourceName := filepath.Base(f)
 		snap, err := parseComposeFileWith(ctx, f, sourceName, composeParseOptions{
 			ProjectName: c.projectNameFor(f),
 			Swarm:       c.swarm,
+			ReadRoots:   roots,
 		})
-		if err != nil {
-			log.Printf("warning: failed to parse %s: %v", sourceName, err)
-			continue
+		if ctx.Err() != nil {
+			// A scan cut short sends nothing: its graph would lack the
+			// services of the files it did not parse.
+			return ctx.Err()
 		}
+		if err != nil {
+			last, ok := c.parsed[f]
+			if !ok || !isProcessError(err) {
+				log.Printf("warning: failed to parse %s: %v", sourceName, err)
+				continue
+			}
+			// The process parsing the file failed, which may have nothing
+			// to do with the file: its services are not dropped for it.
+			log.Printf("warning: failed to parse %s: %v; keeping its services as last parsed", sourceName, err)
+			snap = last
+		}
+		parsed[f] = snap
 		allNodes = append(allNodes, snap.Nodes...)
 		allEdges = append(allEdges, snap.Edges...)
 	}
+	c.parsed = parsed
 
 	snapshot := GraphSnapshot{Nodes: allNodes, Edges: allEdges}
 	select {
@@ -138,10 +158,33 @@ func (c *ComposeCollector) scan(ctx context.Context) error {
 	return nil
 }
 
+// readRoots returns the directories parses may read files under: the
+// compose paths, with a path naming a file standing for its directory.
+func (c *ComposeCollector) readRoots() []string {
+	roots := make([]string, 0, len(c.paths))
+	for _, p := range c.paths {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			p = filepath.Dir(p)
+		}
+		roots = append(roots, filepath.Clean(p))
+	}
+	return roots
+}
+
+// scanLogged scans, logging a failure unless ctx ended it.
+func (c *ComposeCollector) scanLogged(ctx context.Context) {
+	if err := c.scan(ctx); err != nil && ctx.Err() == nil {
+		log.Printf("compose scan error: %v", err)
+	}
+}
+
+// watchFiles scans the compose paths, then again whenever their files
+// change, until ctx ends or Stop is called.
 func (c *ComposeCollector) watchFiles(ctx context.Context) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Printf("fsnotify error: %v", err)
+		c.scanLogged(ctx)
 		return
 	}
 	defer watcher.Close()
@@ -169,6 +212,10 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 		})
 	}
 
+	// The first scan comes after the watches are in place, so that a file
+	// changed while it runs is scanned again.
+	c.scanLogged(ctx)
+
 	db := newDebouncer(500 * time.Millisecond)
 	defer db.stop()
 
@@ -186,13 +233,9 @@ func (c *ComposeCollector) watchFiles(ctx context.Context) {
 			}
 		case <-db.notify:
 			log.Printf("compose files changed, rescanning")
-			if err := c.scan(ctx); err != nil {
-				log.Printf("rescan error: %v", err)
-			}
+			c.scanLogged(ctx)
 		case err := <-watcher.Errors:
 			log.Printf("watcher error: %v", err)
-		case <-c.stopCh:
-			return
 		case <-ctx.Done():
 			return
 		}

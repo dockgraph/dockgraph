@@ -22,3 +22,13 @@ const (
 	fieldStatus = "status"
 	fieldLabels = "labels"
 )
+
+// The inspect payload fields that hold credentials, which an agent's answer
+// is masked again in (see remaskInspect and remaskVolume).
+const (
+	fieldEnv        = "env"
+	fieldCmd        = "cmd"
+	fieldEntrypoint = "entrypoint"
+	fieldHealth     = "health"
+	fieldOptions    = "options"
+)

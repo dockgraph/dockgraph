@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -99,6 +100,142 @@ func TestCollectHistory_MergeSortsAndExcludesSelf(t *testing.T) {
 	}
 	if lines[0].Line != "db-line" {
 		t.Fatalf("timestamp not split off: %q", lines[0].Line)
+	}
+}
+
+// An aggregate page is one page: the newest limit lines across every
+// source, within maxHistoryPageBytes, however many sources there are.
+func TestCollectHistory_BoundsPageAcrossSources(t *testing.T) {
+	var summaries []containertypes.Summary
+	byID := map[string]string{}
+	for c := range 20 {
+		id := "c" + strconv.Itoa(c)
+		summaries = append(summaries, containertypes.Summary{ID: id, Names: []string{"/" + id}})
+		var data []byte
+		for i := range 100 {
+			ts := time.Date(2026, 6, 11, 10, 0, i, c, time.UTC).Format(dockerTimestamp)
+			data = append(data, frame(ts+" "+strconv.Itoa(i)+" "+strings.Repeat("x", 15<<10))...)
+		}
+		byID[id] = string(data)
+	}
+
+	lines, err := collectHistory(context.Background(), logScope{}, mockLister{summaries: summaries}, mockLogger{byID: byID}, "", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for _, l := range lines {
+		total += len(l.Line)
+	}
+	if len(lines) == 0 || len(lines) > 100 || total > maxHistoryPageBytes {
+		t.Fatalf("%d lines, %d bytes; want at most 100 lines and %d bytes", len(lines), total, maxHistoryPageBytes)
+	}
+	// Every source's last line shares the newest second, so the page ends there.
+	if last := lines[len(lines)-1]; !strings.HasPrefix(last.Line, "99 ") || last.Container != "c19" {
+		t.Errorf("last line %s %.8q, want c19's line 99", last.Container, last.Line)
+	}
+}
+
+// untilLogger serves canned lines per container, honouring Until (inclusive,
+// as Docker does) and then Tail.
+type untilLogger map[string][]logEntry
+
+func (u untilLogger) ContainerLogs(_ context.Context, id string, opts containertypes.LogsOptions) (io.ReadCloser, error) {
+	var kept []logEntry
+	for _, l := range u[id] {
+		if opts.Until == "" || l.Timestamp <= opts.Until {
+			kept = append(kept, l)
+		}
+	}
+	if n, err := strconv.Atoi(opts.Tail); err == nil && n < len(kept) {
+		kept = kept[len(kept)-n:]
+	}
+	var data []byte
+	for _, l := range kept {
+		data = append(data, frame(l.Timestamp+" "+l.Line)...)
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+// Paging back through an aggregate history reaches every line once, even
+// when one source's page is cut by size while another's older lines would
+// still fit: the page stops where a cut source's lines stop.
+func TestCollectHistory_PagingReachesEveryLine(t *testing.T) {
+	ts := func(s int) string { return time.Date(2026, 6, 11, 10, 0, s, 0, time.UTC).Format(dockerTimestamp) }
+	logs := untilLogger{}
+	for i := range 100 {
+		logs["big"] = append(logs["big"], logEntry{Timestamp: ts(100 + i), Line: fmt.Sprintf("big-%d %s", i, strings.Repeat("x", 10<<10))})
+	}
+	for i := range 10 {
+		logs["small"] = append(logs["small"], logEntry{Timestamp: ts(i), Line: fmt.Sprintf("small-%d", i)})
+	}
+	lister := mockLister{summaries: []containertypes.Summary{{ID: "big", Names: []string{"/big"}}, {ID: "small", Names: []string{"/small"}}}}
+
+	seen := map[string]int{}
+	before := ""
+	for page := 0; ; page++ {
+		if page > 20 {
+			t.Fatal("paging did not end")
+		}
+		lines, err := collectHistory(context.Background(), logScope{}, lister, logs, before, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(lines) == 0 {
+			break
+		}
+		for _, l := range lines {
+			seen[strings.Fields(l.Line)[0]]++
+		}
+		before = lines[0].Timestamp
+	}
+	if len(seen) != 110 {
+		t.Errorf("%d of 110 lines reached a page", len(seen))
+	}
+	for line, n := range seen {
+		if n != 1 {
+			t.Errorf("%s on %d pages", line, n)
+		}
+	}
+}
+
+// The source holding the cursor line still fills its page once that line is
+// dropped, so the page still ends where that source's lines end.
+func TestCollectHistory_PagingAfterTheCursorLine(t *testing.T) {
+	ts := func(ms int) string {
+		return time.Date(2026, 6, 11, 10, 0, 0, 0, time.UTC).Add(time.Duration(ms) * time.Millisecond).Format(dockerTimestamp)
+	}
+	logs := untilLogger{"b": {{Timestamp: ts(4500), Line: "b4.5"}, {Timestamp: ts(5500), Line: "b5.5"}}}
+	for _, ms := range []int{1000, 2000, 5700, 6000, 7000, 8000, 9000, 10000} {
+		logs["a"] = append(logs["a"], logEntry{Timestamp: ts(ms), Line: fmt.Sprintf("a%d", ms)})
+	}
+	lister := mockLister{summaries: []containertypes.Summary{{ID: "a", Names: []string{"/a"}}, {ID: "b", Names: []string{"/b"}}}}
+
+	seen := map[string]int{}
+	before := ""
+	for page := 0; ; page++ {
+		if page > 20 {
+			t.Fatal("paging did not end")
+		}
+		lines, err := collectHistory(context.Background(), logScope{}, lister, logs, before, 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(lines) == 0 {
+			break
+		}
+		for _, l := range lines {
+			seen[l.Line]++
+		}
+		before = lines[0].Timestamp
+	}
+	if len(seen) != 10 {
+		t.Errorf("%d of 10 lines reached a page: %v", len(seen), seen)
+	}
+	for line, n := range seen {
+		if n != 1 {
+			t.Errorf("%s on %d pages", line, n)
+		}
 	}
 }
 
@@ -500,5 +637,32 @@ func TestLogAggregatorStopsRetryingRemovedService(t *testing.T) {
 	defer mu.Unlock()
 	if calls != 1 {
 		t.Errorf("opens = %d, want 1 (no retry once the service is gone)", calls)
+	}
+}
+
+// The wire form of an aggregate line: field names, their order, and an
+// empty timestamp left out.
+func TestAggregateLineJSON(t *testing.T) {
+	tests := []struct {
+		line aggregateLine
+		want string
+	}{
+		{
+			aggregateLine{Container: "web", logEntry: logEntry{Stream: "stdout", Line: "hello", Timestamp: "2024-01-01T00:00:00Z"}},
+			`{"container":"web","stream":"stdout","line":"hello","timestamp":"2024-01-01T00:00:00Z"}`,
+		},
+		{
+			aggregateLine{Container: "web", logEntry: logEntry{Stream: "stderr", Line: "no time"}},
+			`{"container":"web","stream":"stderr","line":"no time"}`,
+		},
+	}
+	for _, tt := range tests {
+		got, err := json.Marshal(tt.line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != tt.want {
+			t.Errorf("got %s, want %s", got, tt.want)
+		}
 	}
 }

@@ -18,6 +18,7 @@ build-frontend: ## Build React frontend
 
 test: ## Run all tests
 	cd backend && go test -race ./...
+	cd backend && CGO_ENABLED=0 go test -count=1 ./collector -args -compose-child
 	cd frontend && npm test
 
 test-coverage: ## Run tests with coverage (enforces thresholds)
@@ -82,7 +83,7 @@ demo-large-down: ## Stop large demo and remove volumes
 
 # ── Docker Swarm ──────────────────────────────────────────────
 
-swarm-deploy: ## Deploy DockGraph to the swarm (needs the dg_agent_token secret)
+swarm-deploy: ## Deploy DockGraph to the swarm (needs the dg_agent_key secret and dg_agent_pubkey config)
 	docker stack deploy -c stack.yml dockgraph
 
 swarm-down: ## Remove the DockGraph swarm stack

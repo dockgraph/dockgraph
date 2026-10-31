@@ -113,6 +113,17 @@ describe('DetailPanelService', () => {
     expect(screen.getByText('12.5% · 1.0 MB')).toBeDefined();
   });
 
+  it('shows a port range as one entry', () => {
+    const ranged = { ...detail, ports: [{ host: 7000, hostEnd: 7002, container: 7000, containerEnd: 7002, protocol: 'udp', publishMode: 'ingress' }] };
+    render(
+      <ThemeProvider>
+        <DetailPanelService detail={ranged} statsMap={new Map()} active={false} onNavigate={vi.fn()} />
+      </ThemeProvider>,
+    );
+    expect(screen.getByText('7000-7002')).toBeDefined();
+    expect(screen.getByText('7000-7002/udp (ingress)')).toBeDefined();
+  });
+
   it('reuses the ports, mounts, env and labels sections', () => {
     renderPanel();
     expect(screen.getByText('Ports')).toBeDefined();

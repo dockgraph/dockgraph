@@ -6,8 +6,9 @@ services:
     container_name: dockgraph
     restart: unless-stopped
     ports:
-      # Host Port : Container Port
-      - "7800:7800"
+      # Host IP : Host Port : Container Port. Published on this host only;
+      # to open it to other machines, drop "127.0.0.1:" and set DG_PASSWORD.
+      - "127.0.0.1:7800:7800"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker API access
       - ./demo:/app/demo:ro                           # Demo stacks (optional)
@@ -15,7 +16,8 @@ services:
       DG_PORT: "7800"                                # HTTP listen port (must match container port)
       DG_POLL_INTERVAL: "30s"                        # Docker API polling interval
       DG_COMPOSE_PATH: "/app/demo/compose-small.yml" # Override: only scan this file
-      DG_PASSWORD: ""                                # Set a password for the web UI (optional)
+      DG_PASSWORD: ""                                # Password for the web UI; set it whenever the port is reachable from other machines
+      # DG_ALLOWED_HOSTS: "dockgraph.example.com"    # Host names to serve besides IPs and localhost (checked without DG_PASSWORD)
     deploy:
       resources:
         limits:

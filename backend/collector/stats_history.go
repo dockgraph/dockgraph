@@ -27,10 +27,18 @@ type HistoryResult struct {
 	Containers map[string]ContainerTimeSeries `json:"containers"`
 }
 
-// StatsHistory stores timestamped stats snapshots in memory with a maximum retention period.
+// maxHistorySamples bounds the container samples the history holds across
+// all its points, about 50 MB. Memory grows with containers × points, so
+// with many containers (or nodes reporting many) the oldest points go
+// before the retention period ends. A variable so tests can lower it.
+var maxHistorySamples = 300_000
+
+// StatsHistory stores timestamped stats snapshots in memory with a maximum
+// retention period, within maxHistorySamples.
 type StatsHistory struct {
 	mu        sync.RWMutex
 	points    []HistoryPoint
+	samples   int // container samples across points
 	retention time.Duration
 }
 
@@ -42,11 +50,19 @@ func NewStatsHistory(retention time.Duration) *StatsHistory {
 	}
 }
 
-// Record appends a timestamped stats snapshot.
+// Record appends a timestamped stats snapshot, dropping the oldest points
+// while the history holds more than maxHistorySamples samples.
 func (h *StatsHistory) Record(ts time.Time, snap StatsSnapshot) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.points = append(h.points, HistoryPoint{Time: ts, Stats: snap.Stats})
+	h.samples += len(snap.Stats)
+	i := 0
+	for h.samples > maxHistorySamples && i < len(h.points)-1 {
+		h.samples -= len(h.points[i].Stats)
+		i++
+	}
+	h.dropOldest(i)
 }
 
 // Evict removes points older than the retention window.
@@ -56,10 +72,17 @@ func (h *StatsHistory) Evict() {
 	cutoff := time.Now().Add(-h.retention)
 	i := 0
 	for i < len(h.points) && h.points[i].Time.Before(cutoff) {
+		h.samples -= len(h.points[i].Stats)
 		i++
 	}
-	if i > 0 {
-		h.points = append(h.points[:0], h.points[i:]...)
+	h.dropOldest(i)
+}
+
+// dropOldest removes the first n points. The caller holds h.mu and has
+// already taken their samples off h.samples.
+func (h *StatsHistory) dropOldest(n int) {
+	if n > 0 {
+		h.points = append(h.points[:0], h.points[n:]...)
 	}
 }
 
@@ -104,6 +127,10 @@ func (h *StatsHistory) Downsample(bucketWidth time.Duration) {
 	result = append(result, downsampled...)
 	result = append(result, recent...)
 	h.points = result
+	h.samples = 0
+	for _, p := range h.points {
+		h.samples += len(p.Stats)
+	}
 }
 
 // downsampleBucket reduces a bucket of points to a single representative point.
@@ -145,8 +172,18 @@ func downsampleBucket(ts time.Time, points []HistoryPoint) HistoryPoint {
 	return HistoryPoint{Time: ts, Stats: merged}
 }
 
-// Query returns all points within [from, to] as a structured result.
-func (h *StatsHistory) Query(from, to time.Time) HistoryResult {
+// maxQueryCells bounds the values a query returns per metric: a series for
+// every container across every point returned. Containers that come and go
+// (tasks restarting) add series without adding samples to any one point, so
+// the product can far exceed maxHistorySamples. A variable so tests can
+// lower it.
+var maxQueryCells = 120_000
+
+// Query returns the points within [from, to] as a structured result, with
+// the series whose names keep accepts (all of them when keep is nil); only
+// those count toward maxQueryCells. Past maxQueryCells it returns every n-th
+// point instead, the newest included.
+func (h *StatsHistory) Query(from, to time.Time, keep func(name string) bool) HistoryResult {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -155,14 +192,18 @@ func (h *StatsHistory) Query(from, to time.Time) HistoryResult {
 		Containers: make(map[string]ContainerTimeSeries),
 	}
 
-	names := make(map[string]bool)
-	var filtered []HistoryPoint
+	var inRange []HistoryPoint
 	for _, p := range h.points {
 		if (p.Time.Equal(from) || p.Time.After(from)) && (p.Time.Equal(to) || p.Time.Before(to)) {
-			filtered = append(filtered, p)
-			for name := range p.Stats {
-				names[name] = true
-			}
+			inRange = append(inRange, p)
+		}
+	}
+	var filtered []HistoryPoint
+	var names map[string]bool
+	for step := 1; ; step *= 2 {
+		filtered, names = everyNth(inRange, step, keep)
+		if len(names)*len(filtered) <= maxQueryCells || len(filtered) <= 1 {
+			break
 		}
 	}
 
@@ -182,4 +223,24 @@ func (h *StatsHistory) Query(from, to time.Time) HistoryResult {
 	}
 
 	return result
+}
+
+// everyNth returns every step-th point counting back from the newest, in
+// order, and the names of the containers they hold that keep accepts (all
+// of them when keep is nil).
+func everyNth(points []HistoryPoint, step int, keep func(string) bool) ([]HistoryPoint, map[string]bool) {
+	var kept []HistoryPoint
+	names := make(map[string]bool)
+	if len(points) == 0 {
+		return kept, names
+	}
+	for i := (len(points) - 1) % step; i < len(points); i += step {
+		kept = append(kept, points[i])
+		for name := range points[i].Stats {
+			if keep == nil || keep(name) {
+				names[name] = true
+			}
+		}
+	}
+	return kept, names
 }

@@ -26,7 +26,8 @@ IMAGE="${IMAGE:-dockgraph:swarm-smoke}"
 SMOKE_PORT="${SMOKE_PORT:-17800}"
 STACK="dgsmoke"
 DEMO_STACK="dgsmoke-demo"
-SECRET="dg_agent_token"
+KEY_SECRET="dg_agent_key"
+PUBKEY_CONFIG="dg_agent_pubkey"
 PW_SECRET="dgsmoke_password"
 BASE_URL="http://localhost:$SMOKE_PORT"
 
@@ -42,7 +43,7 @@ for arg in "$@"; do
 done
 
 INITIALISED_SWARM=false
-CREATED_SECRET=false
+CREATED_KEYS=false
 CREATED_PW_SECRET=false
 TMP_DIR=$(mktemp -d)
 
@@ -84,8 +85,9 @@ cleanup() {
   fi
   wait_stack_removed "$DEMO_STACK"
   wait_stack_removed "$STACK"
-  if [ "$CREATED_SECRET" = true ]; then
-    docker secret rm "$SECRET" >/dev/null 2>&1 || true
+  if [ "$CREATED_KEYS" = true ]; then
+    docker secret rm "$KEY_SECRET" >/dev/null 2>&1 || true
+    docker config rm "$PUBKEY_CONFIG" >/dev/null 2>&1 || true
   fi
   if [ "$CREATED_PW_SECRET" = true ]; then
     docker secret rm "$PW_SECRET" >/dev/null 2>&1 || true
@@ -230,10 +232,22 @@ echo "Empty DG_PASSWORD_FILE is fatal: OK"
 
 # ── Deploy DockGraph ──────────────────────────────────────────
 
-if ! docker secret inspect "$SECRET" >/dev/null 2>&1; then
-  echo "Creating secret $SECRET..."
-  openssl rand -hex 32 | docker secret create "$SECRET" - >/dev/null
-  CREATED_SECRET=true
+have_key=false have_pubkey=false
+docker secret inspect "$KEY_SECRET" >/dev/null 2>&1 && have_key=true
+docker config inspect "$PUBKEY_CONFIG" >/dev/null 2>&1 && have_pubkey=true
+if [ "$have_key" != "$have_pubkey" ]; then
+  fail "only one of secret $KEY_SECRET and config $PUBKEY_CONFIG exists; remove it first"
+fi
+if [ "$have_key" = false ]; then
+  echo "Creating agent keys ($KEY_SECRET, $PUBKEY_CONFIG)..."
+  # Set first, so a failure half-way still cleans up whatever was created.
+  CREATED_KEYS=true
+  # TMP_DIR is private to this user; the private key leaves it only as the secret.
+  docker run --rm "$IMAGE" --agent-keygen > "$TMP_DIR/dg_agent_key"
+  docker run --rm -i "$IMAGE" --agent-pubkey < "$TMP_DIR/dg_agent_key" |
+    docker config create "$PUBKEY_CONFIG" - >/dev/null
+  docker secret create "$KEY_SECRET" "$TMP_DIR/dg_agent_key" >/dev/null
+  rm -f "$TMP_DIR/dg_agent_key"
 fi
 
 echo "Deploying $STACK..."

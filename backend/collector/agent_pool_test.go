@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
+	"github.com/dockgraph/dockgraph/agentauth"
 )
 
 const testAgentToken = "s3cret"
@@ -92,7 +93,7 @@ func newTestPool(res *stubResolver, localNode string, tasks TaskLister) *AgentPo
 	return NewAgentPool(AgentPoolConfig{
 		Addr:           "tasks.agent",
 		Port:           "7801",
-		Token:          testAgentToken,
+		Auth:           agentauth.Token(testAgentToken),
 		LocalNodeID:    localNode,
 		Resolver:       res,
 		Tasks:          tasks,
@@ -137,10 +138,56 @@ func TestAgentPoolRemoteAgentsSortedWithoutLocal(t *testing.T) {
 	}
 }
 
+// With a key, the pool signs its requests and an agent that checks
+// signatures accepts them.
+func TestAgentPoolSignsRequests(t *testing.T) {
+	keyText, err := agentauth.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := agentauth.ParsePrivateKey(keyText)
+	publicKeys, _ := agentauth.ParsePublicKeys(agentauth.PublicKeyText(key))
+	verifier := agentauth.NewVerifier(publicKeys)
+
+	var rejected atomic.Int32
+	agent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := verifier.Verify(r); err != nil {
+			rejected.Add(1)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case AgentAPIPrefix + "/info":
+			_ = json.NewEncoder(w).Encode(AgentInfo{NodeID: "node-1", Hostname: "host-node-1"})
+		case AgentAPIPrefix + "/stats":
+			_ = json.NewEncoder(w).Encode(AgentStats{NodeID: "node-1", Samples: []ContainerSample{
+				taskSample("aaaaaaaaaaaaaaaa", "shop_web.1.t1", "shop_web", "t1", 1, 1),
+			}})
+		}
+	}))
+	t.Cleanup(agent.Close)
+
+	p := NewAgentPool(AgentPoolConfig{
+		Addr: "tasks.agent", Port: "7801", Auth: agentauth.NewSigner(key),
+		Resolver: &stubResolver{addrs: []string{strings.TrimPrefix(agent.URL, "http://")}},
+	})
+	p.Refresh(context.Background())
+	if s := p.Samples(context.Background()); len(s) != 1 {
+		t.Fatalf("got %d samples, want 1", len(s))
+	}
+	if n := rejected.Load(); n != 0 {
+		t.Errorf("agent rejected %d signed requests", n)
+	}
+	if p.CredentialsRejected() {
+		t.Error("CredentialsRejected() = true for signed requests")
+	}
+}
+
 func TestAgentPoolRejectsBadToken(t *testing.T) {
 	a := newFakeAgent(t, "node-1")
 	p := NewAgentPool(AgentPoolConfig{
-		Addr: "tasks.agent", Port: "7801", Token: "wrong",
+		Addr: "tasks.agent", Port: "7801", Auth: agentauth.Token("wrong"),
 		Resolver: &stubResolver{addrs: []string{a.addr()}},
 	})
 	p.Refresh(context.Background())
@@ -153,17 +200,17 @@ func TestAgentPoolLogsTokenRejectionOnce(t *testing.T) {
 	buf := captureLog(t)
 	a, b := newFakeAgent(t, "node-1"), newFakeAgent(t, "node-2")
 	p := NewAgentPool(AgentPoolConfig{
-		Addr: "tasks.agent", Port: "7801", Token: "wrong",
+		Addr: "tasks.agent", Port: "7801", Auth: agentauth.Token("wrong"),
 		Resolver: &stubResolver{addrs: []string{a.addr(), b.addr()}},
 	})
 	for range 3 {
 		p.Refresh(context.Background())
 	}
 
-	if !p.TokenRejected() {
-		t.Error("TokenRejected() = false after every agent answered 401")
+	if !p.CredentialsRejected() {
+		t.Error("CredentialsRejected() = false after every agent answered 401")
 	}
-	if n := strings.Count(buf.String(), "rejected the token"); n != 1 {
+	if n := strings.Count(buf.String(), "rejected the server's credentials"); n != 1 {
 		t.Errorf("rejection logged %d times, want once; log:\n%s", n, buf.String())
 	}
 	if strings.Contains(buf.String(), "status 401") {
@@ -181,17 +228,17 @@ func TestAgentPoolTokenRejectionClears(t *testing.T) {
 	p := newTestPool(res, "node-local", nil)
 
 	p.Refresh(context.Background())
-	if !p.TokenRejected() {
-		t.Fatal("TokenRejected() = false with a rejecting agent")
+	if !p.CredentialsRejected() {
+		t.Fatal("CredentialsRejected() = false with a rejecting agent")
 	}
 
-	// The agent is redeployed with the right token.
+	// The agent is redeployed with the right credentials.
 	res.set([]string{newFakeAgent(t, "node-1").addr()})
 	p.Refresh(context.Background())
-	if p.TokenRejected() {
-		t.Error("TokenRejected() = true after the agents accepted the token")
+	if p.CredentialsRejected() {
+		t.Error("CredentialsRejected() = true after the agents accepted the credentials")
 	}
-	if !strings.Contains(buf.String(), "accept the token") {
+	if !strings.Contains(buf.String(), "accept the server's credentials again") {
 		t.Errorf("recovery not logged:\n%s", buf.String())
 	}
 }
@@ -209,11 +256,11 @@ func TestAgentPoolTokenRejectionGoneWithAgentsIsNotRecovery(t *testing.T) {
 
 	res.set(nil)
 	p.Refresh(context.Background())
-	if p.TokenRejected() {
-		t.Error("TokenRejected() = true with no agent left")
+	if p.CredentialsRejected() {
+		t.Error("CredentialsRejected() = true with no agent left")
 	}
-	if strings.Contains(buf.String(), "accept the token") {
-		t.Errorf("recovery logged although no agent accepted the token:\n%s", buf.String())
+	if strings.Contains(buf.String(), "accept the server's credentials again") {
+		t.Errorf("recovery logged although no agent accepted the credentials:\n%s", buf.String())
 	}
 }
 
@@ -273,7 +320,7 @@ func TestAgentPoolPortFromAddr(t *testing.T) {
 	res := &stubResolver{addrs: []string{"10.0.0.5"}}
 	var gotHost string
 	p := NewAgentPool(AgentPoolConfig{
-		Addr: "tasks.dg_agent:9000", Port: "7801", Token: testAgentToken, Resolver: res,
+		Addr: "tasks.dg_agent:9000", Port: "7801", Auth: agentauth.Token(testAgentToken), Resolver: res,
 		Client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			gotHost = r.URL.Host
 			return nil, errors.New("offline")
@@ -289,11 +336,32 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+// agentTask is the running task of a fake agent on nodeID, as the swarm
+// lists it: its network attachment holds the agent's address. Fake agents
+// all listen on 127.0.0.1.
+func agentTask(nodeID string) swarm.Task {
+	return swarm.Task{
+		ID:     "agent-" + nodeID,
+		NodeID: nodeID,
+		NetworksAttachments: []swarm.NetworkAttachment{
+			{Addresses: []string{"127.0.0.1/8"}},
+		},
+	}
+}
+
+// runningTask is a task of the swarm with its container.
+func runningTask(id, nodeID, containerID string) swarm.Task {
+	return swarm.Task{ID: id, NodeID: nodeID, Status: swarm.TaskStatus{ContainerStatus: &swarm.ContainerStatus{ContainerID: containerID}}}
+}
+
 func TestAgentPoolLocateContainer(t *testing.T) {
 	remote := newFakeAgent(t, "node-remote", taskSample("bbbbbbbbbbbbbbbb", "shop_web.2.t2", "shop_web", "t2", 1, 1))
 	local := newFakeAgent(t, "node-local")
 	tasks := &stubDockerClient{tasks: []swarm.Task{
-		{ID: "t9", NodeID: "node-remote", Status: swarm.TaskStatus{ContainerStatus: &swarm.ContainerStatus{ContainerID: "cccccccccccccccc"}}},
+		agentTask("node-remote"),
+		agentTask("node-local"),
+		runningTask("t2", "node-remote", "bbbbbbbbbbbbbbbb"),
+		runningTask("t9", "node-remote", "cccccccccccccccc"),
 		{ID: "t8", NodeID: "node-local"},
 		{ID: "t7", NodeID: "node-gone"},
 	}}
@@ -333,9 +401,12 @@ func TestAgentPoolLocateContainerSameNameOnTwoNodes(t *testing.T) {
 	b := newFakeAgent(t, "node-b",
 		ContainerSample{ID: "bbbbbbbbbbbbbbbb", Name: "redis"},
 		ContainerSample{ID: "b1b1b1b1b1b1b1b1", Name: "worker"})
-	tasks := &stubDockerClient{}
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-a"), agentTask("node-b")}}
 	p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
 	p.Refresh(context.Background())
+	tasks.mu.Lock()
+	tasks.taskListCalls = 0 // the refresh verified the agents' nodes
+	tasks.mu.Unlock()
 
 	urlA, urlB := "http://"+a.addr(), "http://"+b.addr()
 	cases := []struct {
@@ -360,40 +431,425 @@ func TestAgentPoolLocateContainerSameNameOnTwoNodes(t *testing.T) {
 			}
 		}
 	}
+	// None of these is a sampled task, so each lookup asks the swarm once
+	// whether it runs the container before an agent's report places it.
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
-	if tasks.taskListCalls != 5 {
-		t.Errorf("task list calls %d, want 5 (only the unmatched prefix falls back to it)", tasks.taskListCalls)
+	if want := 5 * len(cases); tasks.taskListCalls != want {
+		t.Errorf("task list calls %d, want %d (one per lookup)", tasks.taskListCalls, want)
 	}
 }
 
-func TestAgentPoolLocateCachedOnlyUniqueKeys(t *testing.T) {
-	remote := newFakeAgent(t, "node-remote",
+// A task container is placed where the swarm runs its task, whichever agent
+// reports it; standalone containers are placed by their agent's report.
+func TestAgentPoolLocatesTaskContainersThroughSwarm(t *testing.T) {
+	a := newFakeAgent(t, "node-a",
+		// Reported by node-a, but the swarm runs task t2 on node-b.
 		taskSample("bbbbbbbbbbbbbbbb", "shop_web.2.t2", "shop_web", "t2", 1, 1),
 		ContainerSample{ID: "dddddddddddddddd", Name: "redis"})
-	tasks := &stubDockerClient{}
-	p := newTestPool(&stubResolver{addrs: []string{remote.addr()}}, "node-local", tasks)
+	b := newFakeAgent(t, "node-b")
+	tasks := &stubDockerClient{tasks: []swarm.Task{
+		agentTask("node-a"),
+		agentTask("node-b"),
+		runningTask("t2", "node-b", "bbbbbbbbbbbbbbbb"),
+	}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
 	p.Refresh(context.Background())
 	p.Samples(context.Background())
 
-	want := "http://" + remote.addr()
-	for _, id := range []string{"bbbbbbbbbbbbbbbb", "bbbbbbbbbbbb", "t2", "shop_web.2.t2", "dddddddddddd"} {
-		if got, ok := p.LocateCached(id); !ok || got != want {
-			t.Errorf("LocateCached(%q) = %q,%v want %q", id, got, ok, want)
+	urlA, urlB := "http://"+a.addr(), "http://"+b.addr()
+	for _, id := range []string{"bbbbbbbbbbbbbbbb", "bbbbbbbbbbbb", "t2", "shop_web.2.t2"} {
+		if got, ok := p.LocateContainer(context.Background(), id); !ok || got != urlB {
+			t.Errorf("LocateContainer(%q) = %q,%v want node-b %q", id, got, ok, urlB)
 		}
 	}
-	// A standalone name may also exist locally: only the full lookup,
-	// run after the local daemon was asked, resolves it.
-	if _, ok := p.LocateCached("redis"); ok {
-		t.Error("LocateCached must not resolve a standalone container name")
+	for _, id := range []string{"redis", "dddddddddddd"} {
+		if got, ok := p.LocateContainer(context.Background(), id); !ok || got != urlA {
+			t.Errorf("LocateContainer(%q) = %q,%v want node-a %q", id, got, ok, urlA)
+		}
 	}
-	if got, ok := p.LocateContainer(context.Background(), "redis"); !ok || got != want {
-		t.Errorf("LocateContainer(redis) = %q,%v want %q", got, ok, want)
+}
+
+// A task never changes node, so a sampled task container's placement is
+// read from the swarm once, not on every request (log pages, inspect).
+func TestAgentPoolCachesTaskPlacement(t *testing.T) {
+	a := newFakeAgent(t, "node-a", taskSample("bbbbbbbbbbbbbbbb", "shop_web.2.t2", "shop_web", "t2", 1, 1))
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-a"), runningTask("t2", "node-a", "bbbbbbbbbbbbbbbb")}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+	tasks.mu.Lock()
+	tasks.taskListCalls = 0
+	tasks.mu.Unlock()
+
+	for range 3 {
+		if _, ok := p.LocateContainer(context.Background(), "shop_web.2.t2"); !ok {
+			t.Fatal("not located")
+		}
+	}
+	tasks.mu.Lock()
+	calls := tasks.taskListCalls
+	tasks.mu.Unlock()
+	if calls != 1 {
+		t.Errorf("task list calls %d, want 1", calls)
+	}
+
+	// A task gone from the samples is dropped from the cache.
+	a.samples = nil
+	p.Samples(context.Background())
+	p.mu.RLock()
+	n := len(p.placements)
+	p.mu.RUnlock()
+	if n != 0 {
+		t.Errorf("%d cached placements after the task left, want 0", n)
+	}
+}
+
+// A reported task whose swarm task holds another container is not located.
+func TestAgentPoolTaskContainerMismatchNotLocated(t *testing.T) {
+	a := newFakeAgent(t, "node-a", taskSample("eeeeeeeeeeeeeeee", "shop_web.2.t2", "shop_web", "t2", 1, 1))
+	tasks := &stubDockerClient{tasks: []swarm.Task{
+		agentTask("node-a"),
+		runningTask("t2", "node-a", "ffffffffffffffff"),
+	}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+	if got, ok := p.LocateContainer(context.Background(), "eeeeeeeeeeeeeeee"); ok {
+		t.Errorf("LocateContainer = %q, want not located", got)
+	}
+}
+
+// A task container's name ends in its task ID ({service}.{slot}.{taskID}),
+// so a report pairing the name with another task does not place it.
+func TestAgentPoolTaskNameMustEndInItsTaskID(t *testing.T) {
+	a := newFakeAgent(t, "node-a", taskSample("aaaaaaaaaaaaaaaa", "shop_web.2.t2", "shop_web", "tA", 1, 1))
+	b := newFakeAgent(t, "node-b") // shop_web.2.t2 is not sampled there (stopped, or not yet)
+	tasks := &stubDockerClient{tasks: []swarm.Task{
+		agentTask("node-a"),
+		agentTask("node-b"),
+		runningTask("tA", "node-a", "aaaaaaaaaaaaaaaa"),
+		runningTask("t2", "node-b", "bbbbbbbbbbbbbbbb"),
+	}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+
+	if got, ok := p.LocateContainer(context.Background(), "shop_web.2.t2"); !ok || got != "http://"+b.addr() {
+		t.Errorf("LocateContainer = %q,%v want node-b, where the swarm runs t2", got, ok)
+	}
+}
+
+// A name or task ID reported in a sample's ID field is held to the same rule:
+// it must name the sample's task.
+func TestAgentPoolTaskNameInIDFieldMustEndInItsTaskID(t *testing.T) {
+	for _, id := range []string{"shop_web.2.t2", "t2"} {
+		t.Run(id, func(t *testing.T) {
+			a := newFakeAgent(t, "node-a", taskSample(id, "shop_web.1.tA", "shop_web", "tA", 1, 1))
+			b := newFakeAgent(t, "node-b")
+			tasks := &stubDockerClient{tasks: []swarm.Task{
+				agentTask("node-a"),
+				agentTask("node-b"),
+				runningTask("tA", "node-a", "aaaaaaaaaaaaaaaa"),
+				runningTask("t2", "node-b", "bbbbbbbbbbbbbbbb"),
+			}}
+			p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
+			p.Refresh(context.Background())
+			p.Samples(context.Background())
+
+			if got, ok := p.LocateContainer(context.Background(), id); !ok || got != "http://"+b.addr() {
+				t.Errorf("LocateContainer(%q) = %q,%v want node-b, where the swarm runs t2", id, got, ok)
+			}
+		})
+	}
+}
+
+// A task list that can't be read is asked once per lookup, not again for
+// the fallback.
+func TestAgentPoolTaskListErrorAskedOnce(t *testing.T) {
+	a := newFakeAgent(t, "node-a", taskSample("aaaaaaaaaaaaaaaa", "shop_web.1.tA", "shop_web", "tA", 1, 1))
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-a")}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+
+	tasks.mu.Lock()
+	tasks.taskErr = errors.New("manager unavailable")
+	tasks.taskListCalls = 0
+	tasks.mu.Unlock()
+	if got, ok := p.LocateContainer(context.Background(), "shop_web.1.tA"); ok {
+		t.Errorf("LocateContainer = %q, want not located while the task list fails", got)
 	}
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
-	if tasks.taskListCalls != 0 {
-		t.Errorf("task list calls %d, want 0 for sampled containers", tasks.taskListCalls)
+	if tasks.taskListCalls != 1 {
+		t.Errorf("task list calls %d, want 1", tasks.taskListCalls)
+	}
+}
+
+// A container ID reported for a task the swarm runs with another container
+// is placed by the swarm.
+func TestAgentPoolContainerOfAnotherTaskPlacedBySwarm(t *testing.T) {
+	a := newFakeAgent(t, "node-a", taskSample("bbbbbbbbbbbbbbbb", "shop_web.1.tA", "shop_web", "tA", 1, 1))
+	b := newFakeAgent(t, "node-b")
+	tasks := &stubDockerClient{tasks: []swarm.Task{
+		agentTask("node-a"),
+		agentTask("node-b"),
+		runningTask("tA", "node-a", "aaaaaaaaaaaaaaaa"),
+		runningTask("t2", "node-b", "bbbbbbbbbbbbbbbb"),
+	}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+
+	if got, ok := p.LocateContainer(context.Background(), "bbbbbbbbbbbbbbbb"); !ok || got != "http://"+b.addr() {
+		t.Errorf("LocateContainer = %q,%v want node-b, where the swarm runs this container", got, ok)
+	}
+}
+
+// A standalone container is located only when its ID, name and ID prefix
+// all point at one node: one node reporting another's container name as
+// an ID, or its ID prefix as an ID or a name, makes it ambiguous rather
+// than routing it there.
+func TestAgentPoolStandaloneClaimsMustAgree(t *testing.T) {
+	const webID = "5b5b5b5b5b5b0000000000000000000000000000000000000000000000000000"
+	const dbID = "5c5c5c5c5c5c0000000000000000000000000000000000000000000000000000"
+	a := newFakeAgent(t, "node-a",
+		ContainerSample{ID: "web", Name: "decoy-1"},
+		ContainerSample{ID: "5b5b5b5b5b5b", Name: "decoy-2"},
+		ContainerSample{ID: "a0a0a0a0a0a0a0a0", Name: "5c5c5c5c5c5c"})
+	b := newFakeAgent(t, "node-b",
+		ContainerSample{ID: webID, Name: "web"},
+		ContainerSample{ID: dbID, Name: "db"})
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-a"), agentTask("node-b")}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+
+	urlB := "http://" + b.addr()
+	for _, c := range []struct{ id, want string }{
+		{"web", ""},          // a name on node-b, an ID on node-a
+		{"5b5b5b5b5b5b", ""}, // a prefix on node-b, an ID on node-a
+		{"5c5c5c5c5c5c", ""}, // a prefix on node-b, a name on node-a
+		{webID, urlB},        // full IDs stay exact
+		{"db", urlB},
+	} {
+		if got, ok := p.LocateContainer(context.Background(), c.id); ok != (c.want != "") || got != c.want {
+			t.Errorf("LocateContainer(%q) = %q,%v want %q", c.id, got, ok, c.want)
+		}
+	}
+}
+
+// Two tasks on different nodes claiming one container leave it unplaced:
+// a task's container is what its node reports to the swarm.
+func TestAgentPoolTaskContainerClaimedByTwoNodesNotLocated(t *testing.T) {
+	a := newFakeAgent(t, "node-a")
+	b := newFakeAgent(t, "node-b")
+	tasks := &stubDockerClient{tasks: []swarm.Task{
+		agentTask("node-a"),
+		agentTask("node-b"),
+		runningTask("tA", "node-a", "b0b0b0b0b0b0b1"),
+		runningTask("tB", "node-b", "b0b0b0b0b0b0b1"),
+		runningTask("tC", "node-b", "c0c0c0c0c0c0c1"),
+	}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+
+	if got, ok := p.LocateContainer(context.Background(), "b0b0b0b0b0b0b1"); ok {
+		t.Errorf("container claimed by two nodes located at %q", got)
+	}
+	if got, ok := p.LocateContainer(context.Background(), "c0c0c0c0c0c0"); !ok || got != "http://"+b.addr() {
+		t.Errorf("LocateContainer = %q,%v want node-b", got, ok)
+	}
+}
+
+// A task's container is what its node tells the swarm. When another node
+// reports that container as its own standalone one, nothing tells which is
+// right, so it isn't located.
+func TestAgentPoolTaskClaimContradictedByStandaloneReport(t *testing.T) {
+	const webID = "5b5b5b5b5b5b0000000000000000000000000000000000000000000000000000"
+	a := newFakeAgent(t, "node-a")
+	b := newFakeAgent(t, "node-b", ContainerSample{ID: webID, Name: "web"})
+	tasks := &stubDockerClient{tasks: []swarm.Task{
+		agentTask("node-a"),
+		agentTask("node-b"),
+		runningTask("tA", "node-a", webID),
+	}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+
+	for _, id := range []string{webID, webID[:12]} {
+		if got, ok := p.LocateContainer(context.Background(), id); ok {
+			t.Errorf("LocateContainer(%q) = %q, want not located", id, got)
+		}
+	}
+	if got, ok := p.LocateContainer(context.Background(), "web"); !ok || got != "http://"+b.addr() {
+		t.Errorf(`LocateContainer("web") = %q,%v want node-b`, got, ok)
+	}
+}
+
+// Stats for a container or task reported by several nodes are dropped: a
+// container runs on one node, so all but one report is wrong, and which one
+// is unknown.
+func TestAgentPoolSamplesDropsReportsClaimedByTwoNodes(t *testing.T) {
+	a := newFakeAgent(t, "node-a",
+		ContainerSample{ID: "aaaaaaaaaaaaaaaa", Name: "web", Stats: ContainerStats{CPUPercent: 99}},
+		taskSample("a1a1a1a1a1a1a1a1", "shop_db.1.t1", "shop_db", "t1", 99, 1),
+		ContainerSample{ID: "a2a2a2a2a2a2a2a2", Name: "only-on-a"})
+	b := newFakeAgent(t, "node-b",
+		ContainerSample{ID: "aaaaaaaaaaaaaaaa", Name: "web", Stats: ContainerStats{CPUPercent: 1}},
+		taskSample("b1b1b1b1b1b1b1b1", "shop_db.1.t1", "shop_db", "t1", 1, 1),
+		ContainerSample{ID: "b2b2b2b2b2b2b2b2", Name: "only-on-b"})
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-a"), agentTask("node-b")}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+
+	var names []string
+	for _, s := range p.Samples(context.Background()) {
+		names = append(names, s.Name)
+	}
+	slices.Sort(names)
+	if !slices.Equal(names, []string{"only-on-a", "only-on-b"}) {
+		t.Errorf("samples %v, want only those a single node reports", names)
+	}
+}
+
+// An agent reporting more containers than a node runs is cut to a bound.
+func TestAgentPoolCapsSamplesPerAgent(t *testing.T) {
+	var many []ContainerSample
+	for i := range maxAgentSamples + 10 {
+		many = append(many, ContainerSample{ID: fmt.Sprintf("%016x", i), Name: fmt.Sprint("c", i)})
+	}
+	a := newFakeAgent(t, "node-a", many...)
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-a")}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+
+	if got := len(p.Samples(context.Background())); got != maxAgentSamples {
+		t.Errorf("%d samples, want %d", got, maxAgentSamples)
+	}
+}
+
+// A stats answer over the size bound is refused whole.
+func TestAgentPoolRefusesOversizedStats(t *testing.T) {
+	old := maxAgentStatsBytes
+	maxAgentStatsBytes = 256
+	t.Cleanup(func() { maxAgentStatsBytes = old })
+
+	var many []ContainerSample
+	for i := range 20 {
+		many = append(many, ContainerSample{ID: fmt.Sprintf("%016x", i), Name: fmt.Sprint("c", i)})
+	}
+	a := newFakeAgent(t, "node-a", many...)
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-a")}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+
+	if got := p.Samples(context.Background()); len(got) != 0 {
+		t.Errorf("%d samples from an oversized answer, want none", len(got))
+	}
+}
+
+// The pool never follows an agent's redirect: an agent can't make the
+// server request another address.
+func TestAgentPoolDoesNotFollowRedirects(t *testing.T) {
+	var elsewhere atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { elsewhere.Add(1) }))
+	t.Cleanup(target.Close)
+	a := newFakeAgent(t, "node-a")
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == AgentAPIPrefix+"/stats" {
+			http.Redirect(w, r, target.URL+"/internal", http.StatusFound)
+			return
+		}
+		a.srv.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(redirecting.Close)
+	addr := strings.TrimPrefix(redirecting.URL, "http://")
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-a")}}
+	p := newTestPool(&stubResolver{addrs: []string{addr}}, "node-local", tasks)
+	p.Refresh(context.Background())
+
+	p.Samples(context.Background())
+	if n := elsewhere.Load(); n != 0 {
+		t.Errorf("redirect followed %d times", n)
+	}
+}
+
+// Agents report only running containers, so a stopped task container is
+// placed by the swarm, even when another node reports it as standalone: by
+// name, which the manager places. Its container ID is what the task's node
+// told the swarm, which the other node's report contradicts, so by ID it is
+// not located.
+func TestAgentPoolStandaloneReportDoesNotPlaceTaskContainer(t *testing.T) {
+	a := newFakeAgent(t, "node-a", ContainerSample{ID: "bbbbbbbbbbbbbbbb", Name: "shop_web.2.t2"})
+	b := newFakeAgent(t, "node-b")
+	tasks := &stubDockerClient{tasks: []swarm.Task{
+		agentTask("node-a"),
+		agentTask("node-b"),
+		runningTask("t2", "node-b", "bbbbbbbbbbbbbbbb"),
+	}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr(), b.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+
+	if got, ok := p.LocateContainer(context.Background(), "shop_web.2.t2"); !ok || got != "http://"+b.addr() {
+		t.Errorf("LocateContainer by name = %q,%v want node-b", got, ok)
+	}
+	for _, id := range []string{"bbbbbbbbbbbbbbbb", "bbbbbbbbbbbb"} {
+		if got, ok := p.LocateContainer(context.Background(), id); ok {
+			t.Errorf("LocateContainer(%q) = %q, want not located", id, got)
+		}
+	}
+}
+
+// Without the task list, a standalone report can't be told from a task
+// container's, so it does not place it.
+func TestAgentPoolStandaloneNotLocatedWhileTaskListFails(t *testing.T) {
+	a := newFakeAgent(t, "node-a", ContainerSample{ID: "aaaaaaaaaaaaaaaa", Name: "redis"})
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-a")}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	p.Samples(context.Background())
+	if _, ok := p.LocateContainer(context.Background(), "redis"); !ok {
+		t.Fatal("standalone container not located while the task list works")
+	}
+
+	tasks.mu.Lock()
+	tasks.taskErr = errors.New("manager unavailable")
+	tasks.mu.Unlock()
+	if got, ok := p.LocateContainer(context.Background(), "redis"); ok {
+		t.Errorf("LocateContainer = %q, want not located while the task list fails", got)
+	}
+}
+
+// An agent is only used for the node it names when the swarm runs a task
+// with the agent's address on that node.
+func TestAgentPoolIgnoresAgentOnUnconfirmedNode(t *testing.T) {
+	a := newFakeAgent(t, "node-a")
+	tasks := &stubDockerClient{tasks: []swarm.Task{agentTask("node-b")}}
+	p := newTestPool(&stubResolver{addrs: []string{a.addr()}}, "node-local", tasks)
+	p.Refresh(context.Background())
+	if n := len(p.remoteEndpoints()); n != 0 {
+		t.Fatalf("agents = %d, want the unconfirmed one ignored", n)
+	}
+
+	// Confirmed later, and kept while the swarm can't be asked.
+	tasks.mu.Lock()
+	tasks.tasks = []swarm.Task{agentTask("node-a")}
+	tasks.mu.Unlock()
+	p.Refresh(context.Background())
+	if _, ok := p.remoteEndpoints()["node-a"]; !ok {
+		t.Fatal("confirmed agent not used")
+	}
+	tasks.mu.Lock()
+	tasks.taskErr = errors.New("manager unavailable")
+	tasks.mu.Unlock()
+	p.Refresh(context.Background())
+	if _, ok := p.remoteEndpoints()["node-a"]; !ok {
+		t.Error("a confirmed agent must survive a failed task list")
 	}
 }
 
@@ -441,7 +897,7 @@ func TestAgentPoolStartStop(t *testing.T) {
 	a := newFakeAgent(t, "node-1")
 	res := &stubResolver{addrs: []string{a.addr()}}
 	p := NewAgentPool(AgentPoolConfig{
-		Addr: "tasks.agent", Port: "7801", Token: testAgentToken, Resolver: res,
+		Addr: "tasks.agent", Port: "7801", Auth: agentauth.Token(testAgentToken), Resolver: res,
 		ResolveInterval: 10 * time.Millisecond,
 	})
 	p.Start(context.Background())
@@ -467,7 +923,7 @@ func TestAgentPoolRetriesSoonWithoutAgents(t *testing.T) {
 	a := newFakeAgent(t, "node-1")
 	res := &stubResolver{err: &net.DNSError{Err: "no such host", Name: "tasks.agent", IsNotFound: true}}
 	p := NewAgentPool(AgentPoolConfig{
-		Addr: "tasks.agent", Port: "7801", Token: testAgentToken, Resolver: res,
+		Addr: "tasks.agent", Port: "7801", Auth: agentauth.Token(testAgentToken), Resolver: res,
 		ResolveInterval: time.Hour,
 	})
 	p.retryMin = 5 * time.Millisecond
@@ -494,7 +950,7 @@ func TestAgentPoolKeepsIntervalWithAgents(t *testing.T) {
 	a := newFakeAgent(t, "node-1")
 	res := &stubResolver{addrs: []string{a.addr()}}
 	p := NewAgentPool(AgentPoolConfig{
-		Addr: "tasks.agent", Port: "7801", Token: testAgentToken, Resolver: res,
+		Addr: "tasks.agent", Port: "7801", Auth: agentauth.Token(testAgentToken), Resolver: res,
 		ResolveInterval: time.Hour,
 	})
 	p.retryMin = time.Millisecond
@@ -514,7 +970,7 @@ func TestAgentPoolPicksUpNewAgentBeforeInterval(t *testing.T) {
 	a, b := newFakeAgent(t, "node-1"), newFakeAgent(t, "node-2")
 	res := &stubResolver{addrs: []string{a.addr()}}
 	p := NewAgentPool(AgentPoolConfig{
-		Addr: "tasks.agent", Port: "7801", Token: testAgentToken, Resolver: res,
+		Addr: "tasks.agent", Port: "7801", Auth: agentauth.Token(testAgentToken), Resolver: res,
 		ResolveInterval: time.Hour,
 		ChangeInterval:  5 * time.Millisecond,
 	})
@@ -535,7 +991,7 @@ func TestAgentPoolPicksUpNewAgentBeforeInterval(t *testing.T) {
 func TestAgentPoolChangeCheckSkipsUnchangedAgents(t *testing.T) {
 	a := newFakeAgent(t, "node-1")
 	p := NewAgentPool(AgentPoolConfig{
-		Addr: "tasks.agent", Port: "7801", Token: testAgentToken,
+		Addr: "tasks.agent", Port: "7801", Auth: agentauth.Token(testAgentToken),
 		Resolver:        &stubResolver{addrs: []string{a.addr()}},
 		ResolveInterval: time.Hour,
 		ChangeInterval:  time.Millisecond,
@@ -546,115 +1002,6 @@ func TestAgentPoolChangeCheckSkipsUnchangedAgents(t *testing.T) {
 	if n := a.infoCalls.Load(); n != 1 {
 		t.Errorf("/info called %d times, want 1", n)
 	}
-}
-
-// remoteStub is a RemoteSampler returning fixed samples and reporting nodes.
-type remoteStub struct {
-	samples []ContainerSample
-	nodes   []string
-}
-
-func (r remoteStub) Samples(context.Context) []ContainerSample { return r.samples }
-
-func (r remoteStub) ReportingNodes() []string { return r.nodes }
-
-func TestStatsCollectorEmitsIdleReportingNodes(t *testing.T) {
-	sc := NewStatsCollector(&stubDockerClient{}, time.Second, 2)
-	sc.SetLocalNode("n-local", "mgr")
-	sc.SetRemote(remoteStub{nodes: []string{"idle-wrk"}})
-
-	snap := sc.poll(context.Background())
-	for _, key := range []string{"node:mgr", "node:idle-wrk"} {
-		if got, ok := snap.Stats[key]; !ok || got != (ContainerStats{}) {
-			t.Errorf("%s = %+v (present %v), want zero entry", key, got, ok)
-		}
-	}
-}
-
-func TestStatsCollectorMergesRemoteWithoutDoubleCounting(t *testing.T) {
-	stats := sampleStatsResponse(1_000_000, 10_000_000, 2)
-	cli := &stubDockerClient{
-		containers: containerSummaries("aaaaaaaaaaaa", "shop_web.1.t1", map[string]string{
-			swarmTaskIDLabel: "t1", swarmServiceNameLabel: "shop_web",
-		}),
-		statsFn: func(string) (containerStatsReader, error) { return fakeStatsBody(stats), nil },
-	}
-	sc := NewStatsCollector(cli, time.Hour, 2)
-	sc.SetRemote(remoteStub{samples: []ContainerSample{
-		// Same container reported by the local agent: must be ignored.
-		taskSample("aaaaaaaaaaaa", "shop_web.1.t1", "shop_web", "t1", 999, 999),
-		taskSample("bbbbbbbbbbbb", "shop_web.2.t2", "shop_web", "t2", 5, 300),
-	}})
-
-	snap := sc.poll(context.Background())
-	local := snap.Stats["shop_web.1.t1"]
-	if local.CPUPercent == 999 {
-		t.Fatal("remote duplicate overrode local sample")
-	}
-	agg, ok := snap.Stats["shop_web"]
-	if !ok {
-		t.Fatalf("missing service aggregate: %v", snap.Stats)
-	}
-	if agg.CPUPercent != local.CPUPercent+5 || agg.MemUsage != local.MemUsage+300 {
-		t.Errorf("aggregate %+v, local %+v", agg, local)
-	}
-	if _, ok := snap.Stats["shop_web.2.t2"]; !ok {
-		t.Error("missing remote task stats")
-	}
-}
-
-func TestBuildStatsSnapshotAggregates(t *testing.T) {
-	snap := BuildStatsSnapshot([]ContainerSample{
-		taskSample("a", "svc.1.x", "svc", "x", 10, 100),
-		{
-			ID: "b", Name: "svc.2.y", Labels: map[string]string{swarmServiceNameLabel: "svc"},
-			Stats: ContainerStats{CPUPercent: 5, CPUThrottled: 40, MemUsage: 50, MemLimit: 1000, NetRx: 7, PIDs: 3},
-		},
-		{ID: "c", Name: "standalone", Stats: ContainerStats{CPUPercent: 1}},
-		// A container named like a service keeps its own entry.
-		{ID: "d", Name: "other", Stats: ContainerStats{CPUPercent: 2}},
-		taskSample("e", "other.1.z", "other", "z", 30, 30),
-	})
-	agg := snap.Stats["svc"]
-	want := ContainerStats{CPUPercent: 15, CPUThrottled: 40, MemUsage: 150, MemLimit: 2000, NetRx: 7, PIDs: 3}
-	if agg != want {
-		t.Errorf("aggregate = %+v, want %+v", agg, want)
-	}
-	if snap.Stats["other"].CPUPercent != 2 {
-		t.Errorf("container entry clobbered by aggregate: %+v", snap.Stats["other"])
-	}
-	if len(snap.Stats) != 6 {
-		t.Errorf("want 6 entries, got %d: %v", len(snap.Stats), snap.Stats)
-	}
-}
-
-func TestPollSamplesCarriesSwarmLabels(t *testing.T) {
-	stats := sampleStatsResponse(1_000_000, 10_000_000, 2)
-	cli := &stubDockerClient{
-		containers: containerSummaries("aaaaaaaaaaaa", "shop_web.1.t1", map[string]string{
-			swarmTaskIDLabel: "t1", swarmServiceNameLabel: "shop_web", "unrelated": "x",
-		}),
-		statsFn: func(string) (containerStatsReader, error) { return fakeStatsBody(stats), nil },
-	}
-	samples := PollSamples(context.Background(), cli, 2)
-	if len(samples) != 1 {
-		t.Fatalf("want 1 sample, got %d", len(samples))
-	}
-	s := samples[0]
-	if s.ID != "aaaaaaaaaaaa" || s.TaskID() != "t1" || s.ServiceName() != "shop_web" {
-		t.Errorf("unexpected sample %+v", s)
-	}
-	if _, leaked := s.Labels["unrelated"]; leaked {
-		t.Error("unrelated labels must not be copied")
-	}
-}
-
-// containerStatsReader shortens the stats stub signature.
-type containerStatsReader = containertypes.StatsResponseReader
-
-// containerSummaries returns one running container with the given labels.
-func containerSummaries(id, name string, labels map[string]string) []containertypes.Summary {
-	return []containertypes.Summary{{ID: id, Names: []string{"/" + name}, State: StateRunning, Labels: labels}}
 }
 
 func TestAgentPoolSamplesStampsNode(t *testing.T) {
@@ -670,92 +1017,6 @@ func TestAgentPoolSamplesStampsNode(t *testing.T) {
 	}
 	if samples[0].NodeID != "node-remote" || samples[0].NodeHostname != "host-node-remote" {
 		t.Errorf("sample not stamped with its agent's node: %+v", samples[0])
-	}
-}
-
-func TestStatsCollectorStampsLocalSamples(t *testing.T) {
-	stats := sampleStatsResponse(1_000_000, 10_000_000, 2)
-	cli := &stubDockerClient{
-		containers: containerSummaries("aaaaaaaaaaaa", "shop_web.1.t1", map[string]string{
-			swarmTaskIDLabel: "t1", swarmServiceNameLabel: "shop_web",
-		}),
-		statsFn: func(string) (containerStatsReader, error) { return fakeStatsBody(stats), nil },
-	}
-
-	// Without a local node (standalone), no node aggregate appears.
-	sc := NewStatsCollector(cli, time.Hour, 2)
-	for key := range sc.poll(context.Background()).Stats {
-		if IsNodeSeries(key) {
-			t.Errorf("unexpected node series %q without a local node", key)
-		}
-	}
-
-	// Local node only, no remote sampler.
-	sc = NewStatsCollector(cli, time.Hour, 2)
-	sc.SetLocalNode("n-local", "mgr")
-	snap := sc.poll(context.Background())
-	local := snap.Stats["shop_web.1.t1"]
-	if got, ok := snap.Stats["node:mgr"]; !ok || got != local {
-		t.Errorf("node:mgr = %+v (present %v), want %+v", got, ok, local)
-	}
-
-	// Local and remote: each node gets its own aggregate.
-	sc = NewStatsCollector(cli, time.Hour, 2)
-	sc.SetLocalNode("n-local", "mgr")
-	remote := taskSample("bbbbbbbbbbbb", "shop_web.2.t2", "shop_web", "t2", 5, 300)
-	remote.NodeID, remote.NodeHostname = "n-remote", "wrk"
-	sc.SetRemote(remoteStub{samples: []ContainerSample{remote}})
-	snap = sc.poll(context.Background())
-	if got := snap.Stats["node:mgr"]; got != local {
-		t.Errorf("node:mgr = %+v, want %+v", got, local)
-	}
-	if got := snap.Stats["node:wrk"]; got.CPUPercent != 5 || got.MemUsage != 300 {
-		t.Errorf("node:wrk = %+v", got)
-	}
-	if agg := snap.Stats["shop_web"]; agg.MemUsage != local.MemUsage+300 {
-		t.Errorf("service aggregate polluted or wrong: %+v", agg)
-	}
-}
-
-func TestBuildStatsSnapshotNodeAggregates(t *testing.T) {
-	onNode := func(s ContainerSample, id, host string) ContainerSample {
-		s.NodeID, s.NodeHostname = id, host
-		return s
-	}
-	snap := BuildStatsSnapshot([]ContainerSample{
-		onNode(taskSample("a", "svc.1.x", "svc", "x", 10, 100), "n1", "mgr"),
-		onNode(taskSample("b", "svc.2.y", "svc", "y", 20, 200), "n2", "wrk"),
-		onNode(ContainerSample{
-			ID: "c", Name: "standalone",
-			Stats: ContainerStats{CPUPercent: 1, CPUThrottled: 60, MemUsage: 10, MemLimit: 500, NetTx: 4, BlockRead: 9, PIDs: 2},
-		}, "n1", "mgr"),
-		// Unattributed sample: counted in no node.
-		taskSample("d", "svc.3.z", "svc", "z", 100, 1000),
-	})
-
-	wantMgr := ContainerStats{CPUPercent: 11, CPUThrottled: 60, MemUsage: 110, MemLimit: 1500, NetTx: 4, BlockRead: 9, PIDs: 2}
-	if got := snap.Stats["node:mgr"]; got != wantMgr {
-		t.Errorf("node:mgr = %+v, want %+v", got, wantMgr)
-	}
-	wantWrk := ContainerStats{CPUPercent: 20, MemUsage: 200, MemLimit: 1000}
-	if got := snap.Stats["node:wrk"]; got != wantWrk {
-		t.Errorf("node:wrk = %+v, want %+v", got, wantWrk)
-	}
-	// The service aggregate is unaffected by node attribution.
-	if got := snap.Stats["svc"]; got.CPUPercent != 130 || got.MemUsage != 1300 {
-		t.Errorf("svc aggregate = %+v", got)
-	}
-	// 4 containers + 1 service + 2 nodes.
-	if len(snap.Stats) != 7 {
-		t.Errorf("want 7 entries, got %d: %v", len(snap.Stats), snap.Stats)
-	}
-}
-
-func TestIsNodeSeries(t *testing.T) {
-	for key, want := range map[string]bool{"node:mgr": true, "node:": true, "node": false, "web": false, "shop_web.1.x": false} {
-		if got := IsNodeSeries(key); got != want {
-			t.Errorf("IsNodeSeries(%q) = %v, want %v", key, got, want)
-		}
 	}
 }
 

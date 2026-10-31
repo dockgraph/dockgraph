@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -504,6 +505,61 @@ func TestHandleContainerInspect_EnvVarsMasked(t *testing.T) {
 				t.Errorf("NORMAL_VAR should not be masked, got %q", val)
 			}
 		}
+	}
+}
+
+// Credentials embedded in values, labels, the command line and health
+// output are masked too, not only values under credential-looking keys.
+func TestHandleContainerInspect_EmbeddedCredentialsMasked(t *testing.T) {
+	resp := validContainerInspectResponse()
+	resp.Config.Env = []string{
+		"DATABASE_URL=postgres://shop:Pg-Secret-77@shop-db:5432/shop",
+		"SMTP_PASS=hunter2",
+		"DB_PWD=pwd123",
+		"SENTRY_DSN=https://abc123key@o0.ingest.example/1",
+	}
+	resp.Config.Labels = map[string]string{
+		"traefik.http.middlewares.auth.basicauth.users": "admin:$apr1$xyz",
+		"app.db.password": "LabelPass1",
+		"app":             "web",
+	}
+	resp.Config.Cmd = []string{"redis-server", "--requirepass", "hunter2"}
+	resp.Config.Entrypoint = []string{"sh", "-c", "exec app --db=postgres://u:pw@db/app"}
+	resp.State.Health = &containertypes.Health{
+		Status: "healthy",
+		Log:    []*containertypes.HealthcheckResult{{Output: "ok from http://admin:pw@localhost/health"}},
+	}
+
+	mux := newContainerInspectServer(&stubContainerInspector{result: resp})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/containers/web-secrets", nil))
+
+	raw := w.Body.String()
+	for _, secret := range []string{"Pg-Secret-77", "hunter2", "pwd123", "abc123key", "$apr1$xyz", "LabelPass1", "admin:pw@"} {
+		if strings.Contains(raw, secret) {
+			t.Errorf("response leaks %q: %s", secret, raw)
+		}
+	}
+	for _, kept := range []string{"postgres://shop:********@shop-db:5432/shop", `"app":"web"`, "redis-server"} {
+		if !strings.Contains(raw, kept) {
+			t.Errorf("response should still contain %q: %s", kept, raw)
+		}
+	}
+}
+
+// Docker appends the command to the entrypoint, so the value of a flag that
+// ends the entrypoint is the command's first argument.
+func TestHandleContainerInspect_FlagValueAfterEntrypointMasked(t *testing.T) {
+	resp := validContainerInspectResponse()
+	resp.Config.Entrypoint = []string{"redis-server", "--requirepass"}
+	resp.Config.Cmd = []string{"EntrySecret9", "--port", "6379"}
+
+	mux := newContainerInspectServer(&stubContainerInspector{result: resp})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/containers/redis", nil))
+
+	if raw := w.Body.String(); strings.Contains(raw, "EntrySecret9") || !strings.Contains(raw, `"cmd":["********","--port","6379"]`) {
+		t.Errorf("command not masked as part of the entrypoint's command line: %s", raw)
 	}
 }
 
