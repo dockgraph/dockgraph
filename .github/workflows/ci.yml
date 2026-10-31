@@ -27,7 +27,9 @@ jobs:
     name: Backend
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: codecov
+    environment:
+      name: codecov
+      deployment: false
     permissions:
       contents: read # check out the repository
       checks: write # publish the test report as a check run
@@ -106,7 +108,9 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: codecov
+    environment:
+      name: codecov
+      deployment: false
     permissions:
       contents: read # check out the repository
       checks: write # publish the test report as a check run
