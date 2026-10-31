@@ -47,13 +47,13 @@ Real-time Docker infrastructure visualizer. See your containers, networks, volum
 
 ```bash
 docker run -d \
-  -p 7800:7800 \
+  -p 127.0.0.1:7800:7800 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   --label dockgraph.self=true \
   dockgraph/dockgraph
 ```
 
-Open [http://localhost:7800](http://localhost:7800).
+Open [http://localhost:7800](http://localhost:7800). To reach it from other machines, publish `-p 7800:7800` and set a password (`-e DG_PASSWORD=...`, see [Security Considerations](#security-considerations)).
 
 ### Adding to your Docker Compose stack
 
@@ -64,7 +64,7 @@ services:
   dockgraph:
     image: dockgraph/dockgraph:latest
     ports:
-      - "7800:7800" # Web UI
+      - "127.0.0.1:7800:7800" # Web UI; for other machines use "7800:7800" and set DG_PASSWORD
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro # Docker API access
       - ./compose.yml:/compose/compose.yml:ro # Optional: show services before they start
@@ -111,19 +111,25 @@ environment:
 
 | Variable           | Default         | Description                                                                          |
 | ------------------ | --------------- | ------------------------------------------------------------------------------------ |
-| `DG_BIND_ADDR`     | `0.0.0.0`       | Listen address (`127.0.0.1` to restrict to localhost)                                |
+| `DG_BIND_ADDR`     | `0.0.0.0`       | Listen address inside the container. Keep `0.0.0.0` in a container (publish on `127.0.0.1:7800:7800` to restrict to the host); `127.0.0.1` only suits running the binary directly |
 | `DG_PORT`          | `7800`          | HTTP listen port                                                                     |
 | `DG_POLL_INTERVAL` | `30s`           | Docker API polling interval                                                          |
 | `DG_COMPOSE_PATH`  | _(auto-detect)_ | Override: comma-separated list of compose/stack files or directories to scan; prefix an entry with `name=` (e.g. `shop=/stacks/shop.yml`) to set its project/stack name |
-| `DG_PASSWORD`      | _(disabled)_    | Password for UI and WebSocket access; when set, requires login to view the dashboard |
+| `DG_PASSWORD`      | _(disabled)_    | Password for UI and WebSocket access (plaintext or argon2id hash); when set, requires login to view the dashboard |
 | `DG_PASSWORD_FILE` | _(none)_        | File to read the password from (e.g. a Docker secret; plaintext or argon2id hash); `DG_PASSWORD` wins if both are set. The server refuses to start if the file is unreadable or empty |
+| `DG_ALLOWED_HOSTS` | _(none)_        | Host names the UI is served under, besides IP addresses and `localhost`: comma-separated, `.example.com` (or `*.example.com`) for a domain and its subdomains, `*` for any. Checked when `DG_PASSWORD` is unset, or whenever this is set; other hosts get `403` |
+| `DG_TRUSTED_PROXIES` | _(none)_      | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` (client address, for login rate limiting and connection limits) and `X-Forwarded-Proto` (`Secure` session cookie) are trusted |
 | `DG_STATS_INTERVAL`| `3s`            | Container stats poll interval (Go duration)                                          |
 | `DG_STATS_WORKERS` | `50`            | Max concurrent stats API calls                                                       |
 | `DG_MODE`          | `auto`          | `auto`, `standalone`, `swarm` or `agent`. `auto` picks `swarm` on a swarm manager and `standalone` outside a swarm; it refuses to start on a swarm worker, on a pending, locked or errored swarm node, or when the daemon can't be queried after retrying for about 30 seconds |
 | `DG_SWARM_POLL_INTERVAL` | `5s`      | Swarm task poll interval (Go duration, min `1s`)                                     |
 | `DG_AGENT_PORT`    | `7801`          | Per-node agent HTTP port (agents listen on it, the server dials it)                 |
 | `DG_AGENT_ADDR`    | `tasks.agent`   | DNS name resolving to every agent task, optionally `host:port`                       |
-| `DG_AGENT_TOKEN`   | _(none)_        | Shared bearer secret between server and agents; required in `agent` mode. Without it the swarm server runs without agents |
+| `DG_AGENT_KEY`     | _(none)_        | Server only: private key it signs agent requests with (from `dockgraph --agent-keygen`). Without it (or `DG_AGENT_TOKEN`) the swarm server runs without agents |
+| `DG_AGENT_KEY_FILE` | _(none)_       | File to read the private key from (e.g. a Docker secret); `DG_AGENT_KEY` wins if both are set. The server refuses to start if the key is unreadable or malformed |
+| `DG_AGENT_PUBLIC_KEY` | _(none)_     | Agent only: public key the server's requests must be signed with (from `dockgraph --agent-pubkey`); several, separated by commas or newlines, while rotating keys. Required in `agent` mode unless `DG_AGENT_TOKEN` is set |
+| `DG_AGENT_PUBLIC_KEY_FILE` | _(none)_ | File to read the public keys from (e.g. a Docker config); `DG_AGENT_PUBLIC_KEY` wins if both are set |
+| `DG_AGENT_TOKEN`   | _(none)_        | **Deprecated**, replaced by the keys above: shared bearer secret between server and agents. Agents with a public key ignore it; token-only mode will be removed in a future release |
 | `DG_AGENT_TOKEN_FILE` | _(none)_     | File to read the agent token from (e.g. a Docker secret); `DG_AGENT_TOKEN` wins if both are set |
 
 ## Docker Swarm
@@ -136,8 +142,12 @@ On a swarm manager, DockGraph shows **services** (with replica counts, tasks and
 - **`agent`** — a global service (one task per node) that exposes that node's container stats, inspect and logs, and its volumes, to the server. It publishes no port and is only reachable on the stack's internal overlay network.
 
 ```bash
-# On a manager: create the shared agent token once
-openssl rand -hex 32 | docker secret create dg_agent_token -
+# On a manager: create the agent keys once. The private key becomes a
+# secret only the server gets; agents get the public key as a config.
+(umask 077 && docker run --rm dockgraph/dockgraph --agent-keygen > dg_agent_key)
+docker run --rm -i dockgraph/dockgraph --agent-pubkey < dg_agent_key | docker config create dg_agent_pubkey -
+docker secret create dg_agent_key dg_agent_key
+rm dg_agent_key
 
 # Deploy (or: make swarm-deploy)
 docker stack deploy -c stack.yml dockgraph
@@ -150,13 +160,25 @@ Both services carry the `dockgraph.self=true` label (as a service label under `d
 To show services from stack files that are not deployed yet, mount them into the `server` service (the path must exist on the manager it runs on) and name each file after its stack, as you would with `docker stack deploy -c file <name>`:
 
 ```yaml
-    volumes:
-      - /opt/stacks/shop.yml:/stacks/shop.yml:ro
-    environment:
-      DG_COMPOSE_PATH: "shop=/stacks/shop.yml"
+volumes:
+  - /opt/stacks/shop.yml:/stacks/shop.yml:ro
+environment:
+  DG_COMPOSE_PATH: "shop=/stacks/shop.yml"
 ```
 
 Demo stacks for swarm are in [`demo/stack-small.yml`](demo/stack-small.yml) and [`demo/stack-medium.yml`](demo/stack-medium.yml) (see [`demo/README.md`](demo/README.md)).
+
+### Moving from the agent token to keys
+
+Stacks deployed before agent keys share one `dg_agent_token` secret between the server and the agents. It still works, with a warning; keys are recommended because agents then hold only a public key. To move to keys, create them as above, then either:
+
+- **Redeploy the new `stack.yml`.** Until every agent has restarted with the public key, nodes still on the token have no stats or remote details, and the server logs that they rejected its credentials. Then `docker secret rm dg_agent_token`.
+- **Or move without a gap**, in three deploys:
+  1. Give the server the key and keep its token: add `DG_AGENT_KEY_FILE` and the `dg_agent_key` secret to the `server` service. It now signs its requests and still sends the token.
+  2. Give the agents the public key: in the `agent` service, replace `DG_AGENT_TOKEN_FILE` and the `dg_agent_token` secret with `DG_AGENT_PUBLIC_KEY_FILE` and the `dg_agent_pubkey` config, as in `stack.yml`.
+  3. Remove `DG_AGENT_TOKEN_FILE` and the secret from the `server` service, then `docker secret rm dg_agent_token`.
+
+Agents accept several public keys, so the keys can later be replaced without a gap: give the agents a config with both the old and the new public key, then give the server the new private key, then give the agents a config with only the new public key. Secrets and configs cannot be changed in place, so each one is created under a new name and set as `name:` of the external secret or config in `stack.yml`; the file inside the containers keeps its path.
 
 ### Swarm views
 
@@ -168,9 +190,9 @@ Demo stacks for swarm are in [`demo/stack-small.yml`](demo/stack-small.yml) and 
 
 ### Remote task limits
 
-- **Without agents** (no `DG_AGENT_TOKEN`), topology, replica counts, service logs and the services of a network (with their tasks' addresses) still cover the whole cluster (they come from the manager's swarm API), but container stats, container inspect and container logs are only available for tasks on the server's own node.
+- **Without agents** (no `DG_AGENT_KEY` or `DG_AGENT_TOKEN` on the server), topology, replica counts, service logs and the services of a network (with their tasks' addresses) still cover the whole cluster (they come from the manager's swarm API), but container stats, container inspect and container logs are only available for tasks on the server's own node.
 - **With agents**, the server resolves `tasks.agent` periodically, polls each agent for stats and proxies container inspect/logs to the node running the container. Volumes are node-local in a swarm, so a volume's detail panel is looked up on every node and names the node it describes (and any other node with a volume of the same name). A node whose agent is down or unreachable simply has no stats until it comes back.
-- Agents need the same token as the server. A mismatched token is rejected and that node's data is missing: the server logs the rejection once (and again once it is fixed), and container or volume details that cannot be reached because of it show an "agent rejected token" error rather than "not found".
+- Agents need the public key that matches the server's private key (or, without keys, the server's token). Agents reject requests signed with another key, or more than two minutes off their own clock, so keep node clocks in sync (NTP). A rejected node's data is missing: the server logs the rejection once (and again once it is fixed), and container or volume details that cannot be reached because of it show an "agent rejected the server's credentials" error rather than "not found".
 - Running the standalone image on a swarm worker is refused in `auto` mode; set `DG_MODE=agent` there (or `DG_MODE=standalone` for a local-only view).
 
 ### Known limitations
@@ -197,21 +219,28 @@ DockGraph requires access to the Docker daemon socket to read container, network
   secrets:
     - dg_password
   ```
-  When `DG_PASSWORD` is not set, DockGraph runs without authentication (suitable for localhost or trusted networks).
-- **Bind to localhost** when running on a shared network or production host:
+  When `DG_PASSWORD` is not set, DockGraph runs without authentication. Anyone who can reach the port can then read container configuration and logs, and that includes every container on the host: a published port is reachable through each Docker network's gateway. Run without a password only when the port is published on the host's loopback.
+- **Publish on localhost** when no password is set. `DG_BIND_ADDR` sets the address _inside_ the container, so restrict the published port instead:
   ```yaml
-  environment:
-    DG_BIND_ADDR: "127.0.0.1"
+  ports:
+    - "127.0.0.1:7800:7800"
   ```
-- **Use a reverse proxy** (nginx, Caddy, Traefik) for TLS termination if exposing DockGraph beyond your local network. DockGraph serves plain HTTP — the reverse proxy handles HTTPS.
-- **Docker socket access** is read-only (`:ro`), but any process that can read the socket can inspect all Docker resources on the host. Run DockGraph in a network-isolated environment or behind a firewall.
-- **Read-only API.** DockGraph cannot start, stop, or modify containers. It only observes topology.
-- **Docker Swarm.** In a swarm, the Docker socket is mounted on **every node** (the agent is a global service), and access to the socket is equivalent to root on that host — even mounted `:ro`, since the Docker API is not restricted by the mount mode. Treat the `dockgraph` stack as privileged on the whole cluster:
+- **Host names.** Without a password, DockGraph answers only requests addressed to an IP, `localhost` or a name listed in `DG_ALLOWED_HOSTS`, so a foreign web page cannot read it under its own name. Add the names you open the UI under (`DG_ALLOWED_HOSTS: "dockgraph.lan"`), or set a password. This includes the name a reverse proxy forwards: nginx's `proxy_pass http://dockgraph:7800` sends `Host: dockgraph:7800` unless you add `proxy_set_header Host $host`, and scripts calling `http://dockgraph:7800` send that name too.
+- **Use a reverse proxy** (nginx, Caddy, Traefik) for TLS termination if exposing DockGraph beyond your local network. DockGraph serves plain HTTP — the reverse proxy handles HTTPS. List the proxy's address in `DG_TRUSTED_PROXIES` so login rate limiting tells clients apart and the session cookie is marked `Secure`.
+- **Docker socket access is root-equivalent.** Mounting the socket `:ro` only protects the socket file; the Docker API behind it accepts every call, including creating privileged containers. DockGraph itself never starts, stops or modifies anything, but anything that takes over its process controls the host. To narrow that, put a read-only Docker API proxy (such as one allowing only `GET` requests to containers, networks, volumes, events, info, images, services, tasks and nodes) between DockGraph and the socket, and point `DOCKER_HOST` at it. If the proxy blocks `/info`, set `DG_MODE=standalone` or `DG_MODE=swarm`.
+- **Non-root.** The image runs as root so it can open the socket. To run unprivileged, give the container the socket's group: `user: "65532:65532"` plus `group_add: ["<gid of /var/run/docker.sock>"]`.
+- **Docker Swarm.** In a swarm, the Docker socket is mounted on **every node** (the agent is a global service), so treat the `dockgraph` stack as privileged on the whole cluster:
   - Keep the agent port (`7801`) on the stack's internal overlay network. Never publish it; `stack.yml` does not.
-  - The agent refuses to start without a token, and every agent request needs it as a bearer token. Use a long random value stored as a Docker secret (`dg_agent_token`), not an inline `DG_AGENT_TOKEN`.
-  - Overlay traffic between nodes is unencrypted by default; enable `encrypted: "true"` on the internal network (see `stack.yml`) if nodes communicate over an untrusted network.
+  - The agent refuses to start without the server's public key (or the older token). The server signs every agent request with its private key, a Docker secret (`dg_agent_key`) only the `server` service gets. An agent accepts a request only if it is signed by that key, addressed to the agent itself, made within two minutes of the agent's clock and not seen before, so whoever takes over the agent on a worker cannot call the agents on other nodes (an agent on a manager holds that manager's Docker socket, which controls the whole swarm anyway). Move stacks still on the shared `dg_agent_token` to keys (see [Moving from the agent token to keys](#moving-from-the-agent-token-to-keys)).
+  - `stack.yml` encrypts the internal overlay network (`encrypted: "true"`), which carries logs and inspect data between nodes. Remove it only on platforms without IPsec support (e.g. Docker Desktop) and only on a trusted network.
   - Set `DG_PASSWORD_FILE` (backed by a `dg_password` Docker secret, see `stack.yml`) or `DG_PASSWORD` on the `server` service, since its published port is reachable on every node through the routing mesh.
-- **Secret masking.** Environment values whose keys look like credentials (`PASSWORD`, `SECRET`, `KEY`, `TOKEN`, `AUTH`, …) are masked before leaving the server — for both running containers and parsed compose services — so they're never sent to the browser.
+- **Secret masking.** Credentials in the configuration of running containers, swarm services and parsed compose services are masked before leaving the server: the values of environment variables and labels whose names look like credentials (`PASSWORD`, `SECRET`, `TOKEN`, `KEY`, …), and credentials embedded in any value or command line, such as URL and DSN passwords (`postgres://app:********@db`), query parameters, `key=value` pairs, header values, JSON and XML members, and credential flags, as well as driver options. Masking is best-effort: **logs are not masked**, so access to DockGraph is access to whatever containers print. Compose `env_file`, `label_file` and `.env` files, an `include`'s `env_file` too, are not read, since their paths would resolve inside DockGraph's own container; included compose files are read as part of the project. Variables in compose files are therefore interpolated from an empty environment: defaults (`${TAG:-latest}`) apply, and a required variable (`${TAG:?}`) makes the file fail to load.
+- **Compose parsing** runs in a separate process, one file at a time, so a file the parser cannot handle affects only that process: it is stopped after 30 seconds, may use at most 256 MiB of memory and gets none of DockGraph's environment but its time zone and home directory. Where the kernel provides Landlock, it can read only files under the compose paths (the auto-detected mounts or the `DG_COMPOSE_PATH` entries): keep compose, included and extended files there, since one elsewhere, or reached through a symlink leading out of them, fails to load with `permission denied`.
+- **Verifying the image.** Release images on Docker Hub and GHCR carry signed build provenance (GitHub artifact attestations) from the release workflow. Before running an image, check that it was built by this repository's release workflow:
+  ```sh
+  gh attestation verify oci://dockgraph/dockgraph:<version> --repo dockgraph/dockgraph
+  ```
+  Use `oci://ghcr.io/dockgraph/dockgraph:<version>` for the GHCR image. `gh` reads the image from the registry, so run `docker login` first if it asks; add `--bundle-from-oci` to read the attestation stored next to the image rather than from GitHub.
 
 ## How It Works
 
@@ -243,7 +272,7 @@ make test-coverage  # Run tests with coverage reports (enforces thresholds)
 make lint           # Run all linters (golangci-lint + eslint)
 make docker         # Build Docker image locally
 make docker-up      # Start with Docker Compose
-make swarm-deploy   # Deploy stack.yml to a swarm (needs the dg_agent_token secret)
+make swarm-deploy   # Deploy stack.yml to a swarm (needs the dg_agent_key secret and dg_agent_pubkey config)
 make demo-swarm     # Deploy the swarm demo stacks
 make help           # Show all available targets
 ```
