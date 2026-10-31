@@ -88,6 +88,8 @@ export interface DGNode {
   stack?: string;
   service?: ServiceInfo;
   swarmNode?: SwarmNodeInfo;
+  /** Hostname of the swarm node holding a node-local network. */
+  owner?: string;
 }
 
 export interface DGEdge {
@@ -115,6 +117,7 @@ export type WireMessage =
   | { type: 'snapshot'; version: number; data: GraphSnapshot }
   | { type: 'delta'; version: number; data: DeltaUpdate }
   | { type: 'auth_expired'; version: number }
+  | { type: 'heartbeat'; version: number }
   | { type: 'stats'; version: number; data: import('./types/stats').StatsMessage };
 
 // Node data types used by React Flow custom components

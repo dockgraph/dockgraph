@@ -14,13 +14,14 @@ import (
 
 // Config holds runtime configuration loaded from environment variables.
 type Config struct {
-	BindAddr      string        // Listen address (DG_BIND_ADDR, default "0.0.0.0")
-	Port          string        // HTTP listen port (DG_PORT, default "7800")
-	PollInterval  time.Duration // Docker API poll interval (DG_POLL_INTERVAL, default 30s)
-	ComposePaths  []string      // Explicit compose paths override (DG_COMPOSE_PATH); nil means auto-detect from container mounts
-	PasswordHash  string        // Argon2id hash of DG_PASSWORD; empty means auth disabled
-	StatsInterval time.Duration // Container stats poll interval (DG_STATS_INTERVAL, default 3s)
-	StatsWorkers  int           // Max concurrent stats API calls (DG_STATS_WORKERS, default 50)
+	BindAddr       string        // Listen address (DG_BIND_ADDR, default "0.0.0.0")
+	Port           string        // HTTP listen port (DG_PORT, default "7800")
+	PollInterval   time.Duration // Docker API poll interval (DG_POLL_INTERVAL, default 30s)
+	ComposePaths   []string      // Explicit compose paths override (DG_COMPOSE_PATH); nil means auto-detect from container mounts
+	passwordSecret string        // DG_PASSWORD as configured (plaintext or hash), input of the session generation
+	PasswordHash   string        // Argon2id hash of DG_PASSWORD; empty means auth disabled
+	StatsInterval  time.Duration // Container stats poll interval (DG_STATS_INTERVAL, default 3s)
+	StatsWorkers   int           // Max concurrent stats API calls (DG_STATS_WORKERS, default 50)
 	// Mode selects the runtime mode (DG_MODE: auto|standalone|swarm|agent,
 	// default auto). Auto resolves at startup from the daemon's swarm state.
 	Mode string
@@ -33,11 +34,20 @@ type Config struct {
 	// AgentAddr is the DNS name resolving to every agent task
 	// (DG_AGENT_ADDR, default "tasks.agent"), optionally with ":port".
 	AgentAddr string
+	// PeersAddr is the DNS name resolving to every server replica
+	// (DG_PEERS_ADDR, default "tasks.server"). Replicas fetch static assets
+	// missing from their own build from each other during a rolling update.
+	PeersAddr string
 	// AgentToken is the shared bearer secret between server and agents,
 	// read from DG_AGENT_TOKEN or the file named by DG_AGENT_TOKEN_FILE
 	// (a Docker secret). Empty disables agents on the server and prevents
 	// an agent from starting.
 	AgentToken string
+	// SessionKey is the HMAC key that signs session cookies. It comes from
+	// DG_SESSION_KEY / DG_SESSION_KEY_FILE (at least 32 bytes), else it is
+	// derived from AgentToken so every server replica shares it. Nil means
+	// main generates a random per-process key (standalone).
+	SessionKey []byte
 }
 
 // validModes lists the accepted DG_MODE values.
@@ -66,6 +76,7 @@ func LoadConfig() Config {
 		Mode:              collector.ModeAuto,
 		SwarmPollInterval: 5 * time.Second,
 		AgentPort:         defaultAgentPort,
+		PeersAddr:         "tasks.server",
 		AgentAddr:         "tasks.agent",
 	}
 
@@ -77,7 +88,15 @@ func LoadConfig() Config {
 	if v := strings.TrimSpace(os.Getenv("DG_AGENT_ADDR")); v != "" {
 		cfg.AgentAddr = v
 	}
+	if v := strings.TrimSpace(os.Getenv("DG_PEERS_ADDR")); v != "" {
+		cfg.PeersAddr = v
+	}
 	cfg.AgentToken = loadAgentToken()
+	sessionKey, err := loadSessionKey(cfg.AgentToken)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	cfg.SessionKey = sessionKey
 
 	cfg.PollInterval = parseDuration("DG_POLL_INTERVAL", cfg.PollInterval, time.Second)
 	cfg.StatsInterval = parseDuration("DG_STATS_INTERVAL", cfg.StatsInterval, time.Second)
@@ -108,6 +127,7 @@ func LoadConfig() Config {
 		log.Fatalf("%v", err)
 	}
 	if raw != "" {
+		cfg.passwordSecret = raw
 		if auth.IsHashedPassword(raw) {
 			if err := auth.ValidateHash(raw); err != nil {
 				log.Fatalf("DG_PASSWORD contains invalid hash: %v", err)
@@ -205,6 +225,35 @@ func loadAgentToken() string {
 		return ""
 	}
 	return strings.TrimSpace(token)
+}
+
+// minSessionKeyLen is the minimum length of DG_SESSION_KEY, in bytes.
+const minSessionKeyLen = 32
+
+// loadSessionKey returns the session signing key shared by all server
+// replicas: DG_SESSION_KEY or DG_SESSION_KEY_FILE (see readSecretEnv) when
+// set, else a key derived from agentToken. It returns nil when both are
+// empty, and fails on a key shorter than minSessionKeyLen.
+func loadSessionKey(agentToken string) ([]byte, error) {
+	raw, err := readSecretEnv("DG_SESSION_KEY")
+	if err != nil {
+		return nil, err
+	}
+	if raw != "" {
+		// readSecretEnv returns "" only when unset, so a key that is blank
+		// after trimming is a misconfiguration, not a request for the fallback.
+		if raw = strings.TrimSpace(raw); raw == "" {
+			return nil, fmt.Errorf("DG_SESSION_KEY is blank")
+		}
+		if len(raw) < minSessionKeyLen {
+			return nil, fmt.Errorf("DG_SESSION_KEY is too short: %d bytes, need at least %d (try `openssl rand -hex 32`)", len(raw), minSessionKeyLen)
+		}
+		return []byte(raw), nil
+	}
+	if agentToken == "" {
+		return nil, nil
+	}
+	return auth.DeriveSigningKey([]byte(agentToken))
 }
 
 // parseDuration reads a duration from an environment variable with minimum enforcement.

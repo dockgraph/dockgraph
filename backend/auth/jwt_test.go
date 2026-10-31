@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -22,6 +23,48 @@ func TestGenerateSigningKeyUnique(t *testing.T) {
 	k2, _ := GenerateSigningKey()
 	if string(k1) == string(k2) {
 		t.Error("two keys should differ")
+	}
+}
+
+func TestDeriveSigningKeyDeterministic(t *testing.T) {
+	k1, err := DeriveSigningKey([]byte("agent-token"))
+	if err != nil {
+		t.Fatalf("DeriveSigningKey: %v", err)
+	}
+	k2, _ := DeriveSigningKey([]byte("agent-token"))
+	if len(k1) != 32 {
+		t.Errorf("key length = %d, want 32", len(k1))
+	}
+	if string(k1) != string(k2) {
+		t.Error("same secret should derive the same key")
+	}
+	if string(k1) == "agent-token" {
+		t.Error("derived key should differ from the secret")
+	}
+	other, _ := DeriveSigningKey([]byte("other-token"))
+	if string(k1) == string(other) {
+		t.Error("different secrets should derive different keys")
+	}
+}
+
+func TestDeriveSigningKeyEmpty(t *testing.T) {
+	if _, err := DeriveSigningKey(nil); err == nil {
+		t.Error("expected an error for an empty secret")
+	}
+}
+
+// A token signed by one replica verifies on another that derived its key
+// from the same secret.
+func TestDeriveSigningKeySharedAcrossReplicas(t *testing.T) {
+	keyA, _ := DeriveSigningKey([]byte("shared"))
+	keyB, _ := DeriveSigningKey([]byte("shared"))
+	now := time.Now()
+	token, err := SignToken(Claims{IssuedAt: now, ExpiresAt: now.Add(time.Hour), JTI: "j"}, keyA)
+	if err != nil {
+		t.Fatalf("SignToken: %v", err)
+	}
+	if _, err := VerifyToken(token, keyB); err != nil {
+		t.Errorf("VerifyToken on replica B: %v", err)
 	}
 }
 
@@ -109,5 +152,23 @@ func TestGenerateJTIUnique(t *testing.T) {
 	j2, _ := GenerateJTI()
 	if j1 == j2 {
 		t.Error("two JTIs should differ")
+	}
+}
+
+func TestCredentialGeneration(t *testing.T) {
+	key, _ := GenerateSigningKey()
+	other, _ := GenerateSigningKey()
+	g := CredentialGeneration(key, "pw")
+	if g != CredentialGeneration(key, "pw") {
+		t.Error("not deterministic")
+	}
+	if g == CredentialGeneration(key, "pw2") {
+		t.Error("same generation for a different password")
+	}
+	if g == CredentialGeneration(other, "pw") {
+		t.Error("generation does not depend on the signing key")
+	}
+	if got := CredentialGeneration([]byte(strings.Repeat("k", 32)), "pw"); got != "IB4oB0peXG24AHaFiv9Cow" {
+		t.Errorf("generation = %q, want %q", got, "IB4oB0peXG24AHaFiv9Cow")
 	}
 }

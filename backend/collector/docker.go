@@ -23,6 +23,7 @@ type DockerCollector struct {
 	wg           sync.WaitGroup
 
 	swarm            bool
+	localHostname    string
 	taskPollInterval time.Duration
 
 	// pollMu serializes full polls. The periodic, event and task-poll
@@ -52,8 +53,12 @@ func NewDockerCollector(cli DockerClient, pollInterval time.Duration) *DockerCol
 // services, tasks and nodes, service/node events are watched, and the task
 // list is polled at taskPollInterval to catch changes on remote nodes. Must be
 // called before Start.
-func (d *DockerCollector) EnableSwarm(taskPollInterval time.Duration) {
+//
+// localHostname is this daemon's node, named as the owner of the node-local
+// networks in the snapshot so each can be inspected on the node that has it.
+func (d *DockerCollector) EnableSwarm(taskPollInterval time.Duration, localHostname string) {
 	d.swarm = true
+	d.localHostname = localHostname
 	d.taskPollInterval = taskPollInterval
 }
 
@@ -128,7 +133,7 @@ func (d *DockerCollector) snapshot(ctx context.Context) (GraphSnapshot, error) {
 		return GraphSnapshot{}, err
 	}
 	d.storeTaskFingerprint(taskFingerprint(res.tasks, res.nodes))
-	return buildSwarmSnapshot(res), nil
+	return buildSwarmSnapshot(res, d.localHostname), nil
 }
 
 // storeTaskFingerprint records the fingerprint of the task set last snapshotted.

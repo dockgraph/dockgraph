@@ -59,6 +59,10 @@ type Node struct {
 	Stack     string            `json:"stack,omitempty"`
 	Service   *ServiceInfo      `json:"service,omitempty"`
 	SwarmNode *SwarmNodeInfo    `json:"swarmNode,omitempty"`
+	// Owner is the hostname of the swarm node whose daemon holds a
+	// node-local network (bridge, macvlan...): only that node can inspect it.
+	// Empty for swarm-scoped networks and outside swarm mode.
+	Owner string `json:"owner,omitempty"`
 }
 
 // SwarmNodeInfo carries cluster-node details for "swarmnode" nodes. Role is
@@ -186,6 +190,12 @@ type WireMessage struct {
 // NewSnapshotMessage wraps a full graph snapshot for WebSocket transmission.
 func NewSnapshotMessage(s GraphSnapshot) WireMessage {
 	return WireMessage{Type: MsgTypeSnapshot, Version: ProtocolVersion, Data: s}
+}
+
+// NewHeartbeatMessage builds the payload-less message the server sends
+// periodically so a client can tell a silent connection from a dead one.
+func NewHeartbeatMessage() WireMessage {
+	return WireMessage{Type: MsgTypeHeartbeat, Version: ProtocolVersion}
 }
 
 // NewDeltaMessage wraps an incremental update for WebSocket transmission.

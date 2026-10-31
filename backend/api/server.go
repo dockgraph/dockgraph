@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/dockgraph/dockgraph/auth"
 	"github.com/dockgraph/dockgraph/collector"
@@ -89,7 +88,7 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 		mux.HandleFunc("GET /api/logs", HandleAggregateLogs(docker, docker, docker, services))
 		mux.HandleFunc("GET /api/containers/{id}", remote.wrap(HandleContainerInspect(docker), docker, "", false))
 		mux.HandleFunc("GET /api/volumes/{name}", remote.inspectVolume(docker))
-		mux.HandleFunc("GET /api/networks/{name}", HandleNetworkInspect(docker, networkMembers))
+		mux.HandleFunc("GET /api/networks/{name}", remote.inspectNetwork(HandleNetworkInspect(docker, networkMembers)))
 	}
 	if system != nil {
 		mux.HandleFunc("GET /api/system/info", HandleSystemInfo(system, mode))
@@ -110,7 +109,7 @@ func NewServer(hub *Hub, staticFS fs.FS, health HealthChecker, authService *auth
 	if eventHistory != nil {
 		mux.HandleFunc("GET /api/events/recent", HandleRecentEvents(eventHistory))
 	}
-	mux.HandleFunc("/", spaHandler(staticFS))
+	mux.HandleFunc("/", spaHandler(staticFS, o.assetPeers))
 
 	handler := securityHeaders(mux)
 	if authService != nil {
@@ -131,23 +130,4 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-XSS-Protection", "0")
 		next.ServeHTTP(w, r)
 	})
-}
-
-// spaHandler serves static files and falls back to index.html for client-side routing.
-func spaHandler(fsys fs.FS) http.HandlerFunc {
-	fileServer := http.FileServerFS(fsys)
-
-	return func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if path == "/" {
-			path = indexHTMLPath
-		} else {
-			path = strings.TrimPrefix(path, "/")
-		}
-
-		if _, err := fs.Stat(fsys, path); err != nil {
-			r.URL.Path = "/"
-		}
-		fileServer.ServeHTTP(w, r)
-	}
 }

@@ -86,7 +86,6 @@ func HandleNetworkInspect(inspector NetworkInspector, members NetworkMemberListe
 	}
 }
 
-// swarmScope is the scope of a network that spans the swarm (an overlay).
 const swarmScope = "swarm"
 
 // listNetworkServices lists the swarm services attached to a network (by the

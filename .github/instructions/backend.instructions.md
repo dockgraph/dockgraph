@@ -39,7 +39,7 @@ applyTo: "backend/**/*.go"
 
 - The `auth/` package handles optional password authentication.
 - Password hashing uses Argon2id with constant-time comparison.
-- JWT tokens are signed with an ephemeral HMAC-SHA256 key (regenerated on restart).
+- JWT tokens are signed with an HMAC-SHA256 key: `DG_SESSION_KEY` if set, else derived from the agent token (HKDF-SHA256, shared by all swarm server replicas), else random per process (regenerated on restart). Never derive it from the password.
 - Rate limiting protects the login endpoint from brute-force attacks.
 - When `DG_PASSWORD` is set, all endpoints except `/healthz` require a valid token.
 
@@ -51,6 +51,10 @@ applyTo: "backend/**/*.go"
   compatibility.
 - The `version` field exists for future protocol evolution — it must be
   incremented for breaking changes.
+- The hub sends a payload-less `heartbeat` message every 5 s. The frontend
+  reconnects after 15 s without any message, which is how it notices a server
+  that vanished without closing the socket. Keep the heartbeat period well
+  below `WS_IDLE_TIMEOUT` (`frontend/src/utils/constants.ts`).
 
 ## Testing
 

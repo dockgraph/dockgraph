@@ -8,9 +8,12 @@
 #
 #   # 3. Open http://<any-node>:7800
 #
-# `server` runs on a manager (it needs the swarm API) and serves the UI.
+# `server` runs on every manager (it needs the swarm API) and serves the UI.
+# The routing mesh spreads requests over the live replicas, so the UI stays
+# up as long as one manager runs, with no wait for swarm to reschedule.
 # `agent` runs on every node and exposes that node's container stats,
-# inspect and logs to the server over the internal overlay network only.
+# inspect and logs to the servers over the internal overlay network only.
+# Each agent is polled by every server replica (fine for 3-5 managers).
 #
 # Optional variables (interpolated by `docker stack deploy`):
 #   DG_IMAGE      image to run (default dockgraph/dockgraph:latest)
@@ -25,14 +28,22 @@ services:
       - "${DG_HTTP_PORT:-7800}:7800"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker API access (manager)
-      # Optional: mount stack files to show services that are not deployed
-      # yet. The path must exist on the manager the server is scheduled on.
+      # Alternative to the `configs:` below: bind-mount stack files. The path
+      # must then exist on EVERY manager, or the task is rejected there.
       # - /opt/stacks/shop.yml:/stacks/shop.yml:ro
+    # Optional: stack files, to show services that are not deployed yet.
+    # Swarm configs are replicated to every manager. Create one first with
+    # `docker config create shop_stack shop.yml`, then uncomment this and
+    # the shop_stack config at the bottom of the file:
+    # configs:
+    #   - source: shop_stack
+    #     target: /stacks/shop.yml
     environment:
       DG_MODE: "swarm"
       DG_PORT: "7800"
       DG_AGENT_ADDR: "tasks.agent"   # DNS name of every agent task in this stack
       DG_AGENT_PORT: "7801"
+      DG_PEERS_ADDR: "tasks.server"  # replicas serve each other's UI assets during a rolling update
       DG_AGENT_TOKEN_FILE: "/run/secrets/dg_agent_token"
       # DG_SWARM_POLL_INTERVAL: "5s"
       # Require a login for the web UI and WebSocket (recommended). Either
@@ -41,6 +52,13 @@ services:
       # uncomment the dg_password secret below and at the bottom of the file):
       # DG_PASSWORD: ""
       # DG_PASSWORD_FILE: "/run/secrets/dg_password"
+      # Session cookies are signed with a key derived from the agent token,
+      # shared by every replica (rotating the token logs users out). To use
+      # a separate key instead (at least 32 bytes):
+      # `openssl rand -hex 32 | docker secret create dg_session_key -`,
+      # then uncomment this and the dg_session_key secret below and at the
+      # bottom of the file:
+      # DG_SESSION_KEY_FILE: "/run/secrets/dg_session_key"
       # Keep 0.0.0.0 in swarm: 127.0.0.1 would cut the routing mesh off.
       # DG_BIND_ADDR: "0.0.0.0"
       # Stack name = what you pass to `docker stack deploy`:
@@ -48,6 +66,7 @@ services:
     secrets:
       - dg_agent_token
       # - dg_password
+      # - dg_session_key
     networks:
       - internal
     healthcheck:
@@ -59,7 +78,8 @@ services:
     labels:
       dockgraph.self: "true"   # container label: hides the task containers
     deploy:
-      replicas: 1
+      # One task per manager: no single point of failure for the UI.
+      mode: global
       labels:
         dockgraph.self: "true" # service label: hides the service node
       placement:
@@ -69,7 +89,10 @@ services:
         condition: any
         delay: 5s
       update_config:
+        # One manager at a time, so the others keep serving the UI.
+        parallelism: 1
         order: stop-first
+        failure_action: rollback
       resources:
         limits:
           cpus: "1"
@@ -123,3 +146,9 @@ secrets:
     external: true
   # dg_password:
   #   external: true
+  # dg_session_key:
+  #   external: true
+
+# configs:
+#   shop_stack:
+#     external: true

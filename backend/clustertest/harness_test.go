@@ -182,32 +182,55 @@ func containerOn(t *testing.T, node, service string) string {
 	return id
 }
 
-// serverNode returns the hostname of the node running the DockGraph server.
-func serverNode(t *testing.T) string {
+// serverNodes returns the hostnames of the nodes running a DockGraph server
+// task (one per manager in global mode), sorted, once at least one runs.
+func serverNodes(t *testing.T) []string {
 	t.Helper()
-	var node string
+	var nodes []string
 	eventually(t, 90*time.Second, "running server task", func() error {
 		out, err := tryOn(leader, "service", "ps", serverService, "--filter", "desired-state=running",
 			"--format", "{{.Node}} {{.CurrentState}}")
 		if err != nil {
 			return fmt.Errorf("%v: %s", err, out)
 		}
+		nodes = nodes[:0]
 		for _, line := range strings.Split(out, "\n") {
 			n, state, _ := strings.Cut(line, " ")
 			if strings.HasPrefix(state, "Running") {
-				node = n
-				return nil
+				nodes = append(nodes, n)
 			}
 		}
-		return fmt.Errorf("no running task: %q", out)
+		if len(nodes) == 0 {
+			return fmt.Errorf("no running task: %q", out)
+		}
+		return nil
 	})
-	return node
+	slices.Sort(nodes)
+	return nodes
 }
 
-// serverTaskID returns the ID of the running server task, to detect restarts.
-func serverTaskID(t *testing.T) string {
+// waitServerOnEveryManager waits until each of the given managers runs a
+// server task, so a scenario starts from (or restores) a full set of replicas.
+func waitServerOnEveryManager(t *testing.T, want []string) {
 	t.Helper()
-	return firstLine(on(t, leader, "service", "ps", "-q", serverService, "--filter", "desired-state=running"))
+	eventually(t, 3*time.Minute, "a server task on every manager", func() error {
+		got := serverNodes(t)
+		for _, m := range want {
+			if !slices.Contains(got, m) {
+				return fmt.Errorf("no server on %s (running on %v)", m, got)
+			}
+		}
+		return nil
+	})
+}
+
+// serverTaskIDs returns the IDs of the running server tasks, sorted and
+// joined, to detect a restart of any replica.
+func serverTaskIDs(t *testing.T) string {
+	t.Helper()
+	ids := strings.Fields(on(t, leader, "service", "ps", "-q", serverService, "--filter", "desired-state=running"))
+	slices.Sort(ids)
+	return strings.Join(ids, " ")
 }
 
 // serverLogs returns the server's log output since the given time.
@@ -296,9 +319,75 @@ func getVia(t *testing.T, port int, path string) response {
 	return response{code: resp.StatusCode, body: string(body), elapsed: time.Since(start)}
 }
 
+// getFromNode issues a GET from inside a cluster node to the UI port the
+// routing mesh publishes on that node's own cluster address. Workers publish
+// no port on the host, so this is how a test reaches the UI through them.
+// It returns nil on a 2xx answer within timeout.
+func getFromNode(t *testing.T, node, path string, timeout time.Duration) error {
+	t.Helper()
+	ip := host(t, "inspect", "-f", `{{(index .NetworkSettings.Networks "`+clusterNet+`").IPAddress}}`, node)
+	secs := max(1, int(timeout.Seconds()))
+	out, err := exec.Command("docker", "exec", node, "wget", "-q", "-O", "/dev/null",
+		"-T", strconv.Itoa(secs), fmt.Sprintf("http://%s:7800%s", ip, path)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("GET %s via %s: %v: %s", path, node, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 func get(t *testing.T, path string) response {
 	t.Helper()
 	return getVia(t, firstUIPort, path)
+}
+
+// probeClient opens a new connection per request, so the routing mesh
+// balances each one anew instead of reusing one replica, and gives up fast
+// on a replica that no longer answers.
+var probeClient = &http.Client{
+	Timeout:   3 * time.Second,
+	Transport: &http.Transport{DisableKeepAlives: true},
+}
+
+// probe issues a GET through the given UI port with probeClient, sending
+// cookies if any, and returns nil on a 200.
+func probe(port int, path string, cookies []*http.Cookie) error {
+	req, err := http.NewRequest(http.MethodGet, baseURL(port)+path, nil)
+	if err != nil {
+		return err
+	}
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	resp, err := probeClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET %s: %d", path, resp.StatusCode)
+	}
+	return nil
+}
+
+// login posts the UI password through the given port and returns the
+// session cookies.
+func login(t *testing.T, port int, password string) []*http.Cookie {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"password": password})
+	resp, err := probeClient.Post(baseURL(port)+"/api/login", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		t.Fatalf("login: %d %s", resp.StatusCode, msg)
+	}
+	if len(resp.Cookies()) == 0 {
+		t.Fatal("login set no cookie")
+	}
+	return resp.Cookies()
 }
 
 // readSSE reads a server-sent event stream for d and returns the data lines.

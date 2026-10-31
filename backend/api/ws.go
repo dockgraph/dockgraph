@@ -17,6 +17,11 @@ import (
 const (
 	pongTimeout = 60 * time.Second
 	pingPeriod  = 30 * time.Second
+	// defaultHeartbeatPeriod is how often a heartbeat message goes to each
+	// client. Browsers answer pings without telling the page, so this is
+	// what lets the frontend notice a server that vanished without closing
+	// the connection (its node powered off) and reconnect to another replica.
+	defaultHeartbeatPeriod = 5 * time.Second
 )
 
 // checkOrigin validates WebSocket upgrade requests by comparing the Origin
@@ -37,6 +42,7 @@ var upgrader = websocket.Upgrader{
 
 type wsClient struct {
 	conn      *websocket.Conn
+	heartbeat time.Duration // period of heartbeat messages
 	sendCh    chan collector.WireMessage
 	done      chan struct{}
 	issuedAt  time.Time // JWT issued-at (zero when auth disabled)
@@ -51,13 +57,16 @@ type Hub struct {
 	closed       bool
 	MaxClients   int
 	CheckExpired func(issuedAt, expiresAt time.Time) bool // nil when auth disabled
+	// HeartbeatPeriod is how often each client gets a heartbeat message.
+	HeartbeatPeriod time.Duration
 }
 
 // NewHub creates an empty WebSocket hub.
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*wsClient]bool),
-		MaxClients: 128,
+		clients:         make(map[*wsClient]bool),
+		MaxClients:      128,
+		HeartbeatPeriod: defaultHeartbeatPeriod,
 	}
 }
 
@@ -77,8 +86,13 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		exp = claims.ExpiresAt
 	}
 
+	heartbeat := h.HeartbeatPeriod
+	if heartbeat <= 0 {
+		heartbeat = defaultHeartbeatPeriod
+	}
 	c := &wsClient{
 		conn:      conn,
+		heartbeat: heartbeat,
 		sendCh:    make(chan collector.WireMessage, 32),
 		done:      make(chan struct{}),
 		issuedAt:  iat,
@@ -110,16 +124,19 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	go c.readPump(h)
 }
 
-// writePump sends queued state messages to the WebSocket connection
-// and issues periodic pings to detect stale connections. Exits when
-// the done channel is closed by readPump.
+// writePump sends queued state messages to the WebSocket connection,
+// issues periodic pings to detect stale connections and heartbeat messages
+// so the client can detect a dead server. Exits when the done channel is
+// closed by readPump.
 func (c *wsClient) writePump() {
 	ticker := time.NewTicker(pingPeriod)
+	heartbeat := time.NewTicker(c.heartbeat)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("writePump recovered: %v", r)
 		}
 		ticker.Stop()
+		heartbeat.Stop()
 		c.conn.Close()
 	}()
 	for {
@@ -132,6 +149,10 @@ func (c *wsClient) writePump() {
 			return
 		case <-ticker.C:
 			if err := c.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
+				return
+			}
+		case <-heartbeat.C:
+			if err := c.conn.WriteJSON(collector.NewHeartbeatMessage()); err != nil {
 				return
 			}
 		}

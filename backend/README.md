@@ -36,8 +36,11 @@ All configuration is via environment variables:
 | `DG_SWARM_POLL_INTERVAL` | `5s` | Swarm task poll interval (Go duration, min `1s`) |
 | `DG_AGENT_PORT` | `7801` | Per-node agent HTTP port (agents listen on it, the server dials it) |
 | `DG_AGENT_ADDR` | `tasks.agent` | DNS name resolving to every agent task, optionally `host:port` |
+| `DG_PEERS_ADDR` | `tasks.server` | DNS name resolving to every server replica; a replica fetches `/assets/` files missing from its build from them |
 | `DG_AGENT_TOKEN` | _(none)_ | Shared bearer secret between server and agents; required in `agent` mode. Without it the swarm server runs without agents |
 | `DG_AGENT_TOKEN_FILE` | _(none)_ | File holding the agent token, e.g. a Docker secret; `DG_AGENT_TOKEN` wins if both are set |
+| `DG_SESSION_KEY` | _(derived)_ | Key that signs session cookies, at least 32 bytes (shorter aborts startup). Defaults to a key derived from `DG_AGENT_TOKEN`, or a random key per process without a token |
+| `DG_SESSION_KEY_FILE` | _(none)_ | File holding the session key, e.g. a Docker secret; `DG_SESSION_KEY` wins if both are set |
 
 Compose paths are auto-detected from the container's own bind mounts (excluding the Docker socket). Set `DG_COMPOSE_PATH` only if you need to override this behavior. Prefix an entry with `name=` (e.g. `shop=/stacks/shop.yml`) to set its compose project or swarm stack name.
 
@@ -54,7 +57,7 @@ backend/
 │   └── agent.go             # Per-node agent (DG_MODE=agent): token-protected stats, inspect, logs
 ├── api/
 │   ├── server.go            # HTTP routes: /healthz, /ws, /login, resource APIs, SPA fallback
-│   ├── ws.go                # WebSocket hub with ping/pong heartbeat
+│   ├── ws.go                # WebSocket hub: ping/pong and heartbeat messages
 │   ├── containers.go        # Container list and stats endpoints
 │   ├── containers_detail.go # Container inspect endpoint
 │   ├── networks.go          # Network inspect endpoint
@@ -72,7 +75,7 @@ backend/
 ├── auth/
 │   ├── handlers.go          # Login/logout HTTP handlers
 │   ├── middleware.go         # JWT authentication middleware
-│   ├── jwt.go               # JWT token creation and validation
+│   ├── jwt.go               # JWT token creation and validation, signing key generation and derivation
 │   ├── password.go          # Argon2id password hashing
 │   ├── ratelimit.go         # Login rate limiting
 │   └── session.go           # Session management
@@ -127,6 +130,8 @@ Both collectors implement the `Collector` interface and emit `StateUpdate` value
 
 **Agents.** With `DG_MODE=agent`, the binary serves only the agent API under `/agent/v1` (info, stats, container inspect and logs, volume inspect) plus `/healthz`, and every request must carry the shared token. The server's `AgentPool` resolves `DG_AGENT_ADDR` (`tasks.agent`) every 30 seconds, keeping known agents on transient DNS errors, and polls every agent each stats round. In between it re-resolves the name every 5 seconds and refreshes at once when an agent appears or disappears (a node joined or left), so a new node's containers don't wait for the next full refresh. An agent that rejects the token is reported once, not on every refresh. Remote samples are merged with local ones (local wins on a name collision), stamped with their node, and aggregated per service and per node under `node:{hostname}`. Every node whose agent answered gets an aggregate, even when it runs no other container.
 
+**Replicas.** `stack.yml` runs the server as a global service on every manager, so the UI survives the loss of any of them. Every replica builds the same graph from the swarm API and polls every agent; stats history, recent events and the log aggregator stay in memory per replica. Replicas share the session signing key (see [Authentication](#authentication)). See the [root README](../README.md#high-availability) for the operational side.
+
 **Proxy.** Container inspect and log requests for a container on another node are forwarded to that node's agent (`api/remote.go`). Non-streaming responses are capped at 16 MiB; log streams stay open until the client disconnects. Swarm volumes are node-local, so a volume inspect asks the local daemon and every agent at once, bounded by 5 seconds (`api/remote_volumes.go`): the response describes the server's own copy when it has one, otherwise the first node's by hostname, and adds `node` (the node described) and `nodes` (every node holding a volume of that name).
 
 ### State Merging
@@ -152,7 +157,9 @@ Clients connect to `/ws` and receive a `WireMessage` envelope:
 }
 ```
 
-The initial message is always a full `snapshot`. Subsequent updates may be `snapshot` or `delta` (incremental adds/removes/updates).
+The initial message is always a full `snapshot`. Subsequent updates may be `snapshot` or `delta` (incremental adds/removes/updates), interleaved with `stats` samples. With authentication, `auth_expired` tells the client its session ended before the server closes the connection.
+
+The server also sends a payload-less `heartbeat` every 5 seconds (`Hub.HeartbeatPeriod`). Browsers answer WebSocket pings without telling the page, so the heartbeat is what lets the frontend notice a server that vanished without closing the connection (e.g. its node powered off): after 15 seconds without any message it drops the socket and reconnects, reaching another replica in swarm.
 
 Every message carries the protocol version (`collector.ProtocolVersion`). Version 2 added the `service` and `swarmnode` node types. The frontend accepts only its own version. On a mismatch it reloads once to fetch a matching bundle, and ignores the messages if the mismatch persists.
 
@@ -181,9 +188,9 @@ Edge types:
 When `DG_PASSWORD` or `DG_PASSWORD_FILE` is set, all endpoints (except `/healthz`) require a valid JWT session token. The `auth` package handles:
 
 - **Password hashing** with Argon2id (constant-time comparison)
-- **JWT tokens** with HMAC-SHA256, signed with an ephemeral key generated at startup
-- **Rate limiting** on the login endpoint to prevent brute-force attacks
-- **Session management** — tokens expire after 7 days and are invalidated on server restart
+- **JWT tokens** with HMAC-SHA256. The signing key comes from `DG_SESSION_KEY`; otherwise it is derived from the agent token with HKDF-SHA256 (info `dockgraph-session-v1`), so every swarm replica accepts the others' cookies and sessions survive restarts; without either, a random key is generated at startup. The key is never derived from the password, since the HMAC would allow an offline brute force of it
+- **Rate limiting** on the login endpoint to prevent brute-force attacks (per replica)
+- **Session management** — tokens expire after 7 days. With a random key they are invalidated on server restart. Logout invalidates every session issued before it, on the replica that handled it only
 
 ### API Endpoints
 
@@ -218,7 +225,7 @@ When `DG_PASSWORD` or `DG_PASSWORD_FILE` is set, all endpoints (except `/healthz
 go test ./...
 ```
 
-Tests cover node/edge builders, compose YAML parsing, swarm snapshots, state merge logic, the agent API, agent discovery and stats merging, the remote proxy, config loading, and WebSocket broadcast integration.
+Tests cover node/edge builders, compose YAML parsing, swarm snapshots, state merge logic, the agent API, agent discovery and stats merging, the remote proxy, config loading (including the session key), session key derivation, and WebSocket broadcast and heartbeat integration.
 
 An opt-in end-to-end test deploys the server and agents on a local swarm: `make swarm-smoke` from the repository root (see `test/swarm_smoke.sh`). Multi-node failure scenarios live in `clustertest/` behind the `clustertest` build tag, so `go test ./...` skips them; they run against the Docker-in-Docker cluster from `make swarm-cluster-up` with `make swarm-cluster-test`.
 

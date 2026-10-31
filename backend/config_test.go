@@ -642,3 +642,71 @@ func TestHealthcheckPort(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// DG_SESSION_KEY
+// ---------------------------------------------------------------------------
+
+func TestLoadSessionKey(t *testing.T) {
+	dir := t.TempDir()
+	longKey := strings.Repeat("k", minSessionKeyLen)
+	keyFile := filepath.Join(dir, "key")
+	if err := os.WriteFile(keyFile, []byte(longKey+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	derived, err := auth.DeriveSigningKey([]byte("agent-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		inline  string
+		file    string
+		token   string
+		want    []byte
+		wantErr string
+	}{
+		{"unset_no_token", "", "", "", nil, ""},
+		{"inline", " " + longKey + " ", "", "agent-token", []byte(longKey), ""},
+		{"file_trimmed", "", keyFile, "", []byte(longKey), ""},
+		{"blank_inline", "   ", "", "agent-token", nil, "blank"},
+		{"too_short", "short", "", "agent-token", nil, "too short"},
+		{"missing_file", "", filepath.Join(dir, "missing"), "agent-token", nil, "cannot read"},
+		{"derived_from_token", "", "", "agent-token", derived, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DG_SESSION_KEY", tt.inline)
+			t.Setenv("DG_SESSION_KEY_FILE", tt.file)
+			got, err := loadSessionKey(tt.token)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("got error %v, want one containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("loadSessionKey: %v", err)
+			}
+			if string(got) != string(tt.want) {
+				t.Errorf("got %x, want %x", got, tt.want)
+			}
+		})
+	}
+}
+
+// Two server replicas configured with the same agent token derive the same
+// session key, so a cookie issued by one is accepted by the other.
+func TestLoadConfig_SessionKeyDerivedIsStable(t *testing.T) {
+	clearConfigEnv(t, "DG_PASSWORD", "DG_PASSWORD_FILE", "DG_AGENT_TOKEN_FILE",
+		"DG_SESSION_KEY", "DG_SESSION_KEY_FILE")
+	t.Setenv("DG_AGENT_TOKEN", "agent-token")
+	a, b := LoadConfig().SessionKey, LoadConfig().SessionKey
+	if len(a) != 32 || string(a) != string(b) {
+		t.Fatalf("derived keys differ or have the wrong length: %x vs %x", a, b)
+	}
+	if string(a) == "agent-token" {
+		t.Error("session key must not be the raw agent token")
+	}
+}

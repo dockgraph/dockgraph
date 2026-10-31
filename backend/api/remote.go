@@ -78,6 +78,7 @@ type ServerOption func(*serverOptions)
 
 type serverOptions struct {
 	agentProxy *AgentProxy
+	assetPeers PeerFinder
 }
 
 // WithAgentProxy routes container inspect/logs for containers that are not

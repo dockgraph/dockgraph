@@ -32,6 +32,13 @@ export const EDGE_FADE_OPACITY = 0.15;
 /** Maximum delay between WebSocket reconnection attempts (ms). */
 export const RECONNECT_MAX_DELAY = 30_000;
 
+/**
+ * Silence after which the WebSocket is considered dead and replaced (ms).
+ * The server sends a heartbeat every 5 s; a server whose node powered off
+ * never closes the connection, so only this timeout notices it.
+ */
+export const WS_IDLE_TIMEOUT = 15_000;
+
 /** Opacity for paused container nodes. */
 export const PAUSED_OPACITY = 0.7;
 

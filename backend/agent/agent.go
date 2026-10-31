@@ -105,6 +105,8 @@ func (s *Server) Handler() http.Handler {
 	v1.HandleFunc("GET "+p+"/containers/{id}/logs/history", api.HandleContainerLogsHistory(s.cli))
 	// Swarm volumes are node-local; the server asks every agent for one.
 	v1.HandleFunc("GET "+p+"/volumes/{name}", api.HandleVolumeInspect(s.cli))
+	// Node-local networks likewise live on one node only.
+	v1.HandleFunc("GET "+p+"/networks/{name}", api.HandleNetworkInspect(s.cli, nil))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
