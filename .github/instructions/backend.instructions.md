@@ -39,7 +39,7 @@ applyTo: "backend/**/*.go"
 
 - The `auth/` package handles optional password authentication.
 - Password hashing uses Argon2id with constant-time comparison.
-- JWT tokens are signed with an HMAC-SHA256 key: `DG_SESSION_KEY` if set, else derived from the agent token (HKDF-SHA256, shared by all swarm server replicas), else random per process (regenerated on restart). Never derive it from the password.
+- JWT tokens are signed with an HMAC-SHA256 key: `DG_SESSION_KEY` if set, else derived from the server's `DG_AGENT_KEY` private-key seed (HKDF-SHA256, shared by all server replicas), else random per process (regenerated on restart). Never derive it from the password or the shared agent token.
 - Rate limiting protects the login endpoint from brute-force attacks.
 - When `DG_PASSWORD` is set, all endpoints except `/healthz` require a valid token.
 
