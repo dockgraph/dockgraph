@@ -165,3 +165,39 @@ func TestMiddlewareSetsClaimsInContext(t *testing.T) {
 		t.Error("middleware should set claims in request context")
 	}
 }
+
+// A cookie issued before the password was rotated carries the old
+// generation and must be refused even though the shared key is unchanged.
+func TestMiddlewareRejectsRotatedPassword(t *testing.T) {
+	key, _ := GenerateSigningKey()
+	old := &Service{SigningKey: key, Generation: CredentialGeneration(key, "old-password"), Sessions: NewSessionManager()}
+	rotated := &Service{SigningKey: key, Generation: CredentialGeneration(key, "new-password"), Sessions: NewSessionManager()}
+
+	now := time.Now()
+	token, err := SignToken(Claims{IssuedAt: now, ExpiresAt: now.Add(time.Hour), JTI: "j", Generation: old.Generation}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, tt := range map[string]struct {
+		svc  *Service
+		want bool
+	}{"same password, other replica": {old, true}, "rotated password": {rotated, false}} {
+		req := httptest.NewRequest(http.MethodGet, "/api/x", nil)
+		req.AddCookie(&http.Cookie{Name: "dg_session", Value: token})
+		if _, ok := tt.svc.validateRequest(req); ok != tt.want {
+			t.Errorf("%s: valid = %v, want %v", name, ok, tt.want)
+		}
+	}
+}
+
+func TestMiddlewareServesAssetsWithoutSession(t *testing.T) {
+	svc, _ := testServiceWithKey(t)
+	h := svc.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	for path, want := range map[string]int{"/assets/app.js": http.StatusOK, "/api/containers": http.StatusUnauthorized} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != want {
+			t.Errorf("GET %s without a session: %d, want %d", path, w.Code, want)
+		}
+	}
+}

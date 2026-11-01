@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -143,7 +144,7 @@ func main() {
 
 	dc := collector.NewDockerCollector(dockerCli, cfg.PollInterval)
 	if swarmMode {
-		dc.EnableSwarm(cfg.SwarmPollInterval)
+		dc.EnableSwarm(cfg.SwarmPollInterval, hostname)
 	}
 	if err := dc.Start(ctx); err != nil {
 		log.Fatalf("docker collector start failed: %v", err)
@@ -208,6 +209,9 @@ func main() {
 			}))
 		}
 	}
+	if swarmMode {
+		serverOpts = append(serverOpts, api.WithAssetPeers(peerFinder(cfg.PeersAddr, cfg.Port)))
+	}
 	sc.Start(ctx)
 	defer sc.Stop()
 
@@ -221,13 +225,23 @@ func main() {
 
 	var authService *auth.Service
 	if cfg.PasswordHash != "" {
-		signingKey, keyErr := auth.GenerateSigningKey()
-		if keyErr != nil {
-			log.Fatalf("failed to generate signing key: %v", keyErr)
+		// A shared key lets every swarm server replica accept the session
+		// cookies of the others; without one, a per-process key is enough.
+		signingKey := cfg.SessionKey
+		if signingKey == nil {
+			if swarmMode {
+				log.Printf("WARN  no DG_AGENT_KEY or DG_SESSION_KEY: this replica signs sessions with its own random key, so logins break across several server replicas (set DG_SESSION_KEY_FILE)")
+			}
+			var keyErr error
+			signingKey, keyErr = auth.GenerateSigningKey()
+			if keyErr != nil {
+				log.Fatalf("failed to generate signing key: %v", keyErr)
+			}
 		}
 		authService = &auth.Service{
 			PasswordHash: cfg.PasswordHash,
 			SigningKey:   signingKey,
+			Generation:   auth.CredentialGeneration(signingKey, cfg.passwordSecret),
 			Sessions:     auth.NewSessionManager(),
 			Limiter:      auth.NewRateLimiter(5, time.Minute),
 			LoginPage:    frontend.LoginHTML,
@@ -469,5 +483,21 @@ func pipeToHub(ctx context.Context, sub <-chan collector.StateMessage, hub *api.
 		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+// peerFinder resolves addr, the DNS name of every server replica, to their
+// base URLs on port. Resolution failures yield no peers.
+func peerFinder(addr, port string) api.PeerFinder {
+	return func(ctx context.Context) []string {
+		ips, err := net.DefaultResolver.LookupHost(ctx, addr)
+		if err != nil {
+			return nil
+		}
+		urls := make([]string, 0, len(ips))
+		for _, ip := range ips {
+			urls = append(urls, "http://"+net.JoinHostPort(ip, port))
+		}
+		return urls
 	}
 }

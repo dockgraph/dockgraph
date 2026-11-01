@@ -2,9 +2,13 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 )
+
+// assetsPathPrefix is where the built bundle's hashed files are served.
+const assetsPathPrefix = "/assets/"
 
 type contextKey string
 
@@ -53,6 +57,9 @@ func (s *Service) validateRequest(r *http.Request) (Claims, bool) {
 	if err != nil {
 		return Claims{}, false
 	}
+	if subtle.ConstantTimeCompare([]byte(claims.Generation), []byte(s.Generation)) != 1 {
+		return Claims{}, false
+	}
 	if !s.Sessions.IsValid(claims.IssuedAt) {
 		return Claims{}, false
 	}
@@ -80,6 +87,13 @@ func isPublicPath(method, path string) bool {
 		return true
 	}
 	if method == http.MethodGet && path == LoginScriptPath {
+		return true
+	}
+	// The built bundle ships in the public image, so its files hold nothing
+	// to protect. Served without a session, they also reach a replica
+	// fetching one from its peers during a rolling update (see
+	// api.WithAssetPeers) with no cookie to forward.
+	if method == http.MethodGet && strings.HasPrefix(path, assetsPathPrefix) {
 		return true
 	}
 	return false
