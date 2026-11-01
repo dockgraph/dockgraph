@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { useDockGraph } from './useDockGraph';
 import { WS_IDLE_TIMEOUT } from '../utils/constants';
+import { PROTOCOL_VERSION } from '../utils/protocol';
 
 /** Minimal WebSocket stand-in: the test drives open, messages and close. */
 class FakeSocket {
@@ -103,6 +104,29 @@ describe('useDockGraph connection', () => {
     // socket's idle timer from being kept alive.
     expect(FakeSocket.instances).toHaveLength(2);
     expect(second.closed).toBe(false);
+  });
+
+  it('applies the first snapshot of a new socket even when only a network owner differs', () => {
+    const snapshot = (owner: string) => ({
+      type: 'snapshot',
+      version: PROTOCOL_VERSION,
+      data: {
+        nodes: [{ id: 'network:lan', type: 'network', name: 'lan', owner }],
+        edges: [],
+      },
+    });
+    const { result } = renderHook(() => useDockGraph());
+    const first = FakeSocket.instances[0];
+    act(() => first.open());
+    act(() => first.receive(snapshot('mgr-a')));
+    expect(result.current.nodes[0].owner).toBe('mgr-a');
+
+    act(() => first.onclose?.());
+    act(() => vi.advanceTimersByTime(1_000));
+    const second = FakeSocket.instances[1];
+    act(() => second.open());
+    act(() => second.receive(snapshot('mgr-b')));
+    expect(result.current.nodes[0].owner).toBe('mgr-b');
   });
 
   it('reconnects after a normal close', () => {

@@ -73,6 +73,10 @@ export function useDockGraph(onStats?: (data: StatsMessage) => void): DockGraphS
       if (wsRef.current !== ws) return;
       clearIdleTimer();
       wsRef.current = null;
+      // The next socket may reach another replica, whose snapshot can differ
+      // in ways the fingerprint ignores (a network's owner node): its first
+      // snapshot must always be applied.
+      fingerprintRef.current = '';
       setState((prev) => ({ ...prev, connected: false }));
 
       if (unmountedRef.current) return;
