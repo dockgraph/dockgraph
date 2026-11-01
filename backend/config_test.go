@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -752,7 +753,11 @@ func TestLoadSessionKey(t *testing.T) {
 	if err := os.WriteFile(keyFile, []byte(longKey+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	derived, err := auth.DeriveSigningKey([]byte("agent-token"))
+	_, agentKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	derived, err := auth.DeriveSigningKey(agentKey.Seed())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -761,23 +766,24 @@ func TestLoadSessionKey(t *testing.T) {
 		name    string
 		inline  string
 		file    string
-		token   string
+		agent   ed25519.PrivateKey
 		want    []byte
 		wantErr string
 	}{
-		{"unset_no_token", "", "", "", nil, ""},
-		{"inline", " " + longKey + " ", "", "agent-token", []byte(longKey), ""},
-		{"file_trimmed", "", keyFile, "", []byte(longKey), ""},
-		{"blank_inline", "   ", "", "agent-token", nil, "blank"},
-		{"too_short", "short", "", "agent-token", nil, "too short"},
-		{"missing_file", "", filepath.Join(dir, "missing"), "agent-token", nil, "cannot read"},
-		{"derived_from_token", "", "", "agent-token", derived, ""},
+		{"unset_no_agent_key", "", "", nil, nil, ""},
+		{"inline", " " + longKey + " ", "", agentKey, []byte(longKey), ""},
+		{"file_trimmed", "", keyFile, nil, []byte(longKey), ""},
+		{"blank_inline", "   ", "", agentKey, nil, "blank"},
+		{"too_short", "short", "", agentKey, nil, "too short"},
+		{"missing_file", "", filepath.Join(dir, "missing"), agentKey, nil, "cannot read"},
+		{"derived_from_agent_key", "", "", agentKey, derived, ""},
+		{"agent_token_is_not_a_source", "", "", nil, nil, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("DG_SESSION_KEY", tt.inline)
 			t.Setenv("DG_SESSION_KEY_FILE", tt.file)
-			got, err := loadSessionKey(tt.token)
+			got, err := loadSessionKey(tt.agent)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("got error %v, want one containing %q", err, tt.wantErr)
@@ -794,17 +800,25 @@ func TestLoadSessionKey(t *testing.T) {
 	}
 }
 
-// Two server replicas configured with the same agent token derive the same
-// session key, so a cookie issued by one is accepted by the other.
+// Two server replicas given the same agent key derive the same session key,
+// so a cookie issued by one is accepted by the other. The agent token, which
+// every agent holds, never yields one.
 func TestLoadConfig_SessionKeyDerivedIsStable(t *testing.T) {
-	clearConfigEnv(t, "DG_PASSWORD", "DG_PASSWORD_FILE", "DG_AGENT_TOKEN_FILE",
-		"DG_SESSION_KEY", "DG_SESSION_KEY_FILE")
-	t.Setenv("DG_AGENT_TOKEN", "agent-token")
+	clearConfigEnv(t, "DG_PASSWORD", "DG_PASSWORD_FILE", "DG_AGENT_TOKEN", "DG_AGENT_TOKEN_FILE",
+		"DG_AGENT_KEY_FILE", "DG_SESSION_KEY", "DG_SESSION_KEY_FILE")
+	keyText, err := agentauth.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DG_AGENT_KEY", keyText)
 	a, b := LoadConfig().SessionKey, LoadConfig().SessionKey
 	if len(a) != 32 || string(a) != string(b) {
 		t.Fatalf("derived keys differ or have the wrong length: %x vs %x", a, b)
 	}
-	if string(a) == "agent-token" {
-		t.Error("session key must not be the raw agent token")
+
+	t.Setenv("DG_AGENT_KEY", "")
+	t.Setenv("DG_AGENT_TOKEN", "agent-token")
+	if got := LoadConfig().SessionKey; got != nil {
+		t.Errorf("session key derived from the agent token: %x", got)
 	}
 }

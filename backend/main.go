@@ -229,6 +229,9 @@ func main() {
 		// cookies of the others; without one, a per-process key is enough.
 		signingKey := cfg.SessionKey
 		if signingKey == nil {
+			if swarmMode {
+				log.Printf("WARN  no DG_AGENT_KEY or DG_SESSION_KEY: this replica signs sessions with its own random key, so logins break across several server replicas (set DG_SESSION_KEY_FILE)")
+			}
 			var keyErr error
 			signingKey, keyErr = auth.GenerateSigningKey()
 			if keyErr != nil {

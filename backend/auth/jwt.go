@@ -32,7 +32,7 @@ func GenerateSigningKey() ([]byte, error) {
 }
 
 // sessionKeyInfo binds keys from DeriveSigningKey to session signing, so the
-// same secret used elsewhere (the agent bearer token) yields an unrelated key.
+// same secret used elsewhere (the agent private key) yields an unrelated key.
 const sessionKeyInfo = "dockgraph-session-v1"
 
 // DeriveSigningKey derives a 32-byte HMAC signing key from secret with

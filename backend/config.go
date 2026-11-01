@@ -63,8 +63,9 @@ type Config struct {
 	AllowedHosts *api.HostAllowlist
 	// SessionKey is the HMAC key that signs session cookies. It comes from
 	// DG_SESSION_KEY / DG_SESSION_KEY_FILE (at least 32 bytes), else it is
-	// derived from AgentToken so every server replica shares it. Nil means
-	// main generates a random per-process key (standalone).
+	// derived from AgentKey so every server replica shares it. Nil means
+	// main generates a random per-process key. Never derived from the agent
+	// token: every agent holds it, and could then forge sessions.
 	SessionKey []byte
 }
 
@@ -122,7 +123,7 @@ func LoadConfig() Config {
 		log.Fatalf("%v", err)
 	}
 	cfg.AgentPublicKeys = publicKeys
-	sessionKey, err := loadSessionKey(cfg.AgentToken)
+	sessionKey, err := loadSessionKey(cfg.AgentKey)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -306,9 +307,9 @@ const minSessionKeyLen = 32
 
 // loadSessionKey returns the session signing key shared by all server
 // replicas: DG_SESSION_KEY or DG_SESSION_KEY_FILE (see readSecretEnv) when
-// set, else a key derived from agentToken. It returns nil when both are
-// empty, and fails on a key shorter than minSessionKeyLen.
-func loadSessionKey(agentToken string) ([]byte, error) {
+// set, else a key derived from agentKey, which only servers hold. It returns
+// nil when both are absent, and fails on a key shorter than minSessionKeyLen.
+func loadSessionKey(agentKey ed25519.PrivateKey) ([]byte, error) {
 	raw, err := readSecretEnv("DG_SESSION_KEY")
 	if err != nil {
 		return nil, err
@@ -324,10 +325,10 @@ func loadSessionKey(agentToken string) ([]byte, error) {
 		}
 		return []byte(raw), nil
 	}
-	if agentToken == "" {
+	if len(agentKey) != ed25519.PrivateKeySize {
 		return nil, nil
 	}
-	return auth.DeriveSigningKey([]byte(agentToken))
+	return auth.DeriveSigningKey(agentKey.Seed())
 }
 
 // parseDuration reads a duration from an environment variable with minimum enforcement.

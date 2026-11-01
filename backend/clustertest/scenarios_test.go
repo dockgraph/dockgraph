@@ -439,7 +439,7 @@ func TestUISurvivesManagerLoss(t *testing.T) {
 
 // Each request through the mesh may reach a different replica: a session
 // cookie issued by one must be accepted by all, so they share a signing key
-// (derived from the agent token).
+// (derived from the agent key).
 func TestSessionAcrossReplicas(t *testing.T) {
 	requireManagers(t, 2) // several replicas to spread over
 	waitServerOnEveryManager(t, managers)
