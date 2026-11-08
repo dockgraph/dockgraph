@@ -39,7 +39,7 @@ backend/
 │   └── verify.go            # Agent-side check: signature, clock skew, addressed host, nonce replay
 ├── api/
 │   ├── server.go            # HTTP routes: /healthz, /ws, /login, resource APIs, SPA fallback
-│   ├── ws.go                # WebSocket hub with ping/pong heartbeat
+│   ├── ws.go                # WebSocket hub: ping/pong and heartbeat messages
 │   ├── containers.go        # Container list and stats endpoints
 │   ├── containers_detail.go # Container inspect endpoint
 │   ├── networks.go          # Network inspect endpoint
@@ -65,7 +65,7 @@ backend/
 │   ├── handlers.go          # Login/logout HTTP handlers
 │   ├── clientip.go          # Client address and scheme behind trusted proxies (DG_TRUSTED_PROXIES)
 │   ├── middleware.go         # JWT authentication middleware
-│   ├── jwt.go               # JWT token creation and validation
+│   ├── jwt.go               # JWT token creation and validation, signing key generation and derivation
 │   ├── password.go          # Argon2id password hashing
 │   ├── ratelimit.go         # Login rate limiting
 │   └── session.go           # Session management
@@ -142,6 +142,8 @@ Both collectors implement the `Collector` interface and emit `StateUpdate` value
 
 **Agents.** With `DG_MODE=agent`, the binary serves only the agent API under `/agent/v1` (info, stats, container inspect and logs, volume inspect) plus `/healthz`. Every request must be signed with the server's private key (`agentauth`): the `Dockgraph-Signature` header covers the method, host, path and query, a timestamp and a nonce, and the agent accepts it only within two minutes of its own clock, addressed to one of its own IP addresses, and once. Agents hold only the public key, so none of them can sign. Agents without a public key fall back to the deprecated shared token; a server with both a key and a token sends both, for stacks moving to keys. The server's `AgentPool` resolves `DG_AGENT_ADDR` (`tasks.agent`) every 30 seconds, keeping known agents on transient DNS errors, and polls every agent each stats round. In between it re-resolves the name every 5 seconds and refreshes at once when an agent appears or disappears (a node joined or left), so a new node's containers don't wait for the next full refresh. An agent that rejects the server's credentials is reported once, not on every refresh. Remote samples are merged with local ones (local wins on a name collision), stamped with their node, and aggregated per service and per node under `node:{hostname}`. Every node whose agent answered gets an aggregate, even when it runs no other container.
 
+**Replicas.** `stack.yml` runs the server as a global service on every manager, so the UI survives the loss of any of them. Every replica builds the same graph from the swarm API and polls every agent; stats history, recent events and the log aggregator stay in memory per replica. Replicas share the session signing key (see [Authentication](#authentication)). See the [root README](../README.md#high-availability) for the operational side.
+
 An agent's `/info` names its node, and the pool only uses the agent for that node once the swarm runs a task holding the agent's address there; earlier confirmations are kept while the task list can't be read.
 
 **Proxy.** Container inspect and log requests for a container on another node are forwarded to that node's agent (`api/remote.go`). The local daemon is always asked first; a task container is then located through the swarm task list (stopped ones included, which no agent reports), and any other container through the agents' last stats reports. A name, ID or ID prefix whose matches point at several nodes, or at a task on one node and a standalone report on another, is not located, nor is a reported container while the task list can't be read. Proxied responses keep only their final status and a content type fixed by the route (JSON, or `text/event-stream` for a log stream): informational responses, protocol switches and trailers from an agent never reach the client. The server masks the credential fields of an agent's inspect answer again (`api/remote_mask.go`). Inspect answers are capped at 1 MiB and other non-streaming responses at 4 MiB; log streams stay open until the client disconnects or stops reading. Requests made for clients are limited to 100 per second per agent, below what an agent's replay cache holds, and to 25 per second per agent for any one client (`503` beyond). Stats answers are capped at 4 MiB and 2,000 containers per agent, and a container or task reported by several nodes gets no stats. Swarm volumes are node-local, so a volume inspect asks the local daemon and every agent at once, bounded by 5 seconds (`api/remote_volumes.go`): the response describes the server's own copy when it has one, otherwise the first node's by hostname, and adds `node` (the node described) and `nodes` (every node holding a volume of that name). An agent's volume answer is capped at 1 MiB and masked again.
@@ -169,7 +171,9 @@ Clients connect to `/ws` and receive a `WireMessage` envelope:
 }
 ```
 
-The initial message is always a full `snapshot`. Subsequent updates may be `snapshot` or `delta` (incremental adds/removes/updates).
+The initial message is always a full `snapshot`. Subsequent updates may be `snapshot` or `delta` (incremental adds/removes/updates), interleaved with `stats` samples. With authentication, `auth_expired` tells the client its session ended before the server closes the connection.
+
+The server also sends a payload-less `heartbeat` every 5 seconds (`Hub.HeartbeatPeriod`). Browsers answer WebSocket pings without telling the page, so the heartbeat is what lets the frontend notice a server that vanished without closing the connection (e.g. its node powered off): after 15 seconds without any message it drops the socket and reconnects, reaching another replica in swarm.
 
 Every message carries the protocol version (`collector.ProtocolVersion`). Version 2 added the `service` and `swarmnode` node types; version 3 lists a published port range as one mapping (`hostEnd`, `containerEnd`). The frontend accepts only its own version. On a mismatch it reloads once to fetch a matching bundle, and ignores the messages if the mismatch persists.
 
@@ -198,9 +202,9 @@ Edge types:
 When `DG_PASSWORD` or `DG_PASSWORD_FILE` is set, all endpoints (except `/healthz`) require a valid JWT session token. The `auth` package handles:
 
 - **Password hashing** with Argon2id (constant-time comparison). One verification runs at a time; a login that waits more than 5 seconds for its turn gets `503`. Pre-hashed passwords with parameters argon2 can't run safely (t or p of 0, t above 10, memory above 128 MiB, short salt or key, or a malformed parameter field) are refused at startup.
-- **JWT tokens** with HMAC-SHA256, signed with an ephemeral key generated at startup
-- **Rate limiting** on the login endpoint: 5 attempts per minute per client, IPv6 clients bucketed by /64, at most 10,000 clients tracked. Behind a proxy listed in `DG_TRUSTED_PROXIES`, the client is the rightmost `X-Forwarded-For` entry that is not a trusted proxy, and `X-Forwarded-Proto: https` marks the session cookie `Secure`.
-- **Session management** — tokens expire after 7 days and are invalidated on server restart
+- **JWT tokens** with HMAC-SHA256. The signing key comes from `DG_SESSION_KEY`; otherwise it is derived from the server's `DG_AGENT_KEY` with HKDF-SHA256 (info `dockgraph-session-v1`), so every swarm replica accepts the others' cookies and sessions survive restarts; without either, a random key is generated at startup. The key is never derived from the password, since the HMAC would allow an offline brute force of it, nor from the agent token, which every agent holds
+- **Rate limiting** on the login endpoint (per replica): 5 attempts per minute per client, IPv6 clients bucketed by /64, at most 10,000 clients tracked. Behind a proxy listed in `DG_TRUSTED_PROXIES`, the client is the rightmost `X-Forwarded-For` entry that is not a trusted proxy, and `X-Forwarded-Proto: https` marks the session cookie `Secure`.
+- **Session management** — tokens expire after 7 days. With a random key they are invalidated on server restart. Logout invalidates every session issued before it, on the replica that handled it only
 - **Cross-origin protection** — state-changing requests sent cross-origin by a browser are rejected (`net/http.CrossOriginProtection`)
 
 Independent of authentication, every response carries the security headers (CSP without inline scripts, `X-Frame-Options`, `nosniff`), including the login page and `401`s. Without a password, only requests whose `Host` is an IP address, `localhost`/`*.localhost` or a name in `DG_ALLOWED_HOSTS` are served (`api/hosts.go`); `/healthz` answers any host.
@@ -248,7 +252,7 @@ Independent of authentication, every response carries the security headers (CSP 
 go test ./...
 ```
 
-Tests cover node/edge builders, compose YAML parsing, swarm snapshots, state merge logic, the agent API and request signing, agent discovery and stats merging, the remote proxy, config loading, and WebSocket broadcast integration.
+Tests cover node/edge builders, compose YAML parsing, swarm snapshots, state merge logic, the agent API and request signing, agent discovery and stats merging, the remote proxy, config loading (including the session key), session key derivation, and WebSocket broadcast and heartbeat integration.
 
 An opt-in end-to-end test deploys the server and agents on a local swarm: `make swarm-smoke` from the repository root (see `test/swarm_smoke.sh`). Multi-node failure scenarios live in `clustertest/` behind the `clustertest` build tag, so `go test ./...` skips them; they run against the Docker-in-Docker cluster from `make swarm-cluster-up` with `make swarm-cluster-test`.
 

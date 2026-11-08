@@ -105,6 +105,21 @@ func remaskVolume(body []byte) (map[string]json.RawMessage, error) {
 	return fields, nil
 }
 
+// remaskNetwork masks the credentials in an agent's network inspect answer,
+// the JSON built by HandleNetworkInspect.
+func remaskNetwork(body []byte) ([]byte, error) {
+	fields, err := decodeObject(body)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range []string{fieldLabels, fieldOptions} {
+		if err := maskField(fields, name, secrets.MaskLabels); err != nil {
+			return nil, err
+		}
+	}
+	return json.Marshal(fields)
+}
+
 // maskDriverStatus masks a volume driver's status like labels. Drivers put
 // free-form details there, such as the source a volume was mounted from or
 // the arguments of a mount helper, at any depth.

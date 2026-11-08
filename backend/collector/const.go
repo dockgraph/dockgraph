@@ -12,9 +12,14 @@ const (
 const (
 	nodeTypeContainer = "container"
 	nodeTypeVolume    = "volume"
+	nodeTypeNetwork   = "network"
 	nodeTypeService   = "service"
 	nodeTypeSwarmNode = "swarmnode"
 )
+
+// swarmScope is the scope of a network that spans the swarm (an overlay);
+// any other scope is local to one node's daemon.
+const swarmScope = "swarm"
 
 // Docker mount Type values found on container.Mount entries.
 const (
@@ -63,8 +68,9 @@ const (
 // WireMessage and StateMessage Type field values, shared between the
 // collector, state, and api packages so the wire protocol stays in sync.
 const (
-	MsgTypeSnapshot = "snapshot"
-	MsgTypeDelta    = "delta"
+	MsgTypeSnapshot  = "snapshot"
+	MsgTypeDelta     = "delta"
+	MsgTypeHeartbeat = "heartbeat"
 )
 
 // Block I/O operation types reported by container stats.

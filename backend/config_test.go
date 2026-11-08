@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -738,5 +739,86 @@ func TestHealthcheckPort(t *testing.T) {
 				t.Errorf("got %s, want %s", got, tt.want)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DG_SESSION_KEY
+// ---------------------------------------------------------------------------
+
+func TestLoadSessionKey(t *testing.T) {
+	dir := t.TempDir()
+	longKey := strings.Repeat("k", minSessionKeyLen)
+	keyFile := filepath.Join(dir, "key")
+	if err := os.WriteFile(keyFile, []byte(longKey+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, agentKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	derived, err := auth.DeriveSigningKey(agentKey.Seed())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		inline  string
+		file    string
+		agent   ed25519.PrivateKey
+		want    []byte
+		wantErr string
+	}{
+		{"unset_no_agent_key", "", "", nil, nil, ""},
+		{"inline", " " + longKey + " ", "", agentKey, []byte(longKey), ""},
+		{"file_trimmed", "", keyFile, nil, []byte(longKey), ""},
+		{"blank_inline", "   ", "", agentKey, nil, "blank"},
+		{"too_short", "short", "", agentKey, nil, "too short"},
+		{"missing_file", "", filepath.Join(dir, "missing"), agentKey, nil, "cannot read"},
+		{"derived_from_agent_key", "", "", agentKey, derived, ""},
+		{"agent_token_is_not_a_source", "", "", nil, nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("DG_SESSION_KEY", tt.inline)
+			t.Setenv("DG_SESSION_KEY_FILE", tt.file)
+			got, err := loadSessionKey(tt.agent)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("got error %v, want one containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("loadSessionKey: %v", err)
+			}
+			if string(got) != string(tt.want) {
+				t.Errorf("got %x, want %x", got, tt.want)
+			}
+		})
+	}
+}
+
+// Two server replicas given the same agent key derive the same session key,
+// so a cookie issued by one is accepted by the other. The agent token, which
+// every agent holds, never yields one.
+func TestLoadConfig_SessionKeyDerivedIsStable(t *testing.T) {
+	clearConfigEnv(t, "DG_PASSWORD", "DG_PASSWORD_FILE", "DG_AGENT_TOKEN", "DG_AGENT_TOKEN_FILE",
+		"DG_AGENT_KEY_FILE", "DG_SESSION_KEY", "DG_SESSION_KEY_FILE")
+	keyText, err := agentauth.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DG_AGENT_KEY", keyText)
+	a, b := LoadConfig().SessionKey, LoadConfig().SessionKey
+	if len(a) != 32 || string(a) != string(b) {
+		t.Fatalf("derived keys differ or have the wrong length: %x vs %x", a, b)
+	}
+
+	t.Setenv("DG_AGENT_KEY", "")
+	t.Setenv("DG_AGENT_TOKEN", "agent-token")
+	if got := LoadConfig().SessionKey; got != nil {
+		t.Errorf("session key derived from the agent token: %x", got)
 	}
 }
